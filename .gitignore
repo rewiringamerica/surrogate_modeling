@@ -3,6 +3,9 @@
 venv/
 *.iml
 
+# Jupyter notebooks
+*.ipynb*
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.pyxbldc
