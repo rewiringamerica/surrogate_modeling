@@ -198,8 +198,14 @@ class BuildingMetadataBuilder:
 
     The only purpose of this class is to cache; same could be achieved in a few
     other ways
+
+    >>> get_building_metadata = BuildingMetadataBuilder()
+    >>> get_building_metadata.all().shape[0] > 300000  # at least 300k buildings
+    True
+    >>> get_building_metadata.all().shape[1] > 10  # at least 10 columns
+    True
     """
-    building_metadata = None
+    _building_metadata = None
 
     def __init__(self):
         pq = pd.read_parquet(
@@ -267,13 +273,18 @@ class BuildingMetadataBuilder:
 
         # extra safety check to eliminate duplicate buildings
         # (not that there are any)
-        self.building_metadata = pq.loc[pq.index.drop_duplicates()]
+        self._building_metadata = pq.loc[pq.index.drop_duplicates()]
 
     def all(self):
-        return self.building_metadata
+        return self._building_metadata
+
+    @property
+    def building_ids(self):
+        # make a copy because otherwise np.shuffle will mess up the index
+        return np.array(self.all().index.values)
 
     def __call__(self, building_id) -> pd.Series:
-        return self.building_metadata.loc[building_id]
+        return self._building_metadata.loc[building_id]
 
 
 def get_state_code_from_county_geoid(county_geoid):
