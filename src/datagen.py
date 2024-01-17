@@ -1,5 +1,7 @@
 import itertools
+import logging
 import math
+import os
 import re
 from typing import Dict
 
@@ -13,7 +15,9 @@ SEER_TO_EER = .875
 BTU_PER_WH = 3.414
 
 # Path to ResStock dataset
-# TODO: replace with an environment variable
+# TODO: replace with environment variables
+# to access gs:// paths without explicitly providing credentials, run
+# `gcloud auth application-default login` (only required once)
 RESSTOCK_PATH = 'gs://the-cube/data/raw/nrel/end_use_load_profiles/2022/resstock_tmy3_release_1/'
 
 BUILDING_METADATA_PARQUET_PATH = RESSTOCK_PATH + 'metadata_and_annual_results/national/parquet/baseline_metadata_only.parquet'
@@ -79,6 +83,12 @@ STATE_2NUM_CODE_TO_2LETTER = {  # Note: keys are intentionally strings to simpli
     '55': 'WI',
     '56': 'WY',
 }
+
+CACHE_PATH = '.cache'
+if not os.path.isdir(CACHE_PATH):
+    logging.warning(f"Cache path {CACHE_PATH} does not exist. Attempting to create..")
+    os.mkdir(CACHE_PATH)
+    logging.warning("Success")
 
 
 def vintage2age2000(vintage: str) -> int:
@@ -225,6 +235,9 @@ class BuildingMetadataBuilder:
                 'in.hvac_cooling_efficiency', 'in.hvac_heating_efficiency',
                 # to be filtered on
                 'in.has_pv', 'in.geometry_building_type_acs',
+                # ashrae_iecc_climate_zone_2004_2_a_split only splits 2A into
+                # two groups, otherwise it's the same
+                'in.ashrae_iecc_climate_zone_2004'
             ],
         ).rename(
             # to make this code interchangeable with the spark tables
@@ -256,7 +269,7 @@ class BuildingMetadataBuilder:
             age2000=pq['in_vintage'].map(vintage2age2000),
             in_infiltration_ach50=pq['in.infiltration'].str.split().str[0].astype(int),
             in_insulation_wall=pq['in.insulation_wall'].map(extract_r_value),
-            in_insulation_ceiling_roof=pq[['in.insulation_ceiling', 'in.insulation_roof']].applymap(extract_r_value).max(axis=1),
+            in_insulation_ceiling_roof=pq[['in.insulation_ceiling', 'in.insulation_roof']].map(extract_r_value).max(axis=1),
             in_hvac_cooling_efficiency_eer=pq['in.hvac_cooling_efficiency'].map(extract_cooling_efficiency),
             in_hvac_heating_efficiency_nominal_percent=pq['in.hvac_heating_efficiency'].map(extract_heating_efficiency),
             in_hvac_heating_backup_efficiency_nominal_percent=pq['in.hvac_heating_efficiency'].map(extract_heating_efficiency)
@@ -325,10 +338,10 @@ def get_hourly_outputs(building_id, upgrade_id, county_geoid, time_aggregate):
     https://github.com/rewiringamerica/pep/blob/dev/src/process/process_eulp_timeseries.py
 
     TODO: add file caching layer, to save money and speed up
-        Parquet files are ~3Mb each, sofull set for one upgrade is 500K * 3Mb = 1.5Tb
+        Parquet files are ~3Mb each, so full set for one upgrade is 500K * 3Mb = 1.5Tb
         GCP traffic in North America is ~8c per Gb, so, ~$150 per epoch without caching.
-        Storing a reduced set of columns (~1/2) and resamapled hourly (1/4) will take
-        500K * 3Mb / (2*4) = 200Gb. Resampled daily: 10Gb, Monthly: 300Mb. Traffic price is
+        Caching a reduced set of columns (~1/2) and resamapled hourly (1/4) will take
+        500K * 3Mb / (2*4) = 200Gb per upgrade.
 
     TODO: test reading from a local machine and reading from NREL S3 instead of RA's GCS
         this function takes ~0.5s to execute on average, which is a bottleneck
@@ -369,9 +382,11 @@ def get_hourly_outputs(building_id, upgrade_id, county_geoid, time_aggregate):
     1
     """
     state = get_state_code_from_county_geoid(county_geoid)
-    pqpath = HOURLY_OUTPUT_PATH.format(building_id=building_id, upgrade_id=upgrade_id, state=state)
-    # To save RAM, it'd be good to cache the columns of the dataset and read only the needed ones
-    # So, we need a stateful function - this is a dirty hack to implement this.
+    pqpath = HOURLY_OUTPUT_PATH.format(
+        building_id=building_id, upgrade_id=upgrade_id, state=state)
+    # To save RAM, it'd be good to cache the columns of the dataset and read
+    # only the needed ones. So, we need a stateful function - this is a dirty
+    # hack to implement this.
     # TODO: abuse metaclasses instead?
     if not hasattr(get_hourly_outputs, 'columns'):
         pqtemp = pd.read_parquet(pqpath).sort_values('timestamp')
@@ -385,8 +400,10 @@ def get_hourly_outputs(building_id, upgrade_id, county_geoid, time_aggregate):
         fuel_types, appliance_types = zip(*(colname.split('.', 1) for colname in column_renames.values() if '.' in colname))
         fuel_types, appliance_types = set(fuel_types), set(appliance_types)
         fuel_types -= {'site_energy'}
-        # maybe remove appliances not covered by upgrades: grill, pool_pump, hot tub heater
-        # fireplace in ResStock are only gas powered and should be counted towards heating
+        # maybe remove appliances not covered by upgrades: grill, pool_pump,
+        # and hot tub heater
+        # fireplace in ResStock are only gas powered (i.e., not wood) and should
+        # be counted towards heating
         appliance_types -= {'total', 'net'}
         setattr(get_hourly_outputs, 'fuel_types', fuel_types)
         setattr(get_hourly_outputs, 'appliance_types', appliance_types)
@@ -401,19 +418,31 @@ def get_hourly_outputs(building_id, upgrade_id, county_geoid, time_aggregate):
 
 
 def get_weather_file(county_geoid):
-    """ Retrieve weather timeseries for a given county geoid in ResStock or ComStock
+    """ Retrieve weather timeseries for a given county geoid in ResStock
 
-    It takes about 150..200ms to read a file from a GCP bucket. With ~3K files, that's ~10min worst case for the entire dataset
-    This function returns all columns - filtering out the right features is a task for the dataset generator
+    It takes about 150..200ms to read a file from a GCP bucket. With ~3K files,
+    that's ~10min worst case for the entire dataset. This function returns all
+    columns - filtering out the right features is a task for the dataset
+    generator.
 
-    >>> get_weather_file('G0200130').shape[0]  # 365d*24h = 8760 hourly data points
+    Args:
+        county_geoid: (str) ResStock county geoid
+
+    Returns:
+        pd.DataFrame: A dataframe with 8760 rows (hours in a non-leap year) and
+            columns `temp_air`, `relative_humidity`, `wind_speed`,
+            `wind_direction`, `ghi`, `dni`, `diffuse_horizontal_illum`
+
+    >>> get_weather_file('G0200130').shape[0]
     8760
-    >>> get_weather_file('G0200130').shape[1] >= 5  # at least five columns expected; ResStock actually uses 7
+    >>> get_weather_file('G0200130').shape[1] >= 5
     True
     """
     state = get_state_code_from_county_geoid(county_geoid)
     weather_file_path = WEATHER_FILES_PATH.format(state=state, geoid=county_geoid)
-    df = pd.read_csv(weather_file_path, parse_dates=['date_time'], index_col=['date_time']).rename(columns={
+    df = pd.read_csv(
+        weather_file_path, parse_dates=['date_time'], index_col=['date_time']
+    ).rename(columns={
         'Dry Bulb Temperature [°C]': 'temp_air',
         'Relative Humidity [%]': 'relative_humidity',
         'Wind Speed [m/s]': 'wind_speed',
@@ -422,14 +451,16 @@ def get_weather_file(county_geoid):
         'Direct Normal Radiation [W/m2]': 'dni',
         'Diffuse Horizontal Radiation [W/m2]': 'diffuse_horizontal_illum'
     })
-    # return df
-    # in TMY3 files, weather year is a combination of months from different years.
-    # Resstock overrides year for these files, so only month-day-hour portion matters
+    # in TMY3 files, weather year is a combination of months from different
+    # years. Resstock overrides year for these files, so only month-day-hour
+    # portion matters
     df = df.assign(
-        weekend=df.index.weekday.isin((5,6)).astype(int)  # Monday -> 0 https://pandas.pydata.org/docs/reference/api/pandas.Series.dt.weekday.html
-    ).set_index(df.index.strftime("%m-%d-%H:00")).sort_index()#.set_index(['canonical_epw_filename', 'date']).stack().unstack('date')
+        # Monday is 0
+        # https://pandas.pydata.org/docs/reference/api/pandas.Series.dt.weekday.html
+        weekend=df.index.weekday.isin((5, 6)).astype(int)
+    ).set_index(df.index.strftime("%m-%d-%H:00")).sort_index()
 
-    return df#.assign(date_time=df['date_time'].str[5:]).sort_values('date_time')#.drop(columns=['date_time'])
+    return df
 
 
 def apply_upgrades(building_features, upgrade_id):
@@ -487,18 +518,23 @@ class DataGen(tf.keras.utils.Sequence):
         'other': [
             'hot_tub_heater', 'hot_tub_pump', 'hot_water', 'well_pump',
             'dishwasher',  'freezer', 'refrigerator', 'grill', 'range_oven',
-            'ceiling_fan', 'mech_vent', # should this be considered cooling/heating?
+            # should fans and mech vent  be considered cooling/heating?
+            'ceiling_fan', 'mech_vent',
             'pool_heater', 'pool_pump',
             'clothes_dryer', 'clothes_washer',
-            'plug_loads', # pv,  # not considering solar (pv) yet
+            'plug_loads',  # pv,  # not considering solar (pv) yet
         ]
     }
     # column mapping to aggregate hourly outputs by appliance
     appliance_groups: Dict[str, str] = None
     time_granularity = None
     weather_files_cache: Dict[str, np.array]
-    building_ids: np.array  # Building ids only, not combined with upgrades. Not used, for debugging purpose only
-    ids = None  # np.array() Nx2 with the first column being a building id and the second - upgrade id
+    # Building ids only, not combined with upgrades.
+    # Not used, for debugging purpose only
+    building_ids: np.array
+    # np.array() N x 2 with, the first column being a building id and the
+    # second - upgrade id
+    ids = None
 
     def __init__(self, building_ids, upgrade_ids=None, weather_features=None,
                  building_features=None, consumption_groups=None,
@@ -570,10 +606,13 @@ class DataGen(tf.keras.utils.Sequence):
         building_features = building_features[self.building_features]  # 0.6ms here
         building_features['weather_data'] = self.get_weather_data(county_geoid)  # 3ms here
 
-        # Aggregate hourly outputs by time granularity, then by appliance, then by group
-        # Cold (uncached) retrieval takes 0.25s per sample; 360k samples translate into ~25hours
+        # Aggregate hourly outputs by time granularity, then by appliance, then
+        # by group. Cold (uncached) retrieval takes 0.25s per sample;
+        # 360k samples translate into ~25hours (in a cloud, x6 on wifi)
         # TODO: parallelize and cache
-        ho = get_hourly_outputs(building_id, upgrade_id, county_geoid, self.time_granularity).resample(self.time_granularity).sum()
+        ho = get_hourly_outputs(
+            building_id, upgrade_id, county_geoid, self.time_granularity
+        ).resample(self.time_granularity).sum()
         # populate appliance groups lazily
         if not self.appliance_groups:
             self.appliance_groups = {}
