@@ -5,6 +5,8 @@ import os
 import re
 from typing import Dict
 
+from utils import file_cache
+
 import numpy as np
 import pandas as pd
 import tensorflow as tf
@@ -331,7 +333,8 @@ def get_state_code_from_county_geoid(county_geoid):
     return STATE_2NUM_CODE_TO_2LETTER[state_2num_code]
 
 
-def get_hourly_outputs(building_id, upgrade_id, county_geoid, time_aggregate):
+@file_cache(CACHE_PATH)
+def get_hourly_outputs(building_id, upgrade_id, county_geoid):
     """ Get hourly timeseries for a combination of building id and an upgrade id
 
     The overall flow reproduces the Spark table created by
@@ -350,12 +353,6 @@ def get_hourly_outputs(building_id, upgrade_id, county_geoid, time_aggregate):
         building_id: (int) ResStock building ID
         upgrade_id: (int) ResStock upgrade ID
         county_geoid: (str) in.county from ResStock building metadata, e.g. 'G0101270'
-        time_aggregate: (str) a timestep to aggregate timeseries to, e.g.
-            'H' or '1H' - 1 hour
-            'D' - 1 day
-            'M' - 1 month
-            'Q' - quarter
-            'Y' - full year
 
     Returns:
         (pd.DataFrame): a dataframe with a sorted timestamp index and columns
@@ -372,13 +369,9 @@ def get_hourly_outputs(building_id, upgrade_id, county_geoid, time_aggregate):
                 fireplace, grill, total (all appliances of the same fuel type),
                 net (including solar panels, pv)
 
-    >>> get_hourly_outputs(100066, 0, 'G0101270', 'H').shape[0]
+    >>> get_hourly_outputs(100066, 0, 'G0101270').shape[0]
     8760
-    >>> get_hourly_outputs(100066, 0, 'G0101270', 'D').shape[0]
-    365
-    >>> get_hourly_outputs(100066, 0, 'G0101270', 'M').shape[0]
-    12
-    >>> get_hourly_outputs(100066, 0, 'G0101270', 'Y').shape[0]
+    >>> get_hourly_outputs(100066, 0, 'G0101270').shape[1] > 2  # 2+ groups
     1
     """
     state = get_state_code_from_county_geoid(county_geoid)
@@ -391,30 +384,85 @@ def get_hourly_outputs(building_id, upgrade_id, county_geoid, time_aggregate):
     if not hasattr(get_hourly_outputs, 'columns'):
         pqtemp = pd.read_parquet(pqpath).sort_values('timestamp')
         # skipping intensity and emissions columns
-        columns = [column for column in pqtemp.columns if column=='timestamp' or column.endswith('.energy_consumption')]
+        columns = [
+            column for column in pqtemp.columns
+            if column == 'timestamp' or column.endswith('.energy_consumption')
+        ]
         setattr(get_hourly_outputs, 'columns', columns)
-        column_renames = {col:col[4:-19] for col in columns if col.startswith('out.') and col.endswith('.energy_consumption')}
+        column_renames = {
+            col: col[4:-19] for col in columns
+            if col.startswith('out.') and col.endswith('.energy_consumption')
+        }
         setattr(get_hourly_outputs, 'column_renames', column_renames)
         timestep = pqtemp.iloc[1]['timestamp'] - pqtemp.iloc[0]['timestamp']
         setattr(get_hourly_outputs, 'timestep', timestep)
-        fuel_types, appliance_types = zip(*(colname.split('.', 1) for colname in column_renames.values() if '.' in colname))
-        fuel_types, appliance_types = set(fuel_types), set(appliance_types)
+        fuel_types = set()
+        appliance_types = set()
+        appliance_groups = {}
+        for column in column_renames.values():
+            if '.' not in column:  # timestamp
+                continue
+            fuel_type, appliance = column.split('.', 1)
+            fuel_types.add(fuel_type)
+            appliance_types.add(appliance)
+            appliance_groups.setdefault(appliance, [])
+            appliance_groups[appliance].append(column)
+
         fuel_types -= {'site_energy'}
         # maybe remove appliances not covered by upgrades: grill, pool_pump,
         # and hot tub heater
         # fireplace in ResStock are only gas powered (i.e., not wood) and should
         # be counted towards heating
-        appliance_types -= {'total', 'net'}
+        appliance_types -= {'total', 'net', 'grill', 'pool_pump', }
         setattr(get_hourly_outputs, 'fuel_types', fuel_types)
         setattr(get_hourly_outputs, 'appliance_types', appliance_types)
+        setattr(get_hourly_outputs, 'appliance_groups', appliance_groups)
+        # appliance mapping to aggregate by purpose
+        # TODO: make groups separable by fuel, e.g. backup heating should be
+        # in a separate group, and heating fans should be separate, too.
+        setattr(get_hourly_outputs, 'consumption_groups', {
+            'heating': [
+                'heating', 'heating_fans_pumps', 'heating_hp_bkup', 'fireplace',
+            ],
+            'cooling': ['cooling', 'cooling_fans_pumps', ],
+            'lighting': [
+                'lighting', 'lighting_interior', 'lighting_exterior',
+                'lighting_garage',
+            ],
+            'other': [
+                'hot_tub_heater', 'hot_tub_pump', 'hot_water', 'well_pump',
+                'dishwasher',  'freezer', 'refrigerator', 'grill', 'range_oven',
+                # should fans and mech vent  be considered cooling/heating?
+                'ceiling_fan', 'mech_vent',
+                'pool_heater', 'pool_pump',
+                'clothes_dryer', 'clothes_washer',
+                'plug_loads',  # pv,  # not considering solar (pv) yet
+            ]
+        })
 
-    ho = pd.read_parquet(pqpath, columns=get_hourly_outputs.columns).set_index('timestamp').sort_index()
+    ho = (
+        pd.read_parquet(pqpath, columns=get_hourly_outputs.columns)
+        .set_index('timestamp')
+        .sort_index()
+    )
 
     # timestamps indicate the end of the period.
     # To make use of pandas resampling, they should be set at the start
-    ho.set_index(ho.index-get_hourly_outputs.timestep, inplace=True)
+    ho = (
+        ho.set_index(ho.index-get_hourly_outputs.timestep)
+        .rename(columns=get_hourly_outputs.column_renames)
+    )
+    # TODO: combine both aggregations
+    ho = pd.DataFrame({
+        appliance: ho[col_names].sum(axis=1)
+        for appliance, col_names in get_hourly_outputs.appliance_groups.items()
+    })
+    ho = pd.DataFrame({
+        group_name: ho[col_names].sum(axis=1)
+        for group_name, col_names in get_hourly_outputs.consumption_groups.items()
+    })
 
-    return ho.resample(time_aggregate).sum().rename(columns=get_hourly_outputs.column_renames)
+    return ho.resample('H').sum()
 
 
 def get_weather_file(county_geoid):
@@ -510,21 +558,7 @@ class DataGen(tf.keras.utils.Sequence):
         'in_hvac_cooling_efficiency_eer',
         'in_hvac_heating_efficiency_nominal_percent'
     )
-    # appliance mapping to aggregate by purpose
-    consumption_groups = {
-        'heating': ['heating', 'heating_fans_pumps', 'heating_hp_bkup', 'fireplace',],
-        'cooling': ['cooling', 'cooling_fans_pumps',],
-        'lighting': ['lighting', 'lighting_interior', 'lighting_exterior', 'lighting_garage',],
-        'other': [
-            'hot_tub_heater', 'hot_tub_pump', 'hot_water', 'well_pump',
-            'dishwasher',  'freezer', 'refrigerator', 'grill', 'range_oven',
-            # should fans and mech vent  be considered cooling/heating?
-            'ceiling_fan', 'mech_vent',
-            'pool_heater', 'pool_pump',
-            'clothes_dryer', 'clothes_washer',
-            'plug_loads',  # pv,  # not considering solar (pv) yet
-        ]
-    }
+    consumption_groups = ('heating', 'cooling', 'lighting',)  # skip 'other'
     # column mapping to aggregate hourly outputs by appliance
     appliance_groups: Dict[str, str] = None
     time_granularity = None
@@ -557,8 +591,8 @@ class DataGen(tf.keras.utils.Sequence):
             consumption_groups: (Tuple[str]) appliance groups to be used, e.g.
                 cooling, heating, etc. Groups should be a subset of columns
                 returned by `get_hourly_outputs()`
-            time_granularity: (str) level of timeseries aggregation. One of:
-                - `H`: hourly
+            time_granularity: (str) level of timeseries aggregation, e.g.:
+                - `H` or `1H`: hourly
                 - `D`: daily
                 - `M`: monthly
                 - `Q`: quarterly
@@ -571,8 +605,6 @@ class DataGen(tf.keras.utils.Sequence):
         self.weather_features = list(weather_features or self.weather_features)
         self.building_features = list(building_features or self.building_features)
         self.consumption_groups = tuple(consumption_groups or self.consumption_groups)
-        if time_granularity not in 'HDMQY':
-            raise ValueError("Unexpected time granularity; should be one of: HDMQY.")
         self.time_granularity = time_granularity
         self.weather_files_cache = {}
         self.batch_size = batch_size
@@ -609,27 +641,10 @@ class DataGen(tf.keras.utils.Sequence):
         # Aggregate hourly outputs by time granularity, then by appliance, then
         # by group. Cold (uncached) retrieval takes 0.25s per sample;
         # 360k samples translate into ~25hours (in a cloud, x6 on wifi)
-        # TODO: parallelize and cache
+        # TODO: parallelize
         ho = get_hourly_outputs(
             building_id, upgrade_id, county_geoid, self.time_granularity
         ).resample(self.time_granularity).sum()
-        # populate appliance groups lazily
-        if not self.appliance_groups:
-            self.appliance_groups = {}
-            for column in ho.columns:
-                if '.' not in column:
-                    continue
-                fuel_type, appliance = column.split('.', 1)
-                self.appliance_groups.setdefault(appliance, [])
-                self.appliance_groups[appliance].append(column)
-
-        # TODO: combine both aggregations
-        ho = pd.DataFrame({
-            appliance: ho[col_names].sum(axis=1) for appliance, col_names in self.appliance_groups.items()
-        })
-        ho = pd.DataFrame({
-            group_name: ho[col_names].sum(axis=1) for group_name, col_names in self.consumption_groups.items()
-        })
 
         return building_features, ho
 
