@@ -205,6 +205,7 @@ def extract_heating_efficiency(heating_efficiency: str) -> int:
     # 'Other' - e.g. wood stove - is not supported
     return int(number)
 
+
 @file_cache(CACHE_PATH)
 def _get_building_metadata():
     """ Helper function to retrieve and clean building metadata
@@ -308,7 +309,7 @@ class BuildingMetadataBuilder:
     """
     _building_metadata = None
     supported_building_features = (
-        'sqft', 'bedrooms', 'stories', 'occupants', 'age2000',
+        'sqft', 'bedrooms', 'stories', 'occupants', 'age2000', 'county',
         'infiltration_ach50', 'insulation_wall', 'insulation_ceiling_roof',
         'cooling_efficiency_eer', 'heating_efficiency',
     )
@@ -591,13 +592,7 @@ class DataGen(tf.keras.utils.Sequence):
     batch_size: int
     upgrades = (0,)  # upgrades to consider. 0 is the baseline scenario
     weather_features = ('temp_air', 'ghi', 'wind_speed', 'weekend')
-    building_features = (
-        'in_sqft', 'in_bedrooms', 'in_geometry_stories',
-        'in_occupants', 'age2000', 'in_infiltration_ach50',
-        'in_insulation_wall', 'in_insulation_ceiling_roof',
-        'in_hvac_cooling_efficiency_eer',
-        'in_hvac_heating_efficiency_nominal_percent'
-    )
+    building_features = BuildingMetadataBuilder.supported_building_features
     consumption_groups = ('heating', 'cooling', 'lighting',)  # skip 'other'
     # column mapping to aggregate hourly outputs by appliance
     appliance_groups: Dict[str, str] = None
@@ -631,8 +626,8 @@ class DataGen(tf.keras.utils.Sequence):
             consumption_groups: (Tuple[str]) appliance groups to be used, e.g.
                 cooling, heating, etc. Groups should be a subset of columns
                 returned by `get_hourly_outputs()`
-            time_granularity: (str) level of timeseries aggregation, e.g.:
-                - `H` or `1H`: hourly
+            time_granularity: (str) level of timeseries aggregation, one of:
+                - `H`: hourly
                 - `D`: daily
                 - `M`: monthly
                 - `Q`: quarterly
@@ -643,14 +638,25 @@ class DataGen(tf.keras.utils.Sequence):
         """
         self.upgrades = tuple(upgrade_ids or self.upgrades)
         self.weather_features = list(weather_features or self.weather_features)
-        self.building_features = list(building_features or self.building_features)
-        self.consumption_groups = tuple(consumption_groups or self.consumption_groups)
+        self.building_features = [
+            feature for feature in (building_features or self.building_features)
+            if feature != 'county'
+        ]
+        self.consumption_groups = list(consumption_groups or self.consumption_groups)
         self.time_granularity = time_granularity
         self.weather_files_cache = {}
         self.batch_size = batch_size
         self.building_ids = np.fromiter(building_ids, int)
         self.ids = np.array(list(itertools.product(self.building_ids, self.upgrades)))
         self.metadata_builder = metadata_builder or BuildingMetadataBuilder()
+        # TODO: make this (specifically, __getitem__) work for variable length input
+        self.output_length = {
+            'H': HOURS_IN_A_YEAR,
+            'D': 365,
+            'M': 12,
+            'Q': 4,
+            'Y': 1,
+        }[time_granularity]
 
     def __len__(self):
         # number of batches; last batch might be smaller
@@ -660,39 +666,41 @@ class DataGen(tf.keras.utils.Sequence):
         np.random.shuffle(self.ids)
 
     def get_weather_data(self, county_geoid):
+        """ In-memory caching of weather data """
         if county_geoid not in self.weather_files_cache:
-            self.weather_files_cache[county_geoid] = get_weather_file(county_geoid)[self.weather_features].values.T
+            df = get_weather_file(county_geoid)
+            self.weather_files_cache[county_geoid] = df[self.weather_features]
         return self.weather_files_cache[county_geoid]
 
-    def training_example(self, building_id, upgrade_id):
-        """ Create a single training example
-        ~1s per building+upgrade_id combination
-
-        Returns:
-            dict: dictionary of building features and weather data
-        """
-        building_features = self.metadata_builder(building_id)
-        building_features = apply_upgrades(building_features, upgrade_id)  # 0.1ms
-        county_geoid = building_features['in_county']  # ~0.1ms per building up to this point
-        # limit to features used in this experiment
-        building_features = building_features[self.building_features]  # 0.6ms here
-        building_features['weather_data'] = self.get_weather_data(county_geoid)  # 3ms here
-
-        # Aggregate hourly outputs by time granularity, then by appliance, then
-        # by group. Cold (uncached) retrieval takes 0.25s per sample;
-        # 360k samples translate into ~25hours (in a cloud, x6 on wifi)
-        # TODO: parallelize
-        ho = get_hourly_outputs(
-            building_id, upgrade_id, county_geoid, self.time_granularity
-        ).resample(self.time_granularity).sum()
-
-        return building_features, ho
-
     def __getitem__(self, idx):
-        batch_ids = self.ids[idx*self.batch_size:(idx+1)*self.batch_size]
+        """ Generate a batch #`idx`
 
-        # generate
-        return list(zip(*[
-            self.training_example(building_id, upgrade_id)
-            for building_id, upgrade_id in batch_ids
-        ]))
+        This method should produce a dictionary of numpy arrays (or tensors)
+        """
+        batch_ids = self.ids[idx*self.batch_size:(idx+1)*self.batch_size]
+        building_inputs = np.empty((self.batch_size, len(self.building_features)), dtype=np.float16)
+        weather_inputs = np.empty((self.batch_size, len(self.weather_features), HOURS_IN_A_YEAR), dtype=np.float16)
+        outputs = np.empty((self.batch_size, len(self.consumption_groups), self.output_length), dtype=np.float16)
+
+        for i, (building_id, upgrade_id) in enumerate(batch_ids):
+            building_features = self.metadata_builder(building_id).copy()
+            building_features = apply_upgrades(building_features, upgrade_id)
+            # ~0.1ms per building up to this point
+            county_geoid = building_features['county']
+            # limit to features used in this experiment
+            # 0.6ms up to here
+            building_inputs[i] = building_features[self.building_features].values
+
+            weather_inputs[i] = self.get_weather_data(county_geoid).T.values
+
+            outputs[i] = get_hourly_outputs(
+                building_id, upgrade_id, county_geoid
+            )[self.consumption_groups].resample(self.time_granularity).sum().T
+
+        # TODO: maybe split into distinct features and concat in the model?
+        return {
+            'building_features': building_inputs,
+            'weather_data': weather_inputs
+        }, {
+            'outputs': outputs
+        }
