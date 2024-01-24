@@ -15,6 +15,7 @@ import tensorflow as tf
 SEER_TO_EER = .875
 # http://www.energyguru.com/EnergyEfficiencyInformation.htm
 BTU_PER_WH = 3.414
+HOURS_IN_A_YEAR = 8760  # 24*365, assuming a non-leap year
 
 # Path to ResStock dataset
 # TODO: replace with environment variables
@@ -500,6 +501,7 @@ def get_hourly_outputs(building_id, upgrade_id, county_geoid):
     return ho.resample('H').sum()
 
 
+@file_cache(CACHE_PATH)
 def get_weather_file(county_geoid):
     """ Retrieve weather timeseries for a given county geoid in ResStock
 
@@ -513,12 +515,15 @@ def get_weather_file(county_geoid):
 
     Returns:
         pd.DataFrame: A dataframe with 8760 rows (hours in a non-leap year) and
-            columns `temp_air`, `relative_humidity`, `wind_speed`,
-            `wind_direction`, `ghi`, `dni`, `diffuse_horizontal_illum`
+            columns `temp_air`, `relative_humidity`, `wind_speed`, `weekend`,
+            `wind_direction`, `ghi`, `dni`, `diffuse_horizontal_illum`,
 
-    >>> get_weather_file('G0200130').shape[0]
-    8760
-    >>> get_weather_file('G0200130').shape[1] >= 5
+    >>> weather_df = get_weather_file('G0200130')
+    >>> isinstance(weather_df, pd.DataFrame)
+    True
+    >>> weather_df.shape[0] == HOURS_IN_A_YEAR  # 8760
+    True
+    >>> weather_df.shape[1] >= 5
     True
     """
     state = get_state_code_from_county_geoid(county_geoid)
