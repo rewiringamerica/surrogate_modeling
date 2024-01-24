@@ -204,97 +204,132 @@ def extract_heating_efficiency(heating_efficiency: str) -> int:
     # 'Other' - e.g. wood stove - is not supported
     return int(number)
 
+@file_cache(CACHE_PATH)
+def _get_building_metadata():
+    """ Helper function to retrieve and clean building metadata
 
-class BuildingMetadataBuilder:
-    """ A class to hold building metadata.
-
-    The only purpose of this class is to cache; same could be achieved in a few
-    other ways
-
-    >>> get_building_metadata = BuildingMetadataBuilder()
-    >>> get_building_metadata.all().shape[0] > 300000  # at least 300k buildings
+    >>> metadata_df = _get_building_metadata()
+    >>> isinstance(metadata_df, pd.DataFrame)
     True
-    >>> get_building_metadata.all().shape[1] > 10  # at least 10 columns
+    >>> metadata_df.shape[0] > 300000  # at least 300k buildings
+    True
+    >>> metadata_df.shape[1] > 10  # at least 10 columns
+    True
+    >>> metadata = metadata_df.iloc[0]
+    >>> all(
+    ...     not isinstance(value, str)
+    ...     for col, value in metadata.items()
+    ...     if col not in ('county', 'ashrae_iecc_climate_zone')
+    ... )
     True
     """
+    pq = pd.read_parquet(
+        BUILDING_METADATA_PARQUET_PATH,
+        columns=[
+            # features used directly or transformed
+            'in.sqft', 'in.bedrooms', 'in.geometry_stories',
+            'in.vintage', 'in.geometry_building_number_units_mf',
+            'in.geometry_building_number_units_sfa',
+            # features to be used to join with other datasets
+            'in.county',  # weather files
+            # features that will be replaced with "reasonable assumptions"
+            'in.occupants',
+            # it's either ceiling or roof; only ~15K (<3%) have none
+            'in.insulation_ceiling', 'in.insulation_roof',
+            'in.insulation_wall', 'in.infiltration',
+            'in.hvac_cooling_efficiency', 'in.hvac_heating_efficiency',
+            # to be filtered on
+            'in.has_pv', 'in.geometry_building_type_acs',
+            # ashrae_iecc_climate_zone_2004_2_a_split splits 2A states into
+            # two groups, otherwise it's the same
+            'in.ashrae_iecc_climate_zone_2004'
+        ],
+    ).rename(
+        # to make this code interchangeable with the spark tables
+        columns={
+            'in.sqft': 'sqft',
+            'in.bedrooms': 'bedrooms',
+            'in.geometry_stories': 'stories',
+            'in.occupants': 'occupants',
+            'in.county': 'county',
+            'in.ashrae_iecc_climate_zone_2004': 'ashrae_iecc_climate_zone',
+        }
+    )
+    pq.index.rename('building_id', inplace=True)
+
+    pq = pq[
+        (pq['in.geometry_building_type_acs'] == 'Single-Family Detached')
+        & (pq['occupants'] != '10+')
+        # sanity check; it's 1 for all single family detached
+        # & (pq[
+        #     ['in.geometry_building_number_units_mf', 'in.geometry_building_number_units_sfa']
+        # ].replace('None', 1).max(axis=1).fillna(1).astype(int) == 1)
+        # another sanity check; ResStock single family detached have 3 max
+        & (pq['stories'] <= '5')
+        # for some reason there are 14K 8194sqf single family detached homes
+        & (pq['sqft'] < 8000)
+        # Not sure how to model these yet
+        & ~pq['in.hvac_heating_efficiency'].isin(['Other', 'Shared Heating'])
+        & (pq['in.hvac_cooling_efficiency'] != 'Shared Cooling')
+        # we'll get to solar, eventually - just not yet
+        & (pq['in.has_pv'] == 'No')
+    ]
+    pq = pq.assign(
+        age2000=pq['in.vintage'].map(vintage2age2000),
+        bedrooms=pq['bedrooms'].astype(int),
+        stories=pq['stories'].astype(int),
+        occupants=pq['occupants'].astype(int),
+        infiltration_ach50=pq['in.infiltration'].str.split().str[0].astype(int),
+        insulation_wall=pq['in.insulation_wall'].map(extract_r_value),
+        insulation_ceiling_roof=pq[
+            ['in.insulation_ceiling', 'in.insulation_roof']
+        ].map(extract_r_value).max(axis=1),
+        cooling_efficiency_eer=pq['in.hvac_cooling_efficiency'].map(extract_cooling_efficiency),
+        heating_efficiency=pq['in.hvac_heating_efficiency'].map(extract_heating_efficiency),
+    ).drop(
+        columns=[
+            'in.vintage', 'in.geometry_building_type_acs',
+            'in.has_pv', 'in.geometry_building_number_units_mf',
+            'in.geometry_building_number_units_sfa',
+            'in.infiltration', 'in.insulation_wall',
+            'in.insulation_ceiling', 'in.insulation_roof',
+            'in.hvac_cooling_efficiency', 'in.hvac_heating_efficiency',
+        ]
+    )
+
+    # extra safety check to eliminate duplicate buildings
+    # (not that there are any)
+    return pq.loc[pq.index.drop_duplicates()]
+
+
+class BuildingMetadataBuilder:
+    """ A class to cache building metadata in memory.
+    """
     _building_metadata = None
+    supported_building_features = (
+        'sqft', 'bedrooms', 'stories', 'occupants', 'age2000',
+        'infiltration_ach50', 'insulation_wall', 'insulation_ceiling_roof',
+        'cooling_efficiency_eer', 'heating_efficiency',
+    )
 
     def __init__(self):
-        pq = pd.read_parquet(
-            BUILDING_METADATA_PARQUET_PATH,
-            columns=[
-                # features used directly or transformed
-                'upgrade', 'in.sqft', 'in.bedrooms', 'in.geometry_stories',
-                'in.vintage', 'in.geometry_building_number_units_mf',
-                'in.geometry_building_number_units_sfa',
-                # features to be used to join with other datasets
-                'in.county',  # weather files
-                # features that will be replaced with "reasonable assumptions"
-                'in.occupants',
-                # it's either ceiling or roof; only ~15K (<3%) have none
-                'in.insulation_ceiling', 'in.insulation_roof',
-                'in.insulation_wall', 'in.infiltration',
-                'in.hvac_cooling_efficiency', 'in.hvac_heating_efficiency',
-                # to be filtered on
-                'in.has_pv', 'in.geometry_building_type_acs',
-                # ashrae_iecc_climate_zone_2004_2_a_split only splits 2A into
-                # two groups, otherwise it's the same
-                'in.ashrae_iecc_climate_zone_2004'
-            ],
-        ).rename(
-            # to make this code interchangeable with the spark tables
-            columns={
-                'upgrade': 'upgrade_id',
-                'in.sqft': 'in_sqft',
-                'in.bedrooms': 'in_bedrooms',
-                'in.geometry_stories': 'in_geometry_stories',
-                'in.vintage': 'in_vintage',
-                'in.occupants': 'in_occupants',
-                'in.county': 'in_county'
-            }
-        )
-        pq.index.rename('building_id', inplace=True)
+        """
+        >>> builder = BuildingMetadataBuilder()
+        >>> isinstance(builder.all(), pd.DataFrame)
+        True
+        >>> isinstance(builder.building_ids, np.ndarray)
+        True
+        >>> isinstance(builder(100066), pd.Series)
+        True
+        """
+        pq = _get_building_metadata()
+        self._building_metadata = pq[list(self.supported_building_features)]
 
-        pq = pq[
-            (pq['upgrade_id'] == 0)  # sanity check
-            & (pq['in.geometry_building_type_acs'] == 'Single-Family Detached')
-            # sanity check; it's 1 for all single family detached
-            # & (pq[
-            #     ['in.geometry_building_number_units_mf', 'in.geometry_building_number_units_sfa']
-            # ].replace('None', 1).max(axis=1).fillna(1).astype(int) == 1)
-            & (pq['in_sqft'] < 10000)
-            & ~pq['in.hvac_heating_efficiency'].isin(['Other', 'Shared Heating'])
-            & (pq['in.hvac_cooling_efficiency'] != 'Shared Cooling')
-            & (pq['in.has_pv'] == 'No')
-        ]
-        pq = pq.assign(
-            age2000=pq['in_vintage'].map(vintage2age2000),
-            in_infiltration_ach50=pq['in.infiltration'].str.split().str[0].astype(int),
-            in_insulation_wall=pq['in.insulation_wall'].map(extract_r_value),
-            in_insulation_ceiling_roof=pq[['in.insulation_ceiling', 'in.insulation_roof']].map(extract_r_value).max(axis=1),
-            in_hvac_cooling_efficiency_eer=pq['in.hvac_cooling_efficiency'].map(extract_cooling_efficiency),
-            in_hvac_heating_efficiency_nominal_percent=pq['in.hvac_heating_efficiency'].map(extract_heating_efficiency),
-            in_hvac_heating_backup_efficiency_nominal_percent=pq['in.hvac_heating_efficiency'].map(extract_heating_efficiency)
-        ).drop(
-            columns=[
-                'upgrade_id', 'in_vintage', 'in.geometry_building_type_acs',
-                'in.has_pv', 'in.geometry_building_number_units_mf',
-                'in.geometry_building_number_units_sfa',
-                'in.infiltration', 'in.insulation_wall',
-                'in.insulation_ceiling', 'in.insulation_roof',
-                'in.hvac_cooling_efficiency', 'in.hvac_heating_efficiency',
-            ]
-        )
-
-        # extra safety check to eliminate duplicate buildings
-        # (not that there are any)
-        self._building_metadata = pq.loc[pq.index.drop_duplicates()]
-
-    def all(self):
+    def all(self) -> pd.DataFrame:
         return self._building_metadata
 
     @property
-    def building_ids(self):
+    def building_ids(self) -> np.ndarray:
         # make a copy because otherwise np.shuffle will mess up the index
         return np.array(self.all().index.values)
 
