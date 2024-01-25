@@ -604,6 +604,7 @@ class DataGen(tf.keras.utils.Sequence):
     # np.array() N x 2 with, the first column being a building id and the
     # second - upgrade id
     ids = None
+    output_length: int = None
 
     def __init__(self, building_ids, upgrade_ids=None, weather_features=None,
                  building_features=None, consumption_groups=None,
@@ -679,7 +680,9 @@ class DataGen(tf.keras.utils.Sequence):
         """
         batch_ids = self.ids[idx*self.batch_size:(idx+1)*self.batch_size]
         building_inputs = np.empty((self.batch_size, len(self.building_features)), dtype=np.float16)
-        weather_inputs = np.empty((self.batch_size, len(self.weather_features), HOURS_IN_A_YEAR), dtype=np.float16)
+        # keras convolutions only support NHWC (i.e., channels last)
+        # so, time dimension comes first, than features
+        weather_inputs = np.empty((self.batch_size, HOURS_IN_A_YEAR, len(self.weather_features)), dtype=np.float16)
         outputs = np.empty((self.batch_size, len(self.consumption_groups), self.output_length), dtype=np.float16)
 
         for i, (building_id, upgrade_id) in enumerate(batch_ids):
@@ -691,7 +694,7 @@ class DataGen(tf.keras.utils.Sequence):
             # 0.6ms up to here
             building_inputs[i] = building_features[self.building_features].values
 
-            weather_inputs[i] = self.get_weather_data(county_geoid).T.values
+            weather_inputs[i] = self.get_weather_data(county_geoid).values
 
             outputs[i] = get_hourly_outputs(
                 building_id, upgrade_id, county_geoid
