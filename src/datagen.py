@@ -683,7 +683,7 @@ class DataGen(tf.keras.utils.Sequence):
         # keras convolutions only support NHWC (i.e., channels last)
         # so, time dimension comes first, than features
         weather_inputs = np.empty((self.batch_size, HOURS_IN_A_YEAR, len(self.weather_features)), dtype=np.float16)
-        outputs = np.empty((self.batch_size, len(self.consumption_groups), self.output_length), dtype=np.float16)
+        outputs = np.empty((self.batch_size, len(self.consumption_groups), self.output_length), dtype=np.float32)
 
         for i, (building_id, upgrade_id) in enumerate(batch_ids):
             building_features = self.metadata_builder(building_id).copy()
