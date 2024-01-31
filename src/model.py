@@ -87,7 +87,8 @@ def main():
     for consumption_group in train_gen.consumption_groups:
         io = layers.Dense(8, name=consumption_group+'_entry', activation='leaky_relu')(cm)
         # ... feel free to add more layers
-        # no activation on the output
+        # (non-leaky) Relu on final output leads to the model getting stuck
+        # in zero derivative regions for negative output
         io = layers.Dense(1, name=consumption_group+'_out', activation='leaky_relu')(io)
         intermediate_outputs.append(io)
 

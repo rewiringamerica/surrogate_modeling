@@ -3,6 +3,7 @@ import logging
 import math
 import os
 import re
+import tempfile
 from typing import Dict
 
 from utils import file_cache
@@ -21,7 +22,22 @@ HOURS_IN_A_YEAR = 8760  # 24*365, assuming a non-leap year
 # TODO: replace with environment variables
 # to access gs:// paths without explicitly providing credentials, run
 # `gcloud auth application-default login` (only required once)
-RESSTOCK_PATH = 'gs://the-cube/data/raw/nrel/end_use_load_profiles/2022/resstock_tmy3_release_1/'
+RESSTOCK_PATH = os.environ.get(
+    'SURROGATE_MODELING_RESSTOCK_PATH',
+    'gs://the-cube/data/raw/nrel/end_use_load_profiles/2022/'
+    'resstock_tmy3_release_1/'
+)
+
+# Filesystem cache layer path.
+# Either `os.environ['SURROGATE_MODELING_CACHE_PATH'] = ...` before importing
+# datagen, or (better) use `python-dotenv`
+# Cache path is only evaluated once and thus cannot be changed after import
+# without reloading (`importlib.reload(datagen)`)
+CACHE_PATH = os.environ.get('SURROGATE_MODELING_CACHE_PATH', '.cache')
+if not os.path.isdir(CACHE_PATH):
+    logging.warning(f"Cache path {CACHE_PATH} does not exist. Attempting to create..")
+    os.mkdir(CACHE_PATH)
+    logging.warning("Success")
 
 BUILDING_METADATA_PARQUET_PATH = RESSTOCK_PATH + 'metadata_and_annual_results/national/parquet/baseline_metadata_only.parquet'
 HOURLY_OUTPUT_PATH = RESSTOCK_PATH + 'timeseries_individual_buildings/by_state/upgrade={upgrade_id}/state={state}/{building_id}-{upgrade_id}.parquet'
@@ -86,12 +102,6 @@ STATE_2NUM_CODE_TO_2LETTER = {  # Note: keys are intentionally strings to simpli
     '55': 'WI',
     '56': 'WY',
 }
-
-CACHE_PATH = '.cache'
-if not os.path.isdir(CACHE_PATH):
-    logging.warning(f"Cache path {CACHE_PATH} does not exist. Attempting to create..")
-    os.mkdir(CACHE_PATH)
-    logging.warning("Success")
 
 
 def vintage2age2000(vintage: str) -> int:
@@ -558,20 +568,18 @@ def apply_upgrades(building_features, upgrade_id):
     # upgrades are dependent on: IECC zone, wall type, etc;
     # so, full implementation will require changes to baseline columns provided
     # in `building_features`
-    match upgrade_id:
-        case 0:  # baseline
-            return building_features
-        # case 1: # basic enclosure
-        # case 2: # enhanced enclosure
-        # case 3: # heat pump, min efficiency, electric backup
-        # case 4: # heat pump, high efficiency, electric backup
-        # case 5: # heat pump, high efficiency, existing heating as backup
-        # case 6: # heat pump water heater
-        # case 7: # whole home electrification, min efficiency
-        # case 8: # whole home electrification, high efficiency
-        # case 9: # whole home electrification, high efficiency+basic enclosure
-        case _:
-            raise ValueError(r"Upgrade id={upgrade_id} is not yet supported")
+    if upgrade_id == 0:  # baseline
+        return building_features
+    # if upgrade_id == 1: # basic enclosure
+    # if upgrade_id == 2: # enhanced enclosure
+    # if upgrade_id == 3: # heat pump, min efficiency, electric backup
+    # if upgrade_id == 4: # heat pump, high efficiency, electric backup
+    # if upgrade_id == 5: # heat pump, high efficiency, existing heating as backup
+    # if upgrade_id == 6: # heat pump water heater
+    # if upgrade_id == 7: # whole home electrification, min efficiency
+    # if upgrade_id == 8: # whole home electrification, high efficiency
+    # if upgrade_id == 9: # whole home electrification, high efficiency+basic enclosure
+    raise ValueError(r"Upgrade id={upgrade_id} is not yet supported")
 
 
 def train_test_split(dataset: np.array, left_size):
