@@ -568,20 +568,18 @@ def apply_upgrades(building_features, upgrade_id):
     # upgrades are dependent on: IECC zone, wall type, etc;
     # so, full implementation will require changes to baseline columns provided
     # in `building_features`
-    match upgrade_id:
-        case 0:  # baseline
-            return building_features
-        # case 1: # basic enclosure
-        # case 2: # enhanced enclosure
-        # case 3: # heat pump, min efficiency, electric backup
-        # case 4: # heat pump, high efficiency, electric backup
-        # case 5: # heat pump, high efficiency, existing heating as backup
-        # case 6: # heat pump water heater
-        # case 7: # whole home electrification, min efficiency
-        # case 8: # whole home electrification, high efficiency
-        # case 9: # whole home electrification, high efficiency+basic enclosure
-        case _:
-            raise ValueError(r"Upgrade id={upgrade_id} is not yet supported")
+    if upgrade_id == 0:  # baseline
+        return building_features
+    # if upgrade_id == 1: # basic enclosure
+    # if upgrade_id == 2: # enhanced enclosure
+    # if upgrade_id == 3: # heat pump, min efficiency, electric backup
+    # if upgrade_id == 4: # heat pump, high efficiency, electric backup
+    # if upgrade_id == 5: # heat pump, high efficiency, existing heating as backup
+    # if upgrade_id == 6: # heat pump water heater
+    # if upgrade_id == 7: # whole home electrification, min efficiency
+    # if upgrade_id == 8: # whole home electrification, high efficiency
+    # if upgrade_id == 9: # whole home electrification, high efficiency+basic enclosure
+    raise ValueError(r"Upgrade id={upgrade_id} is not yet supported")
 
 
 def train_test_split(dataset: np.array, left_size):
