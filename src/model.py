@@ -1,12 +1,13 @@
 #! /usr/bin/env python3
 
-import keras
-from keras import layers, models
 import numpy as np
-import pandas as pd
 import tensorflow as tf
+from tensorflow import keras
+import tensorflow.keras.backend as K
+from tensorflow.keras import layers, models
 
 import datagen
+
 
 def create_dataset(batch_size=64, train_test_split=0.8):
     get_building_metadata = datagen.BuildingMetadataBuilder()
@@ -26,8 +27,27 @@ def create_dataset(batch_size=64, train_test_split=0.8):
     return train_gen, test_gen
 
 
-def main():
-    """ End to end model architecture definition """
+def gaussian_activation(x):
+    return K.exp(-K.pow(x, 2))
+
+
+def create_model(model_config=None):
+    """ End to end model architecture definition
+
+    Model config should include:
+        - datagen config
+            - upgrade ids
+            - building features
+            - weather features
+            - consumption groups
+            - level of aggregation
+            - batch size
+        - model architecture config
+            - dense layer tower configuration for building features
+                - a list of layers with number of nodes, activation, and regularization
+            - CNN config for weather features
+                - a list of CNN1D layers with number of filters
+    """
     train_gen, test_gen = create_dataset()
 
     # Building model
@@ -96,6 +116,19 @@ def main():
 
     final_model = models.Model(inputs=[bmo.input, wmo.input], outputs={'outputs': final_output})
 
-    loss_fn = keras.losses.MeanAbsolutePercentageError(reduction="sum_over_batch_size")
-    final_model.compile(loss=loss_fn, optimizer='adam')
+    final_model.compile(
+        loss=keras.losses.MeanAbsoluteError(),
+        optimizer='adam'
+    )
+    return final_model
 
+
+def main():
+    final_model = create_model()
+    train_gen, test_gen = create_dataset()
+    history = final_model.fit(
+        train_gen, epochs=100, validation_data=test_gen,
+        callbacks=[keras.callbacks.EarlyStopping(monitor='loss', patience=5)]
+    )
+
+    return history
