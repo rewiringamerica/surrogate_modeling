@@ -102,6 +102,22 @@ STATE_2NUM_CODE_TO_2LETTER = {  # Note: keys are intentionally strings to simpli
     '55': 'WI',
     '56': 'WY',
 }
+ORIENTATION_DEGREES = {
+    'North': 0,
+    'Northeast': 45,
+    'East': 90,
+    'Southeast': 135,
+    'South': 180,
+    'Southwest': 225,
+    'West': 270,
+    'Northwest': 315,
+}
+# https://en.wikipedia.org/wiki/Luminous_efficacy
+LUMINOUS_EFFICACY = {
+    '100% CFL': 0.12,  # 8-15%
+    '100% Incandescent': 0.02,  # 1.2-2.6%
+    '100% LED': 0.15  # 11-30%
+}
 
 
 def vintage2age2000(vintage: str) -> int:
@@ -216,6 +232,38 @@ def extract_heating_efficiency(heating_efficiency: str) -> int:
     return int(number)
 
 
+def temp70(temperature_string):
+    """ Convert string Fahrenheit degrees to float F - 70 deg
+
+    >>> temp70('70F')
+    0.0
+    >>> temp70('60F')
+    -10.0
+    """
+    if not re.match(r"\d+F", temperature_string):
+        raise ValueError(
+            f"Unrecognized temperature format: {temperature_string}")
+    return float(temperature_string.strip().lower()[:-1]) - 70
+
+
+def extract_window_area(value):
+    """
+
+    >>> extract_window_area('F9 B9 L9 R9')
+    36
+    >>> extract_window_area('F12 B12 L12 R12')
+    48
+    >>> extract_window_area('Uninsulated')  # doctest: +IGNORE_EXCEPTION_DETAIL
+    Traceback (most recent call last):
+        ...
+    ValueError: Cannot extract heating efficiency from: ...
+    """
+    try:
+        return sum(int(side[1:]) for side in value.split())
+    except ValueError:
+        raise ValueError(f"Unrecognized format of window area: {value}")
+
+
 @file_cache(CACHE_PATH)
 def _get_building_metadata():
     """ Helper function to retrieve and clean building metadata
@@ -228,10 +276,13 @@ def _get_building_metadata():
     >>> metadata_df.shape[1] > 10  # at least 10 columns
     True
     >>> metadata = metadata_df.iloc[0]
+    >>> string_columns = (
+    ...     'county', 'ashrae_iecc_climate_zone', 'foundation_type',
+    ...     'windows_type'
+    ... )
     >>> all(
     ...     not isinstance(value, str)
-    ...     for col, value in metadata.items()
-    ...     if col not in ('county', 'ashrae_iecc_climate_zone')
+    ...     for col, value in metadata.items() if col not in string_columns
     ... )
     True
     """
@@ -248,13 +299,32 @@ def _get_building_metadata():
             'in.occupants',
             # it's either ceiling or roof; only ~15K (<3%) have none
             'in.insulation_ceiling', 'in.insulation_roof',
-            'in.insulation_wall', 'in.infiltration',
+            'in.insulation_wall', 'in.insulation_floor',
+            'in.insulation_slab', 'in.insulation_rim_joist',
+            'in.infiltration',
+
             'in.hvac_cooling_efficiency', 'in.hvac_heating_efficiency',
             # to be filtered on
             'in.has_pv', 'in.geometry_building_type_acs',
             # ashrae_iecc_climate_zone_2004_2_a_split splits 2A states into
             # two groups, otherwise it's the same
-            'in.ashrae_iecc_climate_zone_2004'
+            'in.ashrae_iecc_climate_zone_2004',
+            'in.cooling_setpoint', 'in.heating_setpoint',
+
+            # Cooling/Heating offset must be important, too hard to get from
+            # user. Also, it will have to be transformed into a timeseries var
+            # 'in.cooling_setpoint_offset_magnitude',
+            # 'in.cooling_setpoint_offset_period'
+            # 'in.heating_setpoint_offset_magnitude',
+            # 'in.heating_setpoint_offset_period'
+
+            # 99% is vented attic, isn't worth modeling
+            # 'in.geometry_attic_type', 'in.roof_material'
+            'in.orientation', 'in.window_areas',
+
+            # String/CATEGORICAL
+            'in.geometry_foundation_type', 'in.windows',
+            'in.lighting',
         ],
     ).rename(
         # to make this code interchangeable with the spark tables
@@ -265,6 +335,8 @@ def _get_building_metadata():
             'in.occupants': 'occupants',
             'in.county': 'county',
             'in.ashrae_iecc_climate_zone_2004': 'ashrae_iecc_climate_zone',
+            'in.geometry_foundation_type': 'foundation_type',
+            'in.windows': 'windows_type',
         }
     )
     pq.index.rename('building_id', inplace=True)
@@ -293,19 +365,33 @@ def _get_building_metadata():
         occupants=pq['occupants'].astype(int),
         infiltration_ach50=pq['in.infiltration'].str.split().str[0].astype(int),
         insulation_wall=pq['in.insulation_wall'].map(extract_r_value),
+        insulation_slab=pq['in.insulation_slab'].map(extract_r_value),
+        insulation_rim_joist=pq['in.insulation_rim_joist'].map(extract_r_value),
+        insulation_floor=pq['in.insulation_floor'].map(extract_r_value),
+        # In older versions of Pandas it should be `applymap`.
         insulation_ceiling_roof=pq[
             ['in.insulation_ceiling', 'in.insulation_roof']
         ].map(extract_r_value).max(axis=1),
         cooling_efficiency_eer=pq['in.hvac_cooling_efficiency'].map(extract_cooling_efficiency),
         heating_efficiency=pq['in.hvac_heating_efficiency'].map(extract_heating_efficiency),
+        cooling_setpoint=pq['in.cooling_setpoint'].map(temp70),
+        heating_setpoint=pq['in.heating_setpoint'].map(temp70),
+        orientation=pq['in.orientation'].map(ORIENTATION_DEGREES),
+        # door area in ResStock is always the same (20), and thus, useless
+        window_area=pq['in.window_areas'].map(extract_window_area),
+        lighting_efficiency=pq['in.lighting'].map(LUMINOUS_EFFICACY),
     ).drop(
         columns=[
             'in.vintage', 'in.geometry_building_type_acs',
             'in.has_pv', 'in.geometry_building_number_units_mf',
             'in.geometry_building_number_units_sfa',
             'in.infiltration', 'in.insulation_wall',
+            'in.insulation_slab', 'in.insulation_rim_joist',
+            'in.insulation_floor',
             'in.insulation_ceiling', 'in.insulation_roof',
             'in.hvac_cooling_efficiency', 'in.hvac_heating_efficiency',
+            'in.cooling_setpoint', 'in.heating_setpoint',
+            'in.orientation', 'in.window_areas', 'in.lighting',
         ]
     )
 
@@ -322,6 +408,13 @@ class BuildingMetadataBuilder:
         'sqft', 'bedrooms', 'stories', 'occupants', 'age2000', 'county',
         'infiltration_ach50', 'insulation_wall', 'insulation_ceiling_roof',
         'cooling_efficiency_eer', 'heating_efficiency',
+
+        'insulation_slab', 'insulation_rim_joist', 'insulation_floor',
+        'cooling_setpoint', 'heating_setpoint', 'orientation', 'window_area',
+        'lighting_efficiency',
+
+        # categorical
+        'foundation_type', 'windows_type',
     )
 
     def __init__(self):
@@ -556,7 +649,8 @@ def get_weather_file(county_geoid):
     df = df.assign(
         # Monday is 0
         # https://pandas.pydata.org/docs/reference/api/pandas.Series.dt.weekday.html
-        weekend=df.index.weekday.isin((5, 6)).astype(int)
+        weekend=df.index.weekday.isin((5, 6)).astype(int),
+        hour=df.index.hour,
     ).set_index(df.index.strftime("%m-%d-%H:00")).sort_index()
 
     return df
@@ -599,11 +693,11 @@ def train_test_split(dataset: np.array, left_size):
 class DataGen(tf.keras.utils.Sequence):
     batch_size: int
     upgrades = (0,)  # upgrades to consider. 0 is the baseline scenario
-    weather_features = ('temp_air', 'ghi', 'wind_speed', 'weekend')
+    weather_features = ('temp_air', 'ghi', 'wind_speed', 'weekend', 'hour')
     building_features = BuildingMetadataBuilder.supported_building_features
-    consumption_groups = ('heating', 'cooling', 'lighting',)  # skip 'other'
-    # column mapping to aggregate hourly outputs by appliance
-    appliance_groups: Dict[str, str] = None
+    # skipping 'other' and 'lighting' here. Both are artificial and are unlikely
+    # to predict real life usage well
+    consumption_groups = ('heating', 'cooling',)
     time_granularity = None
     weather_files_cache: Dict[str, np.array]
     # Building ids only, not combined with upgrades.
@@ -691,7 +785,8 @@ class DataGen(tf.keras.utils.Sequence):
         # keras convolutions only support NHWC (i.e., channels last)
         # so, time dimension comes first, than features
         weather_inputs = np.empty((self.batch_size, HOURS_IN_A_YEAR, len(self.weather_features)), dtype=np.float16)
-        outputs = np.empty((self.batch_size, len(self.consumption_groups), self.output_length), dtype=np.float32)
+        # on larger batches (128), np.float32 is not enough to handle the loss
+        outputs = np.empty((self.batch_size, len(self.consumption_groups), self.output_length), dtype=np.float64)
 
         for i, (building_id, upgrade_id) in enumerate(batch_ids):
             building_features = self.metadata_builder(building_id).copy()
