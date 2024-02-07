@@ -803,12 +803,14 @@ class DataGen(tf.keras.utils.Sequence):
         This method should produce a dictionary of numpy arrays (or tensors)
         """
         batch_ids = self.ids[idx*self.batch_size:(idx+1)*self.batch_size]
-        building_inputs = np.empty((self.batch_size, len(self.building_features)), dtype=self.dtype)
+        # for last batch, batch_size might be different from self.batch_size
+        batch_size = batch_ids.shape[0]
+        building_inputs = np.empty((batch_size, len(self.building_features)), dtype=self.dtype)
         # keras convolutions only support NHWC (i.e., channels last)
         # so, time dimension comes first, than features
-        weather_inputs = np.empty((self.batch_size, HOURS_IN_A_YEAR, len(self.weather_features)), dtype=self.dtype)
+        weather_inputs = np.empty((batch_size, HOURS_IN_A_YEAR, len(self.weather_features)), dtype=self.dtype)
         # on larger batches (128), np.float32 is not enough to handle the loss
-        outputs = np.empty((self.batch_size, len(self.consumption_groups), self.output_length), dtype=self.dtype)
+        outputs = np.empty((batch_size, len(self.consumption_groups), self.output_length), dtype=self.dtype)
 
         for i, (building_id, upgrade_id) in enumerate(batch_ids):
             building_features = self.metadata_builder(building_id).copy()
