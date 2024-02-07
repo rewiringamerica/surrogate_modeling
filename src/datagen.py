@@ -13,9 +13,13 @@ import pandas as pd
 import tensorflow as tf
 
 # Constants
-SEER_TO_EER = .875
-# http://www.energyguru.com/EnergyEfficiencyInformation.htm
-BTU_PER_WH = 3.414
+EER_CONVERSION = {
+    'EER': 1.0,
+    'SEER': .875,
+    'SEER2': 0.91,  # ~=SEER*1.04 (https://www.marathonhvac.com/seer-to-seer2/)
+    'EER2': 1.04
+}
+BTU_PER_WH = 3.413
 HOURS_IN_A_YEAR = 8760  # 24*365, assuming a non-leap year
 
 # Path to ResStock dataset
@@ -169,28 +173,41 @@ def extract_r_value(construction_type: str) -> int:
 
 def extract_cooling_efficiency(cooling_efficiency: str) -> float:
     """ Convert a ResStock cooling efficiency into EER value
-    >>> extract_cooling_efficiency('AC, SEER 13')
-    11.375
-    >>> extract_cooling_efficiency('Heat Pump')
-    11.375
+
+    Cooling in ResStock building metadata comes either in
+    `in.hvac_cooling_efficiency` (for normal ACs), or in
+    `in.hvac_heating_efficiency` column (for the former =='Heat Pump').
+    So, to use this function, merge these two columns together:
+    `extract_cooling_efficiency(pq[[col1, col2]].agg(', '.join, axis=1)`
+
+    >>> extract_cooling_efficiency('AC, SEER 13') / EER_CONVERSION['SEER']
+    13.0
+    >>> extract_cooling_efficiency('Heat Pump') / EER_CONVERSION['SEER']
+    13.0
+    >>> extract_cooling_efficiency('Heat Pump, ASHP, SEER 20, 7.7 HSPF') / EER_CONVERSION['SEER']
+    20.0
     >>> extract_cooling_efficiency('Room AC, EER 10.7')
     10.7
-    >>> extract_cooling_efficiency('None')
-    99
+    >>> extract_cooling_efficiency('None') >= 99
+    True
     """
     ac_type = cooling_efficiency.split(", ", 1)[0].strip()
     efficiency = cooling_efficiency.rsplit(", ", 1)[-1].strip()
-    if efficiency.startswith('EER'):
-        return float(efficiency.rsplit(' ')[-1])
-    if efficiency.startswith('SEER'):
-        return float(efficiency.rsplit(' ')[-1]) * SEER_TO_EER
-    if ac_type == 'Heat Pump':
+    # two special cases
+    if ac_type == 'None':
+        # insanely high efficiency to mimic a nonexistent cooling
+        return 999
+    if ac_type == 'Heat Pump' and efficiency == ac_type:
         # a default value as we don't have anything else.
         # Min SEER for heat pumps is 13 by law, 13*.875 ~= 11.4
-        return 13*SEER_TO_EER
-    if ac_type == 'None':
-        # insanely high efficiency to mimic a nonexistent colling
-        return 99
+        return 13 * EER_CONVERSION['SEER']
+
+    m = re.search(r"\b(SEER2|SEER|EER)\s+(\d+\.?\d*)", cooling_efficiency)
+    if m:
+        try:
+            return EER_CONVERSION[m.group(1)] * float(m.group(2))
+        except (ValueError, KeyError):
+            pass
     raise ValueError(
         f'Cannot extract cooling efficiency from: {cooling_efficiency}'
     )
@@ -202,7 +219,7 @@ def extract_heating_efficiency(heating_efficiency: str) -> int:
     >>> extract_heating_efficiency('Fuel Furnace, 80% AFUE')
     80
     >>> extract_heating_efficiency('ASHP, SEER 15, 8.5 HSPF')
-    248
+    249
     >>> extract_heating_efficiency('None') >= 999
     True
     >>> extract_heating_efficiency('Electric Baseboard, 100% Efficiency')
@@ -372,7 +389,9 @@ def _get_building_metadata():
         insulation_ceiling_roof=pq[
             ['in.insulation_ceiling', 'in.insulation_roof']
         ].map(extract_r_value).max(axis=1),
-        cooling_efficiency_eer=pq['in.hvac_cooling_efficiency'].map(extract_cooling_efficiency),
+        cooling_efficiency_eer=pq[
+            ['in.hvac_cooling_efficiency', 'in.hvac_heating_efficiency']
+        ].agg(', '.join, axis=1).map(extract_cooling_efficiency),
         heating_efficiency=pq['in.hvac_heating_efficiency'].map(extract_heating_efficiency),
         cooling_setpoint=pq['in.cooling_setpoint'].map(temp70),
         heating_setpoint=pq['in.heating_setpoint'].map(temp70),
@@ -520,7 +539,6 @@ def get_hourly_outputs(building_id, upgrade_id, county_geoid):
     # To save RAM, it'd be good to cache the columns of the dataset and read
     # only the needed ones. So, we need a stateful function - this is a dirty
     # hack to implement this.
-    # TODO: abuse metaclasses instead?
     if not hasattr(get_hourly_outputs, 'columns'):
         pqtemp = pd.read_parquet(pqpath).sort_values('timestamp')
         # skipping intensity and emissions columns
