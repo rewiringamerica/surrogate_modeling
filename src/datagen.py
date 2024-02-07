@@ -725,10 +725,12 @@ class DataGen(tf.keras.utils.Sequence):
     # second - upgrade id
     ids = None
     output_length: int = None
+    dtype = None
 
     def __init__(self, building_ids, upgrade_ids=None, weather_features=None,
                  building_features=None, consumption_groups=None,
-                 time_granularity='Y', batch_size=64, metadata_builder=None):
+                 time_granularity='Y', batch_size=64, metadata_builder=None,
+                 dtype=np.float32):
         """
         Args:
             building_ids: (Iterable[int]) integer ids of the buildings in this
@@ -756,6 +758,7 @@ class DataGen(tf.keras.utils.Sequence):
             batch_size: (int) self-explanatory.
             metadata_builder: (callable) a method to retrieve metadata for a
                 single building given its int id in ResStock
+            dtype: (type) a dtype to use for inputs and outputs
         """
         self.upgrades = tuple(upgrade_ids or self.upgrades)
         self.weather_features = list(weather_features or self.weather_features)
@@ -778,6 +781,7 @@ class DataGen(tf.keras.utils.Sequence):
             'Q': 4,
             'Y': 1,
         }[time_granularity]
+        self.dtype = dtype
 
     def __len__(self):
         # number of batches; last batch might be smaller
@@ -799,12 +803,12 @@ class DataGen(tf.keras.utils.Sequence):
         This method should produce a dictionary of numpy arrays (or tensors)
         """
         batch_ids = self.ids[idx*self.batch_size:(idx+1)*self.batch_size]
-        building_inputs = np.empty((self.batch_size, len(self.building_features)), dtype=np.float16)
+        building_inputs = np.empty((self.batch_size, len(self.building_features)), dtype=self.dtype)
         # keras convolutions only support NHWC (i.e., channels last)
         # so, time dimension comes first, than features
-        weather_inputs = np.empty((self.batch_size, HOURS_IN_A_YEAR, len(self.weather_features)), dtype=np.float16)
+        weather_inputs = np.empty((self.batch_size, HOURS_IN_A_YEAR, len(self.weather_features)), dtype=self.dtype)
         # on larger batches (128), np.float32 is not enough to handle the loss
-        outputs = np.empty((self.batch_size, len(self.consumption_groups), self.output_length), dtype=np.float64)
+        outputs = np.empty((self.batch_size, len(self.consumption_groups), self.output_length), dtype=self.dtype)
 
         for i, (building_id, upgrade_id) in enumerate(batch_ids):
             building_features = self.metadata_builder(building_id).copy()
