@@ -1,7 +1,10 @@
 #! /usr/bin/env python3
+import itertools
+from typing import Dict
 
+import matplotlib.pyplot as plt
 import numpy as np
-import tensorflow as tf
+import pandas as pd
 from tensorflow import keras
 import tensorflow.keras.backend as K
 from tensorflow.keras import layers, models
@@ -9,14 +12,10 @@ from tensorflow.keras import layers, models
 import datagen
 
 
-def create_dataset(batch_size=64, train_test_split=0.8):
+def create_dataset(datagen_params: Dict, train_test_split=0.8):
+
     get_building_metadata = datagen.BuildingMetadataBuilder()
     building_ids = get_building_metadata.building_ids
-    datagen_params = {
-        # 'building_features': ...,
-        'metadata_builder': get_building_metadata,
-        'batch_size': batch_size,
-    }
     np.random.shuffle(building_ids)
     train_buildings, test_buildings = datagen.train_test_split(
         building_ids, left_size=train_test_split)
@@ -31,7 +30,7 @@ def gaussian_activation(x):
     return K.exp(-K.pow(x, 2))
 
 
-def create_model(model_config=None):
+def create_model(layer_params=None):
     """ End to end model architecture definition
 
     Model config should include:
@@ -48,6 +47,7 @@ def create_model(model_config=None):
             - CNN config for weather features
                 - a list of CNN1D layers with number of filters
     """
+    layer_params = layer_params or {}
     train_gen, test_gen = create_dataset()
 
     # Building model
@@ -123,12 +123,86 @@ def create_model(model_config=None):
     return final_model
 
 
+def plot_history(history):
+    plt.plot(history.history['loss'])
+    plt.plot(history.history['val_loss'])
+
+    plt.title('model loss')
+    plt.ylabel('loss')
+    plt.xlabel('epoch')
+    plt.legend(['train', 'val'], loc='upper left')
+    plt.show()
+
+
+def debug_scatterplots(gen, final_model):
+    gt = np.empty((len(gen.ids), len(gen.consumption_groups)))
+    for batch_num in range(len(gen)):
+        _, batch_gt = gen[batch_num]
+        batch_gt = batch_gt['outputs']
+        gt[gen.batch_size * batch_num:gen.batch_size * batch_num + len(batch_gt)] = batch_gt.sum(axis=-1)
+    predictions = final_model.predict(gen)['outputs']
+    groups = {
+        'gt': gt,
+        'pred': predictions
+    }
+    df = pd.DataFrame({
+        group + '_' + consumption : groups[group][:, colnum]
+        for group, (colnum, consumption) in itertools.product(groups, enumerate(gen.consumption_groups))
+    })
+    for consumption_group in gen.consumption_groups:
+        df.plot.scatter(*(group+'_'+consumption_group for group in groups))
+    # consider checking df.corr()
+
+
 def main():
-    final_model = create_model()
-    train_gen, test_gen = create_dataset()
+    layer_params = {
+        'activation': 'leaky_relu',
+        'dtype': np.float32,
+    }
+    final_model = create_model(layer_params)
+    model_architecture_img = keras.utils.plot_model(
+        final_model, to_file="model.png", show_shapes=True, show_dtype=True,
+        rankdir="TB", dpi=200, show_layer_activations=True,
+    )
+
+    get_building_metadata = datagen.BuildingMetadataBuilder()
+    datagen_params = {
+        'metadata_builder': get_building_metadata,
+        'batch_size': 64,
+        # 'consumption_groups': (
+        #   'heating', 'cooling',
+        #   'lighting', 'other',
+        # ),
+        'weather_features': (
+            'temp_air', 'ghi', 'wind_speed',
+            # 'weekend', 'hour',
+            # 'relative_humidity', 'dni', 'diffuse_horizontal_illum',
+            # 'wind_direction',
+        ),
+        'building_features': (
+            'sqft', 'bedrooms', 'stories', 'occupants', 'age2000', 'county',
+            'infiltration_ach50', 'insulation_wall', 'insulation_ceiling_roof',
+            'cooling_efficiency_eer', 'heating_efficiency',
+
+            'cooling_setpoint', 'heating_setpoint',
+            # 'insulation_slab', 'insulation_rim_joist', 'insulation_floor',
+            # 'orientation', 'window_area',
+            # 'lighting_efficiency',
+
+
+            # categorical
+            # 'foundation_type', 'windows_type',
+        ),
+        'dtype': layer_params['dtype'],
+        # 'time_granularity': 'M',
+    }
+
+    train_gen, test_gen = create_dataset(datagen_params)
     history = final_model.fit(
         train_gen, epochs=100, validation_data=test_gen,
         callbacks=[keras.callbacks.EarlyStopping(monitor='loss', patience=5)]
     )
+    plot_history(history)
+    debug_scatterplots(test_gen, final_model)
 
     return history
