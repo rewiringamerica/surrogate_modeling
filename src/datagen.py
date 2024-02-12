@@ -834,3 +834,12 @@ class DataGen(tf.keras.utils.Sequence):
         }, {
             'outputs': outputs
         }
+
+    def cache_warmup(self, num_threads=None):
+        from multiprocessing.pool import ThreadPool
+        # limit to 50 threads to avoid saturation
+        num_threads = num_threads or min(os.cpu_count()*10, 50)
+        tp = ThreadPool(num_threads)
+        tp.imap_unordered(lambda i: self[i] and None, range(len(self)))
+        tp.close()
+        tp.join()
