@@ -124,6 +124,26 @@ LUMINOUS_EFFICACY = {
 }
 
 
+def extract_cooling_space_percentage(value):
+    """ Extract percentage of space given
+
+    >>> extract_cooling_space_percentage('100% Conditioned')
+    1.0
+    >>> extract_cooling_space_percentage('<10% Conditioned')
+    0.1
+    >>> extract_cooling_space_percentage('None')
+    0.0
+    """
+    if value == 'None':
+        return 0.0
+    match = re.match(r'^<?(\d+)%', value)
+    try:
+        return (match and float(match.group(1))) / 100.0
+    except ValueError:
+        raise ValueError(
+            f'Cannot extract cooled space percentage from: f{value}')
+
+
 def vintage2age2000(vintage: str) -> int:
     """ vintage of the building in the year of 2000
     >>> vintage2age2000('<1940')
@@ -327,6 +347,7 @@ def _get_building_metadata():
             # two groups, otherwise it's the same
             'in.ashrae_iecc_climate_zone_2004',
             'in.cooling_setpoint', 'in.heating_setpoint',
+            'in.hvac_cooling_partial_space_conditioning',
 
             # Cooling/Heating offset must be important, too hard to get from
             # user. Also, it will have to be transformed into a timeseries var
@@ -395,6 +416,7 @@ def _get_building_metadata():
         heating_efficiency=pq['in.hvac_heating_efficiency'].map(extract_heating_efficiency),
         cooling_setpoint=pq['in.cooling_setpoint'].map(temp70),
         heating_setpoint=pq['in.heating_setpoint'].map(temp70),
+        cooled_spache_share=pq['in.hvac_cooling_partial_space_conditioning'].map(extract_cooling_space_percentage),
         orientation=pq['in.orientation'].map(ORIENTATION_DEGREES),
         # door area in ResStock is always the same (20), and thus, useless
         window_area=pq['in.window_areas'].map(extract_window_area),
@@ -410,6 +432,7 @@ def _get_building_metadata():
             'in.insulation_ceiling', 'in.insulation_roof',
             'in.hvac_cooling_efficiency', 'in.hvac_heating_efficiency',
             'in.cooling_setpoint', 'in.heating_setpoint',
+            'in.hvac_cooling_partial_space_conditioning',
             'in.orientation', 'in.window_areas', 'in.lighting',
         ]
     )
@@ -430,7 +453,7 @@ class BuildingMetadataBuilder:
 
         'insulation_slab', 'insulation_rim_joist', 'insulation_floor',
         'cooling_setpoint', 'heating_setpoint', 'orientation', 'window_area',
-        'lighting_efficiency',
+        'lighting_efficiency', 'cooled_spache_share',
 
         # categorical
         'foundation_type', 'windows_type',
@@ -773,7 +796,11 @@ class DataGen(tf.keras.utils.Sequence):
         self.building_ids = np.fromiter(building_ids, int)
         self.ids = np.array(list(itertools.product(self.building_ids, self.upgrades)))
         self.metadata_builder = metadata_builder or BuildingMetadataBuilder()
-        # TODO: make this (specifically, __getitem__) work for variable length input
+        # The assumption is that training data (what this generator is used for)
+        # is always one year of history. The final model, however, is supposed
+        # to work with variable length input - so, should be able to condense
+        # any length of input into a bunch of numbers, be it a year, a month, or
+        # a week
         self.output_length = {
             'H': HOURS_IN_A_YEAR,
             'D': 365,
