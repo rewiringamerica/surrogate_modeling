@@ -416,7 +416,7 @@ def _get_building_metadata():
         heating_efficiency=pq['in.hvac_heating_efficiency'].map(extract_heating_efficiency),
         cooling_setpoint=pq['in.cooling_setpoint'].map(temp70),
         heating_setpoint=pq['in.heating_setpoint'].map(temp70),
-        cooled_spache_share=pq['in.hvac_cooling_partial_space_conditioning'].map(extract_cooling_space_percentage),
+        cooled_space_share=pq['in.hvac_cooling_partial_space_conditioning'].map(extract_cooling_space_percentage),
         orientation=pq['in.orientation'].map(ORIENTATION_DEGREES),
         # door area in ResStock is always the same (20), and thus, useless
         window_area=pq['in.window_areas'].map(extract_window_area),
@@ -453,8 +453,7 @@ class BuildingMetadataBuilder:
 
         'insulation_slab', 'insulation_rim_joist', 'insulation_floor',
         'cooling_setpoint', 'heating_setpoint', 'orientation', 'window_area',
-        'lighting_efficiency', 'cooled_spache_share',
-
+        'lighting_efficiency', 'cooled_space_share',
         # categorical
         'foundation_type', 'windows_type',
     )
