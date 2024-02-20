@@ -831,35 +831,39 @@ class DataGen(tf.keras.utils.Sequence):
         batch_ids = self.ids[idx*self.batch_size:(idx+1)*self.batch_size]
         # for last batch, batch_size might be different from self.batch_size
         batch_size = batch_ids.shape[0]
-        building_inputs = np.empty((batch_size, len(self.building_features)), dtype=self.dtype)
-        # keras convolutions only support NHWC (i.e., channels last)
-        # so, time dimension comes first, than features
-        weather_inputs = np.empty((batch_size, HOURS_IN_A_YEAR, len(self.weather_features)), dtype=self.dtype)
-        # on larger batches (128), np.float32 is not enough to handle the loss
-        outputs = np.empty((batch_size, len(self.consumption_groups), self.output_length), dtype=self.dtype)
+        # TODO: will pd.DataFrame work instead?
+        features = {
+            building_feature: (np.empty((batch_size,),dtype=self.dtype))
+            for building_feature in self.building_features
+        }
+        features.update({
+            # TODO: implement support for arbitrary size training samples
+            weather_feature: np.empty((batch_size, HOURS_IN_A_YEAR, 1), dtype=self.dtype)
+            for weather_feature in self.weather_features
+        })
+
+        outputs = {
+            consumption_group: np.empty((batch_size, self.output_length), dtype=self.dtype)
+            for consumption_group in self.consumption_groups
+        }
 
         for i, (building_id, upgrade_id) in enumerate(batch_ids):
-            building_features = self.metadata_builder(building_id).copy()
-            building_features = apply_upgrades(building_features, upgrade_id)
-            # ~0.1ms per building up to this point
-            county_geoid = building_features['county']
-            # limit to features used in this experiment
-            # 0.6ms up to here
-            building_inputs[i] = building_features[self.building_features].values
+            building_data = apply_upgrades(
+                self.metadata_builder(building_id).copy(), upgrade_id)
+            county_geoid = building_data['county']
+            weather_data = self.get_weather_data(county_geoid)
+            for building_feature in self.building_features:
+                features[building_feature][i] = building_data[building_feature]
+            for weather_feature in self.weather_features:
+                features[weather_feature][i, :, 0] = weather_data[weather_feature]
 
-            weather_inputs[i] = self.get_weather_data(county_geoid).values
-
-            outputs[i] = get_hourly_outputs(
+            outputs_data = get_hourly_outputs(
                 building_id, upgrade_id, county_geoid
-            )[self.consumption_groups].resample(self.time_granularity).sum().T
+            )[self.consumption_groups].resample(self.time_granularity).sum()
+            for consumption_group in self.consumption_groups:
+                outputs[consumption_group][i] = outputs_data[consumption_group]
 
-        # TODO: maybe split into distinct features and concat in the model?
-        return {
-            'building_features': building_inputs,
-            'weather_data': weather_inputs
-        }, {
-            'outputs': outputs
-        }
+        return features, outputs
 
     def cache_warmup(self, num_threads=None):
         from multiprocessing.pool import ThreadPool

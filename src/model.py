@@ -13,7 +13,6 @@ import datagen
 
 
 def create_dataset(datagen_params: Dict, train_test_split=0.8):
-
     get_building_metadata = datagen.BuildingMetadataBuilder()
     building_ids = get_building_metadata.building_ids
     np.random.shuffle(building_ids)
@@ -51,70 +50,74 @@ def create_model(layer_params=None):
     train_gen, test_gen = create_dataset()
 
     # Building model
-    bmo_inputs_dict = {  # all values can be ints
-        'building_features': layers.Input(
-            name='building_features',
-            shape=(len(train_gen.building_features),),
-            dtype=np.float16
+    bmo_inputs_dict = {
+        building_feature: layers.Input(
+            name=building_feature,
+            shape=(1,),
+            dtype=layer_params['dtype']
         )
+        for building_feature in train_gen.building_features
     }
     bmo_inputs = list(bmo_inputs_dict.values())
-    bm = layers.Concatenate(name='concat_layer')(bmo_inputs)
-    bm = layers.Dense(32, name='second_dense', activation='leaky_relu')(bm)
-    bm = layers.Dense(8, name='third_dense', activation='leaky_relu')(bm)
+    bm = layers.Concatenate(name='concat_layer', dtype=layer_params['dtype'])(bmo_inputs)
+    bm = layers.Dense(32, name='second_dense', **layer_params)(bm)
+    bm = layers.Dense(8, name='third_dense', **layer_params)(bm)
 
-    bmo = models.Model(inputs=bmo_inputs_dict, outputs=bm, name='building_model')
+    bmo = models.Model(inputs=bmo_inputs_dict, outputs=bm, name='building_features_model')
 
     # Weather data model
-    weather_inputs_dict = {  # all values can be ints
-        'weather_data': layers.Input(
-            name='weather_data',
-            shape=(None, len(train_gen.weather_features),),
-            dtype=np.float16
-        )
+    weather_inputs_dict = {
+        weather_feature: layers.Input(
+            name=weather_feature, shape=(None, 1,), dtype=layer_params['dtype'])
+        for weather_feature in train_gen.weather_features
     }
     weather_inputs = list(weather_inputs_dict.values())
-    wm = layers.Concatenate(axis=1, name='weather_concat_layer')(weather_inputs)
+
+    wm = layers.Concatenate(
+        axis=-1, name='weather_concat_layer', dtype=layer_params['dtype']
+    )(weather_inputs)
     wm = layers.Conv1D(
         filters=16,
         kernel_size=8,
         padding='same',
         data_format='channels_last',
         name='first_1dconv',
-        activation='leaky_relu'
+        **layer_params
     )(wm)
     wm = layers.Conv1D(
         filters=8,
         kernel_size=8,
         padding='same',
         data_format='channels_last',
-        name='second_1dconv',
-        activation='leaky_relu'
+        name='last_1dconv',
+        **layer_params
     )(wm)
-    # sum the time dimension
-    wm = layers.Lambda(lambda x: keras.backend.sum(x, axis=1))(wm)
 
-    wmo = models.Model(inputs=weather_inputs_dict, outputs=wm, name='weather_model')
+    # sum the time dimension
+    wm = layers.Lambda(
+        lambda x: K.sum(x, axis=1), dtype=layer_params['dtype'])(wm)
+
+    wmo = models.Model(
+        inputs=weather_inputs_dict, outputs=wm, name='weather_features_model')
 
     # Combined model and separate towers for output groups
     cm = layers.Concatenate(name='combine_features')([bmo.output, wmo.output])
-    cm = layers.Dense(16, activation='leaky_relu')(cm)
-    cm = layers.Dense(16, activation='leaky_relu')(cm)
+    cm = layers.Dense(16, **layer_params)(cm)
+    cm = layers.Dense(16, **layer_params)(cm)
     # cm is a chokepoint representing embedding of a building + climate it is in
 
     # building a separate tower for each output group
-    intermediate_outputs = []
+    final_outputs = {}
     for consumption_group in train_gen.consumption_groups:
-        io = layers.Dense(8, name=consumption_group+'_entry', activation='leaky_relu')(cm)
+        io = layers.Dense(8, name=consumption_group+'_entry', **layer_params)(cm)
         # ... feel free to add more layers
-        # (non-leaky) Relu on final output leads to the model getting stuck
-        # in zero derivative regions for negative output
-        io = layers.Dense(1, name=consumption_group+'_out', activation='leaky_relu')(io)
-        intermediate_outputs.append(io)
+        io = layers.Dense(8, name=consumption_group+'_mid', **layer_params)(io)
+        # no activation on the output
+        io = layers.Dense(1, name=consumption_group, **layer_params)(io)
+        final_outputs[consumption_group] = io
 
-    final_output = layers.Concatenate()(intermediate_outputs)
-
-    final_model = models.Model(inputs=[bmo.input, wmo.input], outputs={'outputs': final_output})
+    final_model = models.Model(
+        inputs=itertools.ChainMap(bmo.input, wmo.input), outputs=final_outputs)
 
     final_model.compile(
         loss=keras.losses.MeanAbsoluteError(),
