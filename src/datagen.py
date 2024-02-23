@@ -317,7 +317,7 @@ def _get_building_metadata():
     >>> metadata = metadata_df.iloc[0]
     >>> string_columns = (
     ...     'county', 'ashrae_iecc_climate_zone', 'foundation_type',
-    ...     'windows_type'
+    ...     'windows_type', 'wall_type', 'wall_material', 'attic_type',
     ... )
     >>> all(
     ...     not isinstance(value, str)
@@ -338,11 +338,12 @@ def _get_building_metadata():
             'in.occupants',
             # it's either ceiling or roof; only ~15K (<3%) have none
             'in.insulation_ceiling', 'in.insulation_roof',
-            'in.insulation_wall', 'in.insulation_floor',
+            'in.insulation_floor',
             'in.insulation_slab', 'in.insulation_rim_joist',
             'in.infiltration',
 
             'in.hvac_cooling_efficiency', 'in.hvac_heating_efficiency',
+            'in.ducts', 'in.hvac_has_ducts',
             # to be filtered on
             'in.has_pv', 'in.geometry_building_type_acs',
             # ashrae_iecc_climate_zone_2004_2_a_split splits 2A states into
@@ -358,13 +359,11 @@ def _get_building_metadata():
             # 'in.heating_setpoint_offset_magnitude',
             # 'in.heating_setpoint_offset_period'
 
-            # 99% is vented attic, isn't worth modeling
-            # 'in.geometry_attic_type', 'in.roof_material'
             'in.orientation', 'in.window_areas',
 
             # String/CATEGORICAL
             'in.geometry_foundation_type', 'in.windows',
-            'in.lighting',
+            'in.lighting', 'in.insulation_wall', 'in.geometry_attic_type',
         ],
     ).rename(
         # to make this code interchangeable with the spark tables
@@ -377,6 +376,8 @@ def _get_building_metadata():
             'in.ashrae_iecc_climate_zone_2004': 'ashrae_iecc_climate_zone',
             'in.geometry_foundation_type': 'foundation_type',
             'in.windows': 'windows_type',
+            'in.insulation_wall': 'wall_type',
+            'in.geometry_attic_type': 'attic_type',
         }
     )
     pq.index.rename('building_id', inplace=True)
@@ -404,7 +405,8 @@ def _get_building_metadata():
         stories=pq['stories'].astype(int),
         occupants=pq['occupants'].astype(int),
         infiltration_ach50=pq['in.infiltration'].str.split().str[0].astype(int),
-        insulation_wall=pq['in.insulation_wall'].map(extract_r_value),
+        insulation_wall=pq['wall_type'].map(extract_r_value),
+        wall_material=pq['wall_type'].str.split(',').str[0],
         insulation_slab=pq['in.insulation_slab'].map(extract_r_value),
         insulation_rim_joist=pq['in.insulation_rim_joist'].map(extract_r_value),
         insulation_floor=pq['in.insulation_floor'].map(extract_r_value),
@@ -415,7 +417,11 @@ def _get_building_metadata():
         cooling_efficiency_eer=pq[
             ['in.hvac_cooling_efficiency', 'in.hvac_heating_efficiency']
         ].agg(', '.join, axis=1).map(extract_cooling_efficiency),
-        heating_efficiency=pq['in.hvac_heating_efficiency'].map(extract_heating_efficiency),
+        heating_efficiency=pq['in.hvac_heating_efficiency'].map(
+            extract_heating_efficiency),
+        has_ducts=pq['in.hvac_has_ducts'].map({'Yes': 1, 'No': 0}),
+        ducts_insulation=pq['in.ducts'].map(extract_r_value),
+        ducts_leakage=pq['in.ducts'].map(extract_percentage),
         cooling_setpoint=pq['in.cooling_setpoint'].map(temp70),
         heating_setpoint=pq['in.heating_setpoint'].map(temp70),
         cooled_space_share=pq['in.hvac_cooling_partial_space_conditioning'].map(extract_percentage),
@@ -428,16 +434,18 @@ def _get_building_metadata():
             'in.vintage', 'in.geometry_building_type_acs',
             'in.has_pv', 'in.geometry_building_number_units_mf',
             'in.geometry_building_number_units_sfa',
-            'in.infiltration', 'in.insulation_wall',
+            'in.infiltration',
             'in.insulation_slab', 'in.insulation_rim_joist',
             'in.insulation_floor',
             'in.insulation_ceiling', 'in.insulation_roof',
             'in.hvac_cooling_efficiency', 'in.hvac_heating_efficiency',
+            'in.hvac_has_ducts', 'in.ducts',
             'in.cooling_setpoint', 'in.heating_setpoint',
             'in.hvac_cooling_partial_space_conditioning',
             'in.orientation', 'in.window_areas', 'in.lighting',
         ]
     )
+    pq['backup_heating_efficiency'] = pq['heating_efficiency']
 
     # extra safety check to eliminate duplicate buildings
     # (not that there are any)
