@@ -124,15 +124,17 @@ LUMINOUS_EFFICACY = {
 }
 
 
-def extract_cooling_space_percentage(value):
+def extract_percentage(value):
     """ Extract percentage of space given
 
-    >>> extract_cooling_space_percentage('100% Conditioned')
+    >>> extract_percentage('100% Conditioned')
     1.0
-    >>> extract_cooling_space_percentage('<10% Conditioned')
+    >>> extract_percentage('<10% Conditioned')
     0.1
-    >>> extract_cooling_space_percentage('None')
+    >>> extract_percentage('None')
     0.0
+    >>> extract_percentage('10% Leakage, Uninsulated')
+    0.1
     """
     if value == 'None':
         return 0.0
@@ -416,7 +418,7 @@ def _get_building_metadata():
         heating_efficiency=pq['in.hvac_heating_efficiency'].map(extract_heating_efficiency),
         cooling_setpoint=pq['in.cooling_setpoint'].map(temp70),
         heating_setpoint=pq['in.heating_setpoint'].map(temp70),
-        cooled_space_share=pq['in.hvac_cooling_partial_space_conditioning'].map(extract_cooling_space_percentage),
+        cooled_space_share=pq['in.hvac_cooling_partial_space_conditioning'].map(extract_percentage),
         orientation=pq['in.orientation'].map(ORIENTATION_DEGREES),
         # door area in ResStock is always the same (20), and thus, useless
         window_area=pq['in.window_areas'].map(extract_window_area),
