@@ -22,6 +22,19 @@ EER_CONVERSION = {
 BTU_PER_WH = 3.413
 HOURS_IN_A_YEAR = 8760  # 24*365, assuming a non-leap year
 
+# Upgrade 1 attic insulation: climate zone -> threshold, insulation
+# '1': (13, 30) means units in climate zones 1A (1-anything) with R13 insulation
+# or less are upgraded to R30
+BASIC_ENCLOSURE_INSULATION = {
+    '1': (13, 30),
+    '2': (30, 49),
+    '3': (30, 49),
+    '4': (38, 60),
+    '5': (38, 60),
+    '6': (38, 60),
+    '7': (38, 60),
+}
+
 # Path to ResStock dataset
 # TODO: replace with environment variables
 # to access gs:// paths without explicitly providing credentials, run
@@ -456,17 +469,6 @@ class BuildingMetadataBuilder:
     """ A class to cache building metadata in memory.
     """
     _building_metadata = None
-    supported_building_features = (
-        'sqft', 'bedrooms', 'stories', 'occupants', 'age2000', 'county',
-        'infiltration_ach50', 'insulation_wall', 'insulation_ceiling_roof',
-        'cooling_efficiency_eer', 'heating_efficiency',
-
-        'insulation_slab', 'insulation_rim_joist', 'insulation_floor',
-        'cooling_setpoint', 'heating_setpoint', 'orientation', 'window_area',
-        'lighting_efficiency', 'cooled_space_share',
-        # categorical
-        'foundation_type', 'windows_type',
-    )
 
     def __init__(self):
         """
@@ -479,7 +481,7 @@ class BuildingMetadataBuilder:
         True
         """
         pq = _get_building_metadata()
-        self._building_metadata = pq[list(self.supported_building_features)]
+        self._building_metadata = pq
 
     def all(self) -> pd.DataFrame:
         return self._building_metadata
@@ -609,7 +611,7 @@ def get_hourly_outputs(building_id, upgrade_id, county_geoid):
         setattr(get_hourly_outputs, 'appliance_groups', appliance_groups)
         # appliance mapping to aggregate by purpose
         # TODO: make groups separable by fuel, e.g. backup heating should be
-        # in a separate group, and heating fans should be separate, too.
+        # a separate group. Heating/cooling fans should be separate, too.
         setattr(get_hourly_outputs, 'consumption_groups', {
             'heating': [
                 'heating', 'heating_fans_pumps', 'heating_hp_bkup', 'fireplace',
@@ -656,7 +658,7 @@ def get_hourly_outputs(building_id, upgrade_id, county_geoid):
 
 
 @file_cache(CACHE_PATH)
-def get_weather_file(county_geoid):
+def get_weather_file(county_geoid: str) -> pd.DataFrame:
     """ Retrieve weather timeseries for a given county geoid in ResStock
 
     It takes about 150..200ms to read a file from a GCP bucket. With ~3K files,
@@ -706,23 +708,94 @@ def get_weather_file(county_geoid):
     return df
 
 
-def apply_upgrades(building_features, upgrade_id):
-    # TODO: actually apply upgrades according to
+def apply_upgrades(building_features: pd.Series, upgrade_id: int) -> pd.Series:
+    """ Augment building features to reflect the upgrade
+
+    Thoughts: it is more efficient to apply these upgrades to an entire
+    dataframe, but it is a lot harder to test
+
+    Args:
+          building_features: (pd.Series) building features coming from metadata
+          upgrade_id: (int)
+    Returns:
+          pd.Series: building_features, augmented to reflect the upgrade
+
+    >>> bf = pd.Series({
+    ...     'ashrae_iecc_climate_zone': '1A',
+    ...     'attic_type': 'Vented Attic',
+    ...     'wall_type': 'Wood Stud, Uninsulated',
+    ...     'insulation_ceiling_roof': 0,
+    ...     'insulation_wall': 0,
+    ...     'infiltration_ach50': 20,
+    ...     'has_ducts': 1.0,
+    ...     'ducts_leakage': 0.3,
+    ...     'cooling_efficiency': 50,
+    ...     'heating_efficiency': 50,
+    ...     'backup_heating_efficiency': 50,
+    ... })
+    >>> for upgrade_id in (0,1,3,4,5):
+    ...     bf = apply_upgrades(bf, upgrade_id)  # check no exception is thrown
+
+    """
+    # TODO: implement upgrades 2,6,7,8
     # https://oedi-data-lake.s3.amazonaws.com/nrel-pds-building-stock/end-use-load-profiles-for-us-building-stock/2022/EUSS_ResRound1_Technical_Documentation.pdf
-    # upgrades are dependent on: IECC zone, wall type, etc;
-    # so, full implementation will require changes to baseline columns provided
-    # in `building_features`
+    # in case of contradictions, consult
+    # https://github.com/NREL/resstock/blob/run/euss/EUSS-project-file_2018_10k.yml
     if upgrade_id == 0:  # baseline
         return building_features
-    # if upgrade_id == 1: # basic enclosure
-    # if upgrade_id == 2: # enhanced enclosure
-    # if upgrade_id == 3: # heat pump, min efficiency, electric backup
-    # if upgrade_id == 4: # heat pump, high efficiency, electric backup
-    # if upgrade_id == 5: # heat pump, high efficiency, existing heating as backup
-    # if upgrade_id == 6: # heat pump water heater
-    # if upgrade_id == 7: # whole home electrification, min efficiency
-    # if upgrade_id == 8: # whole home electrification, high efficiency
-    # if upgrade_id == 9: # whole home electrification, high efficiency+basic enclosure
+
+    if upgrade_id == 1:  # basic enclosure
+        # applies only to vented attic dwellings
+        cz_family = building_features['ashrae_iecc_climate_zone'][0]
+        threshold, insulation = BASIC_ENCLOSURE_INSULATION[cz_family]
+        if (building_features['attic_type'] == 'Vented Attic'
+                and building_features['insulation_ceiling_roof'] <= threshold):
+            building_features['insulation_ceiling_roof'] = insulation
+        # Manual has two thresholds, 10 and 15. In the .yml it's applied at 15
+        if building_features['infiltration_ach50'] >= 15:
+            building_features['infiltration_ach50'] *= 0.7
+        if building_features['ducts_leakage'] > 0:
+            building_features['ducts_leakage'] = 0.1
+            building_features['ducts_insulation'] = 8.0
+        if building_features['wall_type'] == 'Wood Stud, Uninsulated':
+            building_features['insulation_wall'] = extract_r_value('Wood Stud, R-13')
+        return building_features
+
+    # if upgrade_id == 2:  # enhanced enclosure
+    #     building_features = apply_upgrades(building_features, 1)
+
+    if upgrade_id == 3:  # heat pump, min efficiency, electric backup
+        # both ducted and ductless: SEER 15, 9 HSPF
+        building_features['cooling_efficiency'] = extract_cooling_efficiency('Heat Pump, SEER 15, 9 HSPF')
+        building_features['heating_efficiency'] = extract_heating_efficiency('Heat Pump, SEER 15, 9 HSPF')
+        building_features['backup_heating_efficiency'] = 1.0
+        return building_features
+
+    if upgrade_id == 4:  # heat pump, high efficiency, electric backup
+        if building_features['has_ducts']:  # ducted systems: SEER 24, 13 HSPF
+            building_features['cooling_efficiency'] = extract_cooling_efficiency('Heat Pump, SEER 24, 13 HSPF')
+            building_features['heating_efficiency'] = extract_heating_efficiency('Heat Pump, SEER 24, 13 HSPF')
+        else:  # ductless dwellings: SEER 29.3, 14 HSPF,
+            building_features['cooling_efficiency'] = extract_cooling_efficiency('Heat Pump, SEER 29.3, 14 HSPF')
+            building_features['heating_efficiency'] = extract_heating_efficiency('Heat Pump, SEER 29.3, 14 HSPF')
+        building_features['backup_heating_efficiency'] = 1.0
+        return building_features
+
+    if upgrade_id == 5:  # high efficiency HP, existing heating as backup
+        # both ducted and ductless: SEER 15, 9 HSPF
+        building_features['backup_heating_efficiency'] = building_features['heating_efficiency']
+        building_features['cooling_efficiency'] = extract_cooling_efficiency('Heat Pump, SEER 15, 9 HSPF')
+        building_features['heating_efficiency'] = extract_heating_efficiency('Heat Pump, SEER 15, 9 HSPF')
+        return building_features
+
+    # if upgrade_id == 6:  # heat pump water heater
+    # if upgrade_id == 7:  # whole home electrification, min efficiency
+    # if upgrade_id == 8:  # whole home electrification, high efficiency
+
+    if upgrade_id == 9:  # whole home electrification, high efficiency+basic enclosure
+        building_features = apply_upgrades(building_features, 1)
+        return apply_upgrades(building_features, 7)
+
     raise ValueError(r"Upgrade id={upgrade_id} is not yet supported")
 
 
@@ -744,7 +817,24 @@ class DataGen(tf.keras.utils.Sequence):
     batch_size: int
     upgrades = (0,)  # upgrades to consider. 0 is the baseline scenario
     weather_features = ('temp_air', 'ghi', 'wind_speed', 'weekend', 'hour')
-    building_features = BuildingMetadataBuilder.supported_building_features
+    # features model will be trained on by default
+    building_features = (
+        # numeric
+        'sqft', 'bedrooms', 'stories', 'occupants', 'age2000',
+        'infiltration_ach50', 'insulation_wall', 'insulation_ceiling_roof',
+        'cooling_efficiency_eer', 'heating_efficiency',
+        'backup_heating_efficiency', 'has_ducts',
+        'insulation_slab', 'insulation_rim_joist', 'insulation_floor',
+        'cooling_setpoint', 'heating_setpoint', 'orientation', 'window_area',
+        'lighting_efficiency', 'cooled_space_share',
+
+        # categorical
+        'foundation_type', 'windows_type', 'wall_material',
+
+        # service features - not to be fed to the model
+        # 'county',
+    )
+
     # skipping 'other' and 'lighting' here. Both are artificial and are unlikely
     # to predict real life usage well
     consumption_groups = ('heating', 'cooling',)
