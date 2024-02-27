@@ -657,6 +657,10 @@ def get_hourly_outputs(building_id, upgrade_id, county_geoid):
     return ho.resample('H').sum()
 
 
+# a predefined
+REFERENCE_YEAR = pd.date_range(start='1/1/2007', periods=HOURS_IN_A_YEAR, freq='H')
+
+
 @file_cache(CACHE_PATH)
 def get_weather_file(county_geoid: str) -> pd.DataFrame:
     """ Retrieve weather timeseries for a given county geoid in ResStock
@@ -681,6 +685,8 @@ def get_weather_file(county_geoid: str) -> pd.DataFrame:
     True
     >>> weather_df.shape[1] >= 5
     True
+    >>> (weather_df['weekend'] !=0).sum() // 24  # 52 weeks of weekend days
+    104
     """
     state = get_state_code_from_county_geoid(county_geoid)
     weather_file_path = WEATHER_FILES_PATH.format(state=state, geoid=county_geoid)
@@ -698,12 +704,16 @@ def get_weather_file(county_geoid: str) -> pd.DataFrame:
     # in TMY3 files, weather year is a combination of months from different
     # years. Resstock overrides year for these files, so only month-day-hour
     # portion matters
+    df = df.set_index(df.index.strftime("%m-%d-%H:00")).sort_index()
+    # also, some dates indexes have errors - e.g., 'G0600590' has one hour of
+    # Feb 29 but is missing one hour of Mar 1 - so, overriding with a good idx
+    df = df.set_index(REFERENCE_YEAR)
     df = df.assign(
         # Monday is 0
         # https://pandas.pydata.org/docs/reference/api/pandas.Series.dt.weekday.html
         weekend=df.index.weekday.isin((5, 6)).astype(int),
         hour=df.index.hour,
-    ).set_index(df.index.strftime("%m-%d-%H:00")).sort_index()
+    )
 
     return df
 
