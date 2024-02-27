@@ -400,7 +400,8 @@ def _get_building_metadata():
         & (pq['occupants'] != '10+')
         # sanity check; it's 1 for all single family detached
         # & (pq[
-        #     ['in.geometry_building_number_units_mf', 'in.geometry_building_number_units_sfa']
+        #     ['in.geometry_building_number_units_mf',
+        #      'in.geometry_building_number_units_sfa']
         # ].replace('None', 1).max(axis=1).fillna(1).astype(int) == 1)
         # another sanity check; ResStock single family detached have 3 max
         & (pq['stories'] <= '5')
@@ -432,6 +433,10 @@ def _get_building_metadata():
         ].agg(', '.join, axis=1).map(extract_cooling_efficiency),
         heating_efficiency=pq['in.hvac_heating_efficiency'].map(
             extract_heating_efficiency),
+        ac_type=pq['in.hvac_cooling_efficiency'].str.split(',').str[0],
+        has_ac=(
+            pq['in.hvac_cooling_efficiency'].str.split(',').str[0] == 'None'
+        ).astype(int),
         has_ducts=pq['in.hvac_has_ducts'].map({'Yes': 1, 'No': 0}),
         ducts_insulation=pq['in.ducts'].map(extract_r_value),
         ducts_leakage=pq['in.ducts'].map(extract_percentage),
@@ -740,7 +745,7 @@ def apply_upgrades(building_features: pd.Series, upgrade_id: int) -> pd.Series:
     ...     'infiltration_ach50': 20,
     ...     'has_ducts': 1.0,
     ...     'ducts_leakage': 0.3,
-    ...     'cooling_efficiency': 50,
+    ...     'cooling_efficiency_eer': 50,
     ...     'heating_efficiency': 50,
     ...     'backup_heating_efficiency': 50,
     ... })
@@ -777,26 +782,32 @@ def apply_upgrades(building_features: pd.Series, upgrade_id: int) -> pd.Series:
 
     if upgrade_id == 3:  # heat pump, min efficiency, electric backup
         # both ducted and ductless: SEER 15, 9 HSPF
-        building_features['cooling_efficiency'] = extract_cooling_efficiency('Heat Pump, SEER 15, 9 HSPF')
+        building_features['cooling_efficiency_eer'] = extract_cooling_efficiency('Heat Pump, SEER 15, 9 HSPF')
         building_features['heating_efficiency'] = extract_heating_efficiency('Heat Pump, SEER 15, 9 HSPF')
         building_features['backup_heating_efficiency'] = 1.0
+        building_features['ac_type'] = 'Heat Pump'
+        building_features['has_ac'] = 1
         return building_features
 
     if upgrade_id == 4:  # heat pump, high efficiency, electric backup
         if building_features['has_ducts']:  # ducted systems: SEER 24, 13 HSPF
-            building_features['cooling_efficiency'] = extract_cooling_efficiency('Heat Pump, SEER 24, 13 HSPF')
+            building_features['cooling_efficiency_eer'] = extract_cooling_efficiency('Heat Pump, SEER 24, 13 HSPF')
             building_features['heating_efficiency'] = extract_heating_efficiency('Heat Pump, SEER 24, 13 HSPF')
         else:  # ductless dwellings: SEER 29.3, 14 HSPF,
-            building_features['cooling_efficiency'] = extract_cooling_efficiency('Heat Pump, SEER 29.3, 14 HSPF')
+            building_features['cooling_efficiency_eer'] = extract_cooling_efficiency('Heat Pump, SEER 29.3, 14 HSPF')
             building_features['heating_efficiency'] = extract_heating_efficiency('Heat Pump, SEER 29.3, 14 HSPF')
         building_features['backup_heating_efficiency'] = 1.0
+        building_features['ac_type'] = 'Heat Pump'
+        building_features['has_ac'] = 1
         return building_features
 
     if upgrade_id == 5:  # high efficiency HP, existing heating as backup
         # both ducted and ductless: SEER 15, 9 HSPF
         building_features['backup_heating_efficiency'] = building_features['heating_efficiency']
-        building_features['cooling_efficiency'] = extract_cooling_efficiency('Heat Pump, SEER 15, 9 HSPF')
+        building_features['cooling_efficiency_eer'] = extract_cooling_efficiency('Heat Pump, SEER 15, 9 HSPF')
         building_features['heating_efficiency'] = extract_heating_efficiency('Heat Pump, SEER 15, 9 HSPF')
+        building_features['ac_type'] = 'Heat Pump'
+        building_features['has_ac'] = 1
         return building_features
 
     # if upgrade_id == 6:  # heat pump water heater
