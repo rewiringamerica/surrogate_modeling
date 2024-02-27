@@ -1031,6 +1031,18 @@ class DataGen(tf.keras.utils.Sequence):
             for group in self.consumption_groups
         }
 
+    def feature_dtype(self, feature_name):
+        is_string_feature = self.building_features_df[feature_name].dtype == 'O'
+        return tf.string if is_string_feature else self.dtype
+
+    def feature_vocab(self, feature_name):
+        """ Get all possible values for a feature
+
+        This method is used to create encoders for string (categorical/ordinal)
+        features
+        """
+        return self.metadata_builder.all()[feature_name].unique()
+
     def __len__(self):
         # number of batches; last batch might be smaller
         return math.ceil(len(self.ids) / self.batch_size)

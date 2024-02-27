@@ -5,6 +5,7 @@ from typing import Dict
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import tensorflow as tf
 from tensorflow import keras
 import tensorflow.keras.backend as K
 from tensorflow.keras import layers, models
@@ -12,7 +13,7 @@ from tensorflow.keras import layers, models
 import datagen
 
 
-def create_dataset(datagen_params: Dict, train_test_split=0.8):
+def create_dataset(datagen_params: Dict, train_test_split=0.9):
     get_building_metadata = datagen.BuildingMetadataBuilder()
     building_ids = get_building_metadata.building_ids
     np.random.shuffle(building_ids)
@@ -52,13 +53,25 @@ def create_model(layer_params=None):
     # Building model
     bmo_inputs_dict = {
         building_feature: layers.Input(
-            name=building_feature,
-            shape=(1,),
-            dtype=layer_params['dtype']
+            name=building_feature, shape=(1,),
+            dtype=train_gen.feature_dtype(building_feature)
         )
         for building_feature in train_gen.building_features
     }
-    bmo_inputs = list(bmo_inputs_dict.values())
+    bmo_inputs = []
+    for feature, layer in bmo_inputs_dict.items():
+        # handle categorical, ordinal, etc. features.
+        # Here it is detected by dtype; perhaps explicit feature list and
+        # handlers would be better
+        if train_gen.feature_dtype(feature) == tf.string:
+            encoder = layers.StringLookup(
+                name=feature+'_encoder', output_mode='one_hot',
+                dtype=layer_params['dtype']
+            )
+            encoder.adapt(train_gen.feature_vocab(feature))
+            layer = encoder(layer)
+        bmo_inputs.append(layer)
+
     bm = layers.Concatenate(name='concat_layer', dtype=layer_params['dtype'])(bmo_inputs)
     bm = layers.Dense(32, name='second_dense', **layer_params)(bm)
     bm = layers.Dense(8, name='third_dense', **layer_params)(bm)
