@@ -1,9 +1,9 @@
 import itertools
 import logging
 import math
+from multiprocessing.pool import ThreadPool
 import os
 import re
-import tempfile
 from typing import Dict
 
 from utils import file_cache
@@ -603,8 +603,6 @@ def get_hourly_outputs(building_id, upgrade_id, county_geoid):
         fuel_types -= {'site_energy'}
         # maybe remove appliances not covered by upgrades: grill, pool_pump,
         # and hot tub heater
-        # fireplace in ResStock are only gas powered (i.e., not wood) and should
-        # be counted towards heating
         appliance_types -= {'total', 'net', 'grill', 'pool_pump', }
         setattr(get_hourly_outputs, 'fuel_types', fuel_types)
         setattr(get_hourly_outputs, 'appliance_types', appliance_types)
@@ -614,7 +612,10 @@ def get_hourly_outputs(building_id, upgrade_id, county_geoid):
         # a separate group. Heating/cooling fans should be separate, too.
         setattr(get_hourly_outputs, 'consumption_groups', {
             'heating': [
-                'heating', 'heating_fans_pumps', 'heating_hp_bkup', 'fireplace',
+                'heating', 'heating_fans_pumps', 'heating_hp_bkup',
+                # fireplace in ResStock are only gas powered (i.e., not wood)
+                # and should be counted towards heating
+                'fireplace',
             ],
             'cooling': ['cooling', 'cooling_fans_pumps', ],
             'lighting': [
@@ -644,7 +645,7 @@ def get_hourly_outputs(building_id, upgrade_id, county_geoid):
         ho.set_index(ho.index-get_hourly_outputs.timestep)
         .rename(columns=get_hourly_outputs.column_renames)
     )
-    # TODO: combine both aggregations
+
     ho = pd.DataFrame({
         appliance: ho[col_names].sum(axis=1)
         for appliance, col_names in get_hourly_outputs.appliance_groups.items()
@@ -823,11 +824,22 @@ def train_test_split(dataset: np.array, left_size):
     return dataset[:split_point], dataset[split_point:]
 
 
+def parallelize(func, args, num_threads=None):
+    num_threads = num_threads or min(os.cpu_count()*10, 50)
+    tp = ThreadPool(num_threads)
+    for _ in tp.imap_unordered(func, args):
+        pass
+    tp.close()
+    tp.join()
+    del tp
+
+
 class DataGen(tf.keras.utils.Sequence):
     batch_size: int
-    upgrades = (0,)  # upgrades to consider. 0 is the baseline scenario
+    upgrades = (0, 1, 3, 4, 5)
     weather_features = ('temp_air', 'ghi', 'wind_speed', 'weekend', 'hour')
-    # features model will be trained on by default
+    # features model will be trained on by default.
+    # For all available features, check self.building_features_df columns
     building_features = (
         # numeric
         'sqft', 'bedrooms', 'stories', 'occupants', 'age2000',
@@ -853,11 +865,14 @@ class DataGen(tf.keras.utils.Sequence):
     # Building ids only, not combined with upgrades.
     # Not used, for debugging purpose only
     building_ids: np.array
-    # np.array() N x 2 with, the first column being a building id and the
-    # second - upgrade id
-    ids = None
+    ids = None  # ndarray of 2-tuples
     output_length: int = None
     dtype = None
+
+    # warious caches
+    building_features_df = None
+    weather_cache = None
+    output_cache = None
 
     def __init__(self, building_ids, upgrade_ids=None, weather_features=None,
                  building_features=None, consumption_groups=None,
@@ -894,16 +909,17 @@ class DataGen(tf.keras.utils.Sequence):
         """
         self.upgrades = tuple(upgrade_ids or self.upgrades)
         self.weather_features = list(weather_features or self.weather_features)
-        self.building_features = [
-            feature for feature in (building_features or self.building_features)
-            if feature != 'county'
-        ]
+        self.building_features = list(building_features or self.building_features)
         self.consumption_groups = list(consumption_groups or self.consumption_groups)
         self.time_granularity = time_granularity
         self.weather_files_cache = {}
         self.batch_size = batch_size
         self.building_ids = np.fromiter(building_ids, int)
-        self.ids = np.array(list(itertools.product(self.building_ids, self.upgrades)))
+        # 1D numpy array of tuples - to support np.random.shuffle and at the
+        # same time so that its slices could be used to slice pd.DataFrame with
+        # a 2-level multiindex
+        self.ids = np.fromiter(
+            itertools.product(self.building_ids, self.upgrades), tuple)
         self.metadata_builder = metadata_builder or BuildingMetadataBuilder()
         # The assumption is that training data (what this generator is used for)
         # is always one year of history. The final model, however, is supposed
@@ -919,19 +935,108 @@ class DataGen(tf.keras.utils.Sequence):
         }[time_granularity]
         self.dtype = dtype
 
+        self.init_building_cache()
+        self.init_weather_cache()
+        self.init_output_cache()
+
+    def init_building_cache(self):
+        """
+
+        Note: cache should still include counties for the buildings
+        """
+        df = self.metadata_builder.all().loc[self.building_ids]
+        df['upgrade_id'] = [self.upgrades]*len(df)
+        df = df.explode('upgrade_id')
+        self.building_features_df = pd.DataFrame([
+            apply_upgrades(row, row['upgrade_id']) for _, row in df.iterrows()
+        ])
+        self.building_features_df.index.name = 'building_id'
+        self.building_features_df.reset_index(inplace=True)
+        self.building_features_df.set_index(
+            ['building_id', 'upgrade_id'], inplace=True)
+
+    def batch_building_features(self, batch_ids):
+        """ Get building features for a batch
+        Args:
+            batch_ids: index of (building_id, upgrade_id) pairs for the batch
+        Returns:
+            Dict[str, np.ndarray]: a dictionary of building features
+        """
+        df = self.building_features_df.loc[batch_ids]
+        return {
+            feature: df[feature].values
+            for feature in self.building_features
+        }
+
+    def init_weather_cache(self):
+        # pre-populate weather features
+        # there are only O(K) weather stations, so we can cache them all in RAM
+        counties = self.building_features_df['county'].unique()
+        weather_cache = {}
+        logging.warning(
+            f"Building weather cache for {len(counties)} counties...")
+
+        def fill_cache(county_geoid):
+            weather_cache[county_geoid] = get_weather_file(county_geoid)
+
+        parallelize(fill_cache, counties)
+        logging.warning("...almost done")
+
+        self.weather_cache = {
+            feature: pd.DataFrame([
+                weather_cache[county][feature] for county in counties
+            ], index=counties)
+            for feature in self.weather_features
+        }
+        logging.warning("...Done")
+
+    def batch_weather_features(self, batch_ids):
+        counties = self.building_features_df.loc[batch_ids, 'county']
+        return {
+            feature: self.weather_cache[feature].loc[counties].values
+            for feature in self.weather_features
+        }
+
+    def init_output_cache(self):
+        # outputs. 1M samples (full ResStock x 3 upgrades x 4 output groups)
+        # takes ~12Gb RAM at daily granularity, which can be cached in RAM
+        # for hourly granularity, we'll need to subclass
+        ids = [
+            (building_id, upgrade_id, county)
+            for (building_id, upgrade_id), county
+            in self.building_features_df['county'].items()
+        ]
+        logging.warning(
+            f"Building output cache for {len(ids)} buildings...")
+        output_cache = {}
+
+        def fill_cache(batch_id):
+            output_cache[batch_id] = get_hourly_outputs(*batch_id)[
+                self.consumption_groups].resample(self.time_granularity).sum()
+
+        parallelize(fill_cache, ids)
+        logging.warning("...almost done")
+
+        self.output_cache = {
+            group: pd.DataFrame([
+                output_cache[batch_id][group] for batch_id in ids
+            ], index=self.building_features_df.index)
+            for group in self.consumption_groups
+        }
+        logging.warning("...Done")
+
+    def batch_output_features(self, batch_ids):
+        return {
+            group: self.output_cache[group].loc[batch_ids].values
+            for group in self.consumption_groups
+        }
+
     def __len__(self):
         # number of batches; last batch might be smaller
         return math.ceil(len(self.ids) / self.batch_size)
 
     def on_epoch_end(self):
         np.random.shuffle(self.ids)
-
-    def get_weather_data(self, county_geoid):
-        """ In-memory caching of weather data """
-        if county_geoid not in self.weather_files_cache:
-            df = get_weather_file(county_geoid)
-            self.weather_files_cache[county_geoid] = df[self.weather_features]
-        return self.weather_files_cache[county_geoid]
 
     def __getitem__(self, idx):
         """ Generate a batch #`idx`
@@ -940,46 +1045,9 @@ class DataGen(tf.keras.utils.Sequence):
         """
         batch_ids = self.ids[idx*self.batch_size:(idx+1)*self.batch_size]
         # for last batch, batch_size might be different from self.batch_size
-        batch_size = batch_ids.shape[0]
-        # TODO: will pd.DataFrame work instead?
-        features = {
-            building_feature: (np.empty((batch_size,),dtype=self.dtype))
-            for building_feature in self.building_features
-        }
-        features.update({
-            # TODO: implement support for arbitrary size training samples
-            weather_feature: np.empty((batch_size, HOURS_IN_A_YEAR, 1), dtype=self.dtype)
-            for weather_feature in self.weather_features
-        })
+        features = self.batch_building_features(batch_ids)
+        features.update(self.batch_weather_features(batch_ids))
 
-        outputs = {
-            consumption_group: np.empty((batch_size, self.output_length), dtype=self.dtype)
-            for consumption_group in self.consumption_groups
-        }
+        return features, self.batch_output_features(batch_ids)
 
-        for i, (building_id, upgrade_id) in enumerate(batch_ids):
-            building_data = apply_upgrades(
-                self.metadata_builder(building_id).copy(), upgrade_id)
-            county_geoid = building_data['county']
-            weather_data = self.get_weather_data(county_geoid)
-            for building_feature in self.building_features:
-                features[building_feature][i] = building_data[building_feature]
-            for weather_feature in self.weather_features:
-                features[weather_feature][i, :, 0] = weather_data[weather_feature]
 
-            outputs_data = get_hourly_outputs(
-                building_id, upgrade_id, county_geoid
-            )[self.consumption_groups].resample(self.time_granularity).sum()
-            for consumption_group in self.consumption_groups:
-                outputs[consumption_group][i] = outputs_data[consumption_group]
-
-        return features, outputs
-
-    def cache_warmup(self, num_threads=None):
-        from multiprocessing.pool import ThreadPool
-        # limit to 50 threads to avoid saturation
-        num_threads = num_threads or min(os.cpu_count()*10, 50)
-        tp = ThreadPool(num_threads)
-        tp.imap_unordered(lambda i: self[i] and None, range(len(self)))
-        tp.close()
-        tp.join()
