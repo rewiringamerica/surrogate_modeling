@@ -526,7 +526,7 @@ def get_state_code_from_county_geoid(county_geoid):
     if state_2num_code not in STATE_2NUM_CODE_TO_2LETTER:
         raise ValueError(
             f"Invalid state code (`{state_2num_code}`) in county geoid: "
-            f"`{county_geoid}`. Values between `00` and `50` expected"
+            f"`{county_geoid}`. Values between `00` and `56` expected"
         )
     return STATE_2NUM_CODE_TO_2LETTER[state_2num_code]
 
