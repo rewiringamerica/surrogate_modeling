@@ -872,7 +872,6 @@ class DataGen(tf.keras.utils.Sequence):
     # to predict real life usage well
     consumption_groups = ('heating', 'cooling',)
     time_granularity = None
-    weather_files_cache: Dict[str, np.array]
     # Building ids only, not combined with upgrades.
     # Not used, for debugging purpose only
     building_ids: np.array
@@ -923,7 +922,6 @@ class DataGen(tf.keras.utils.Sequence):
         self.building_features = list(building_features or self.building_features)
         self.consumption_groups = list(consumption_groups or self.consumption_groups)
         self.time_granularity = time_granularity
-        self.weather_files_cache = {}
         self.batch_size = batch_size
         self.building_ids = np.fromiter(building_ids, int)
         # 1D numpy array of tuples - to support np.random.shuffle and at the
