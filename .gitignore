@@ -76,3 +76,6 @@ target/
 # archive files
 *gz
 *.zip
+
+#personal exploratory folder
+exploratory/private
