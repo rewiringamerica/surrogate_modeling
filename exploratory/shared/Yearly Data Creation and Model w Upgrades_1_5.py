@@ -496,4 +496,4 @@ np.corrcoef(actuals_and_preds_upgrade2["Actual"], actuals_and_preds_upgrade2["Pr
 
 # COMMAND ----------
 
-
+## appendix
