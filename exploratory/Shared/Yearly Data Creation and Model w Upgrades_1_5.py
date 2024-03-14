@@ -69,7 +69,7 @@ resstock = (resstock.withColumn(
               'out_fuel_oil_heating_total', sum(resstock[col] for col in heating_fuel_oil)).withColumn('out_propane_heating_total', sum(resstock[col] for col in heating_propane))
           ) 
 
-drop_list = heating_electric + cooling_electric + heating_fuel_oil + heating_nat_gas +heating_propane
+drop_list = heating_electric + cooling_electric + heating_fuel_oil + heating_nat_gas + heating_propane
 resstock = resstock.drop(*drop_list)
 
 # COMMAND ----------
@@ -161,6 +161,10 @@ weather_full_yearly = (
 
 # COMMAND ----------
 
+weather_full_yearly.toPandas()
+
+# COMMAND ----------
+
 resstock_yearly_with_metadata_weather = (
     resstock_yearly_with_metadata
     .join(broadcast(weather_full_yearly), on = ['county_geoid'])
@@ -189,8 +193,8 @@ resstock_yearly_with_metadata_weather = (resstock_yearly_with_metadata_weather.f
 
 
 
-# resstock_yearly_with_metadata_weather = (resstock_yearly_with_metadata_weather.filter(
-#     (col("upgrade_id") == 2)))
+resstock_yearly_with_metadata_weather = (resstock_yearly_with_metadata_weather.filter(
+    (col("upgrade_id") == 0)))
 
 resstock_yearly_with_metadata_weather_df = resstock_yearly_with_metadata_weather.toPandas()
 
@@ -243,6 +247,7 @@ def convert_insulation(value):
 
 # lets start by extracting the cooling efficiency. For heat pumps this comes from the SEER column
 data = resstock_yearly_with_metadata_weather_df.copy()
+#data = data.sample(n=1000)
 mask = data["in_hvac_cooling_efficiency"].isnull() & data["in_hvac_seer_rating"].notnull()
 data.loc[mask, "in_hvac_cooling_efficiency"] = "SEER " + " " + data.loc[mask, "in_hvac_seer_rating"].astype(str)
 
@@ -269,7 +274,7 @@ data['upgrade_id'] = data['upgrade_id'].astype(str)
 
 
 ## let's use only one output variable for now
-target_variable = 'sum_out_electricity_heating_total'
+target_variable = 'sum_out_electricity_cooling_total'
 
 additional = ['in_insulation_ceiling', 'in_insulation_floor', 'in_insulation_foundation_wall', 'in_insulation_rim_joist', 'in_insulation_roof', 'in_insulation_slab',
               'in_insulation_wall', 'in_cooling_setpoint', 'in_heating_setpoint', 'in_cooling_setpoint_has_offset',
@@ -289,7 +294,7 @@ covariates = ['in_occupants', 'temp_high', 'temp_low', 'temp_avg',
 
 # Separate features and labels
 
-data = data[data['in_heating_fuel'] == 'Electricity']
+#data = data[data['in_heating_fuel'] == 'Electricity']
 X = data[covariates]
 y = data[target_variable]
 # Separate numeric and categorical features
@@ -332,23 +337,27 @@ y_val = tf.convert_to_tensor(y_val.values)
 
 
 # Define a custom callback class
+
 class LossHistory(tf.keras.callbacks.Callback):
     def on_train_begin(self, logs=None):
-        # Initialize lists to store loss values
+        # This function is called at the start of training.
+        # Initialize lists to store the losses
         self.train_losses = []
         self.val_losses = []
 
     def on_epoch_end(self, epoch, logs=None):
-        # Append losses to corresponding lists
-        self.train_losses.append(logs['loss'])
-        self.val_losses.append(logs['val_loss'])
+        # Logs is a dictionary. We save the losses at the end of each epoch.
+        self.train_losses.append(logs.get('loss'))
+        self.val_losses.append(logs.get('val_loss'))  # If you have validation data
 
     def on_train_end(self, logs=None):
-        # Plot train and validation loss
-        epochs = range(len(self.train_losses))
-        plt.plot(epochs, self.train_losses, label='Train Loss')
-        plt.plot(epochs, self.val_losses, label='Validation Loss')
-        plt.xlabel('Epoch')
+        # This function is called at the end of training.
+        # Plot the losses.
+        plt.figure()
+        plt.plot(self.train_losses, label='Training loss')
+        plt.plot(self.val_losses, label='Validation loss')
+        plt.title('Training and Validation Loss')
+        plt.xlabel('Epochs')
         plt.ylabel('Loss')
         plt.legend()
         plt.show()
@@ -388,14 +397,14 @@ model = Sequential(
 model.compile(loss=MeanAbsoluteError(), optimizer="adam", metrics=["mae"])
 
 # Early stopping callback
-early_stopping = EarlyStopping(monitor="val_loss", patience=3)
+early_stopping = EarlyStopping(monitor="val_loss", patience=30)
 # Add the custom callback to the training process
 history = LossHistory()
 # Train the model with early stopping
-model.fit(
+h = model.fit(
     X_train,
     y_train,
-    epochs=40,
+    epochs=60,
     verbose = 2,
     batch_size=256,
     validation_data=(X_val, y_val),
@@ -417,20 +426,33 @@ model.fit(
 
 # COMMAND ----------
 
-predictions = model.predict(X)
+# Access the training loss for each epoch
+training_loss = h.history['loss']
+
+# Access the validation loss for each epoch, if validation_data was provided
+validation_loss = h.history['val_loss']
+
+# Print the loss
+for i, (tr_loss, val_loss) in enumerate(zip(training_loss, validation_loss), start=1):
+    print(f"Epoch {i}, Training loss: {tr_loss}, Validation loss: {val_loss}")
+
+# COMMAND ----------
+
+predictions = model.predict(X_train)
+loss, mae = model.evaluate(X_train, y_train, batch_size = 256)
 
 # COMMAND ----------
 
 
 y = data[target_variable]
-comparison = pd.DataFrame({"Predicted": np.hstack(predictions), "Actual": y})
+comparison = pd.DataFrame({"Predicted": np.hstack(predictions), "Actual": y_train})
 comparison['abs_error'] = np.abs(comparison["Predicted"] - comparison["Actual"])
 comparison['error'] = comparison["Predicted"] - comparison["Actual"]
-actuals_and_preds_upgrade2 = pd.concat([data, comparison], axis=1)
-comparison.index = data.index
+actuals_and_preds_upgrade2 = pd.concat([X_train_df, comparison], axis=1)
+comparison.index = X_train_df.index
 
 ## Group by any characteristic and view the error
-grouping_variable = ['upgrade_id']
+grouping_variable = ['in_bedrooms']
 
 
 
@@ -451,6 +473,10 @@ results = {"average_error": average_error, "average_abs_error": average_abs_erro
 results = pd.DataFrame(results)
 results
 
+
+# COMMAND ----------
+
+comparison.mean()
 
 # COMMAND ----------
 

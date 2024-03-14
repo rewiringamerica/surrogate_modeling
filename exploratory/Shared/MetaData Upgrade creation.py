@@ -283,40 +283,6 @@ metadata_w_upgrades
 
 # COMMAND ----------
 
-# Define BTU_PER_WH if not already defined
-BTU_PER_WH = 3.412  # Example value, adjust as necessary
-
-# Function to convert HSPF to percentage or extract percentage directly
-def convert_heating_efficiency(value):
-    if 'HSPF' in value:
-        # Extract the numeric value and convert HSPF to percentage
-        hspf_value = float(re.search(r'(\d+\.?\d+) HSPF', value).group(1))
-        return hspf_value * 100 / BTU_PER_WH
-    else:
-        # Extract percentage directly if present
-        match = re.search(r'(\d+\.?\d+)%', value)
-        return float(match.group(1)) if match else None
-
-# Extract SEER, HSPF, and AFUE ratings from 'in_hvac_heating_efficiency'
-def extract_seer(value):
-    parts = value.split(', ')
-    if len(parts) > 1 and 'SEER' in parts[1]:
-        seer_str = value.split(', ')[1]  # Extract the SEER substring
-        seer_rating = seer_str.split(' ')[1]  # Extract the SEER rating value
-        return float(seer_rating)
-    return None
-
-def extract_hspf(value):
-    parts = value.split(', ')
-    if len(parts) > 2 and 'HSPF' in parts[2]:
-        return float(parts[2].split(' HSPF')[0])
-    return None
-
-def extract_afue(value):
-    parts = value.split(', ')
-    if len(parts) > 1 and '%' in parts[1]:
-        return float(parts[1].split('%')[0])
-    return None
 
 
 # Apply the function to the column

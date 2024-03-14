@@ -1,8 +1,0 @@
-numpy==1.26.3
-pandas==2.1.4
-pyarrow
-tensorflow==2.15.0.post1
-
-# Optional requirements:
-# fastparquet  # alternative parquet engine
-# gcsfs # Reading files from Google Cloud
