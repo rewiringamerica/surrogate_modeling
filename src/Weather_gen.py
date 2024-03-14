@@ -4,7 +4,6 @@ import pyspark.sql.functions as F
 from pyspark.sql.functions import col
 from pyspark.sql.functions import avg
 spark.conf.set("spark.sql.shuffle.partitions", 1536)
-from src import util
 
 
 # COMMAND ----------
@@ -115,13 +114,14 @@ aggregation_level = 'yearly'
 weather_data_full = WeatherAggregation(weather_data = weather_data , weather_metadata = weather_metadata, aggregation_level = aggregation_level)
 
 table_name = 'weather_data_full_' + aggregation_level
+database_name = 'building_model'
 
-table_data_fpath, table_name = util.get_table_fpath_name(table_name=table_name, database_name = 'building_model')
+path = table_name + '.' + database_name
 
 (weather_data_full.write.saveAsTable(
   table_name,
   format='delta',
   mode='overwrite', 
   overwriteSchema = True,
-  path=table_data_fpath)
+  path=path)
   )
