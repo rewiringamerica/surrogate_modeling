@@ -250,28 +250,34 @@ metadata_upgrade4 = apply_upgrade_04(metadata_upgrade4)
 
 ## Upgrade 05
 
+
 metadata_upgrade5 = metadata.copy()
 
-def apply_upgrade_05(metadata):
-    metadata['upgrade_id'] = 5
-    apply_logic_asHP = (metadata["in_hvac_cooling_type"] == 'Heat Pump')
-    
-    apply_logic_else = (metadata["in_hvac_cooling_type"] != 'Heat Pump')
-    
-    metadata.loc[apply_logic_asHP, "in_hvac_backup_heating_efficiency_nominal_percent"] = "100%"
-    metadata.loc[apply_logic_asHP, "in_hvac_heating_efficiency"] = "ASHP, SEER 15, 9.0 HSPF"
 
-    metadata.loc[apply_logic_else, "in_hvac_backup_heating_efficiency_nominal_percent"] = metadata.loc[apply_logic_else, "in_hvac_heating_efficiency_nominal_percent"]
-    metadata.loc[apply_logic_else, "in_hvac_heating_efficiency"] = "ASHP, SEER 15, 9.0 HSPF"
-    
-    metadata.loc[apply_logic_asHP | apply_logic_else, "eligible_for_upgrade"] = 1
-    metadata.loc[apply_logic_asHP | apply_logic_else, "in_hvac_cooling_type"] = 'Heat Pump'
-    metadata.loc[apply_logic_asHP | apply_logic_else, "in_hvac_cooling_partial_space_conditioning"] = '100%'
-    metadata['in_heating_fuel'] = "Electricity"
-    metadata['in_backup_heating_fuel'] = metadata['in_heating_fuel']
-    return metadata
+def apply_upgrade_05(df):
+   df['upgrade_id'] = 5
+   apply_logic_asHP = (df["in_hvac_cooling_type"] == 'Heat Pump')
+  
+   apply_logic_else = (df["in_hvac_cooling_type"] != 'Heat Pump')
+  
+   df.loc[apply_logic_asHP, "in_hvac_backup_heating_efficiency_nominal_percent"] = "100%"
+   df.loc[apply_logic_asHP, "in_hvac_heating_efficiency"] = "ASHP, SEER 15, 9.0 HSPF"
+
+
+   df.loc[apply_logic_else, "in_hvac_backup_heating_efficiency_nominal_percent"] = df.loc[apply_logic_else, "in_hvac_heating_efficiency_nominal_percent"]
+   df.loc[apply_logic_else, "in_hvac_heating_efficiency"] = "ASHP, SEER 15, 9.0 HSPF"
+  
+   df.loc[apply_logic_asHP | apply_logic_else, "eligible_for_upgrade"] = 1
+   df.loc[apply_logic_asHP | apply_logic_else, "in_hvac_cooling_type"] = 'Heat Pump'
+   df.loc[apply_logic_asHP | apply_logic_else, "in_hvac_cooling_partial_space_conditioning"] = '100%'
+   df['in_heating_fuel'] = "Electricity"
+   df['in_backup_heating_fuel'] = df['in_heating_fuel']
+   return df
+
 
 metadata_upgrade5 = apply_upgrade_05(metadata_upgrade5)
+
+
 
 # COMMAND ----------
 
