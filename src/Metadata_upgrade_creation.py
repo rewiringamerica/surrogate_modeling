@@ -213,9 +213,6 @@ def apply_upgrade_04(df):
 ## Upgrade 05
 
 
-metadata_upgrade5 = metadata.copy()
-
-
 def apply_upgrade_05(df):
    df['upgrade_id'] = 5
    apply_logic_asHP = (df["in_hvac_cooling_type"] == 'Heat Pump')
@@ -237,9 +234,6 @@ def apply_upgrade_05(df):
    return df
 
 
-metadata_upgrade5 = apply_upgrade_05(metadata_upgrade5)
-
-
 
 # COMMAND ----------
 
@@ -257,6 +251,14 @@ metadata_w_upgrades = apply_all_upgrades(metadata)
 
 # COMMAND ----------
 
+## preprocessing of features
+
+metadata_w_upgrades['in_vintage'] = metadata_w_upgrades['in_vintage'].apply(vintage2age2010)
+
+metadata_w_upgrades['in_ducts_leakage'] = data['in_ducts_leakage'].fillna(0)
+
+metadata_w_upgrades['in_geometry_stories'] = data['in_geometry_stories'].astype(float)
+
 metadata_w_upgrades['in_hvac_heating_efficiency_nominal_percent'] = metadata_w_upgrades['in_hvac_heating_efficiency'].apply(convert_heating_efficiency)
 
 metadata_w_upgrades['in_hvac_seer_rating'] = metadata_w_upgrades['in_hvac_heating_efficiency'].apply(extract_seer)
@@ -264,3 +266,26 @@ metadata_w_upgrades['in_hvac_seer_rating'] = metadata_w_upgrades['in_hvac_heatin
 metadata_w_upgrades['in_hvac_hspf_rating'] = metadata_w_upgrades['in_hvac_heating_efficiency'].apply(extract_hspf)
 
 metadata_w_upgrades['in_hvac_afue_rating'] = metadata_w_upgrades['in_hvac_heating_efficiency'].apply(extract_afue)
+
+
+# COMMAND ----------
+
+## obtain cooling efficiency
+met_conditions =  metadata["in_hvac_cooling_type"].str.contains("Heat Pump", na=False)
+metadata.loc[met_conditions, "in_hvac_cooling_efficiency"] = "SEER " + " " + metadata.loc[mask, "in_hvac_seer_rating"].astype(str)
+
+metadata_w_upgrades["in_hvac_cooling_efficiency"] = metadata_w_upgrades["in_hvac_cooling_efficiency"].apply(extract_cooling_efficiency)
+
+
+# COMMAND ----------
+
+## Convert to SparkDF and write to directory
+
+table_name = 'metadata_w_upgrades1_5'
+database_name = 'building_model'
+
+path = table_name + '.' + database_name
+
+metadata_w_upgrades = spark.createDataFrame(metadata_w_upgrades)
+
+metadata_w_upgrades.write.saveAsTable(table_name, mode='overwrite', path = path)
