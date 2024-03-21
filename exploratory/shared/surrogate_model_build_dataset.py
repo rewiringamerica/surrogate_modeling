@@ -134,16 +134,10 @@ def get_weather_data():
     # alternatively could iterate thru just unique files using
     # `for weather_city, county in county_weather_station_lookup.collect()` and then unioning, but that seems a lot slower..
     weather_data = (
-        spark.read.csv(
-            RESSTOCK_PATH + "weather/state=*/*_TMY3.csv", inferSchema=True, header=True
-        )  # read in all county weather files
-        .withColumn(
-            "county_gisjoin", F.element_at(F.split(F.input_file_name(), "/|_"), -2)
-        )  # get county id from filename
-        .join(
-            county_weather_station_lookup, on="county_gisjoin", how="inner"
-        )  # subset to unique weather files
-        .withColumnsRenamed(  # rename to shorter colnames
+        spark.read.csv(RESSTOCK_PATH + "weather/state=*/*_TMY3.csv", inferSchema=True, header=True) # read in all county weather files
+        .withColumn("county_gisjoin", F.element_at(F.split(F.input_file_name(), "/|_"), -2))  # get county id from filename
+        .join(county_weather_station_lookup, on="county_gisjoin", how="inner")  # subset to unique weather files
+        .withColumnsRenamed( # rename to shorter colnames
             {
                 "Dry Bulb Temperature [°C]": "temp_air",
                 "Relative Humidity [%]": "relative_humidity",
@@ -154,15 +148,9 @@ def get_weather_data():
                 "Diffuse Horizontal Radiation [W/m2]": "diffuse_horizontal_illum",
             }
         )
-        .withColumn(
-            "date_time", F.expr("to_timestamp(date_time)")
-        )  # Add weekend column
-        .withColumn(
-            "weekend", F.expr("CASE WHEN dayofweek(date_time) >= 6 THEN 1 ELSE 0 END")
-        )
-        .withColumn(
-            "datetime_formatted", F.date_format(F.col("date_time"), "MM-dd-HH:00")
-        )  # Format date_time column to month-day-hour
+        .withColumn("date_time", F.expr("to_timestamp(date_time)"))  # Add weekend column
+        .withColumn("weekend", F.expr("CASE WHEN dayofweek(date_time) >= 6 THEN 1 ELSE 0 END"))
+        .withColumn("datetime_formatted", F.date_format(F.col("date_time"), "MM-dd-HH:00")) # Format date_time column to month-day-hour 
         .drop("county_gisjoin", "date_time")
     )
     return weather_data
@@ -205,7 +193,3 @@ annual_consumption.write.saveAsTable(
     table_name, mode="overwrite", partitionBy=["upgrade_id"]
 )
 spark.sql(f"OPTIMIZE {table_name}")
-
-# COMMAND ----------
-
-
