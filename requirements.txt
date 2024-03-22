@@ -1,6 +1,6 @@
 numpy==1.26.3
 pandas==2.1.4
-pyarrow
+pyarrow==13.0.0
 tensorflow==2.15.0.post1
 
 # Optional requirements:
