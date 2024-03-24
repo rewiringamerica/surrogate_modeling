@@ -13,11 +13,21 @@ spark.conf.set("spark.sql.shuffle.partitions", 1536)
 
 # COMMAND ----------
 
-# Resstock metadata data loading and preprocessing
+# Resstock metadata loading and preprocessing
 metadata = spark.table('building_model.resstock_metadata')
 
 eligible_households = ['Single-Family Detached', 'Single-Family Attached']
 metadata = metadata.filter(col("in_geometry_building_type_acs").isin(eligible_households))
+
+
+## remove ineligible fuels like None and other fuel since Resstock doesn't model this
+ineligible_fuels = ['Other Fuel', 'None']
+metadata = (metadata.filter(~col("in_heating_fuel").isin(ineligible_fuels)))
+
+## also remove shared cooling systems and shared heating systems (small number still left after previous filter)
+metadata = (metadata.filter(col("in_hvac_cooling_type") != 'Shared Cooling'))
+metadata = (metadata.filter(col("in_hvac_heating_efficiency") != 'Shared Heating'))
+
 drop_list = ['in_census_division', 'in_ahs_region', 'puma_geoid', 'in_weather_file_latitude', 'in_weather_file_longitude', 'in_sqft_bin', 'in_occupants_bin', 'in_income', 'in_geometry_floor_area_bin']
 metadata = metadata.drop(*drop_list)
 #convert to pandas dataframe
