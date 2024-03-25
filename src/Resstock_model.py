@@ -269,23 +269,18 @@ end_to_end_model.save('my_model_with_preprocessing')
 
 # COMMAND ----------
 
-# example using hyperparameter optimization w/parallelism and MLFlow
+# example using hyperparameter optimization w/parallelism and MLFlow. We use the HyperOpt package.
 
 # COMMAND ----------
 
 
-# Assuming 'data', 'covariates', and 'target_variable' are predefined
+# Assuming 'data', 'covariates', and 'target_variable' are predefined. We will also be using the preprocessing and 
+# data prepare dataset functionality from earlier to generate our batches. 
 X = data[covariates]
 y = data[target_variable]
 
 # Split the original DataFrame into train and validation sets
 X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.2, random_state=40)
-
-# Define the function to preprocess inputs (Assuming defined elsewhere)
-def preprocess(inputs):
-    # Dummy preprocessing for illustration
-    # Replace this with your actual preprocessing code
-    return inputs
 
 # Build the model based on hyperparameters from Hyperopt
 def build_model(params):
@@ -318,7 +313,7 @@ def build_model(params):
 # Define the objective function for Hyperopt
 def objective(params):
     model = build_model(params)
-    early_stop = tf.keras.callbacks.EarlyStopping(monitor='val_loss', patience=5)
+    early_stop = tf.keras.callbacks.EarlyStopping(monitor='val_loss', patience=5, restore_best_weights=True)
     history = model.fit(train_ds, validation_data=val_ds, epochs=50, callbacks=[early_stop], verbose=0)
     best_val_loss = min(history.history['val_loss'])
     return {'loss': best_val_loss, 'status': STATUS_OK}
@@ -334,8 +329,21 @@ space = {
 
 # Run the optimization
 max_evals = 50
-trials = SparkTrials(parallelism=5)
-best = fmin(objective, space=space, algo=tpe.suggest, max_evals=max_evals, trials=trials)
-
+with mlflow.start_run(tags={"mlflow.runName": "Best Model Run"}):
+    trials = SparkTrials(parallelism=5)
+    best_hyperparams = fmin(objective, space=space, algo=tpe.suggest, max_evals=max_evals, trials=trials)
+    mlflow.log_params(best_hyperparams)
+    
+    # Rebuild and train the best model based on the best hyperparameters
+    best_hyperparams['num_layers'] = int(best_hyperparams['num_layers'])
+    best_hyperparams['units'] = int(best_hyperparams['units'])
+    best_model = build_model(best_hyperparams)
+        
+    # Log the best model to MLflow
+    mlflow.keras.log_model(best_model, "best_model")
 print('Best hyperparameters:', best)
+
+
+# COMMAND ----------
+
 
