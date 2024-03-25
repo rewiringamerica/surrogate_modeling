@@ -15,12 +15,13 @@ import pandas as pd
 import numpy as np
 from sklearn.preprocessing import OneHotEncoder
 import tensorflow as tf
-from tensorflow.keras.layers import Dense, BatchNormalization, InputLayer
+from tensorflow.keras.layers import Dense, BatchNormalization, InputLayer, Input
 from tensorflow.keras.callbacks import EarlyStopping
 from tensorflow.keras.layers import Normalization, StringLookup, CategoryEncoding
+from hyperopt import hp, fmin, tpe, Trials, STATUS_OK, SparkTrials
 
 
-from tensorflow.keras.models import Sequential
+from tensorflow.keras.models import Sequential, Model
 from tensorflow.keras.layers import Dense
 from tensorflow.keras.losses import MeanAbsoluteError
 import itertools
@@ -41,10 +42,6 @@ full_data_path = ''
 resstock_yearly_with_metadata_weather = spark.table(full_data_path)
 resstock_yearly_with_metadata_weather_df = resstock_yearly_with_metadata_weather.toPandas()
 data = resstock_yearly_with_metadata_weather_df.copy()
-
-
-# COMMAND ----------
-
 
 
 # COMMAND ----------
@@ -107,7 +104,9 @@ def preprocess(inputs):
         processed_inputs[feature] = one_hot_encoders[feature](inputs[feature])
     return processed_inputs
 
-
+inputs = {feature: Input(shape=(1,), name=feature, dtype='string' if feature in cat_features else 'float32') 
+          for feature in num_features + cat_features}
+preprocessed_inputs = preprocess(inputs)
 
 
 
@@ -128,6 +127,50 @@ def prepare_dataset(X, y, shuffle=False, batch_size=batch_size):
 # Prepare training and validation datasets
 train_ds = prepare_dataset(X_train, y_train, shuffle=True, batch_size=batch_size)
 val_ds = prepare_dataset(X_val, y_val, batch_size=batch_size)
+
+# COMMAND ----------
+
+
+# Define the model architecture
+NN_model = Sequential(
+    [
+        # Add an input layer that matches the shape of preprocessed data
+        InputLayer(input_shape=(sum([normalizers[f].axis_size for f in num_features]) +
+                                             sum([one_hot_encoders[f].layers[1].output_shape[-1] for f in cat_features]),)),
+        Dense(256, activation="relu"),
+        # Batch normalization layer
+        BatchNormalization(),
+        # Hidden layers
+        Dense(128, activation="relu"),
+        BatchNormalization(),
+        Dense(64, activation="relu"),
+        BatchNormalization(),
+        Dense(32, activation="relu"),
+        BatchNormalization(),
+        Dense(16, activation="relu"),
+        BatchNormalization(),
+        Dense(16, activation="relu"),
+        BatchNormalization(),       
+        Dense(16, activation="relu"),
+        BatchNormalization(),       
+        Dense(16, activation="relu"),
+        BatchNormalization(),                                                
+        #Output layer
+        Dense(1, activation="linear"),
+    ]
+)
+
+output = NN_model(preprocessed_inputs)
+end_to_end_model = Model(inputs, output)
+
+# Configure the model training
+end_to_end_model.compile(optimizer='adam', loss='mae')  
+
+
+
+# COMMAND ----------
+
+
 
 
 # COMMAND ----------
@@ -165,46 +208,15 @@ class LossHistory(tf.keras.callbacks.Callback):
 # COMMAND ----------
 
 
-# Define the model architecture
-model = Sequential(
-    [
-        # Add an input layer that matches the shape of preprocessed data
-        InputLayer(input_shape=(len(num_features) + len(cat_features) * len(one_hot_encoders),)),
-        Dense(256, activation="relu"),
-        # Batch normalization layer
-        BatchNormalization(),
-        # Hidden layers
-        Dense(128, activation="relu"),
-        BatchNormalization(),
-        Dense(64, activation="relu"),
-        BatchNormalization(),
-        Dense(32, activation="relu"),
-        BatchNormalization(),
-        Dense(16, activation="relu"),
-        BatchNormalization(),
-        Dense(16, activation="relu"),
-        BatchNormalization(),       
-        Dense(16, activation="relu"),
-        BatchNormalization(),       
-        Dense(16, activation="relu"),
-        BatchNormalization(),                                                
-        #Output layer
-        Dense(1, activation="linear"),
-    ]
-)
-
-# Configure the model training
-model.compile(optimizer='adam', loss='mae')  
-
-
 
 # Early stopping callback
 early_stopping = EarlyStopping(monitor="val_loss", patience=5)
 # Add the custom callback to the training process
 # We will fit using train_ds and val_ds which will conduct preprocessing on batches
 history = LossHistory()
+
 # Train the model with early stopping
-h = model.fit(
+h = end_to_end_model.fit(
     train_ds,
     epochs=50,
     verbose = 2,
@@ -215,10 +227,115 @@ h = model.fit(
 
 # COMMAND ----------
 
-predictions = model.predict(X_train)
+predictions = end_to_end_model.predict(X_val)
 # get correct loss on training data.
-loss, mae = model.evaluate(X_train, y_train, batch_size = 256)
+mae = end_to_end_model.evaluate(train_ds, batch_size = 256)
 
 # COMMAND ----------
 
+## view error by grouping variable
+
+y = y_val
+comparison = pd.DataFrame({"Predicted": np.hstack(predictions), "Actual": y_val})
+comparison['abs_error'] = np.abs(comparison["Predicted"] - comparison["Actual"])
+comparison['error'] = comparison["Predicted"] - comparison["Actual"]
+actuals_and_preds = pd.concat([X_val, comparison], axis=1)
+comparison.index = X_val.index
+
+## Group by any characteristic and view the error
+grouping_variable = ['upgrade_id']
+average_error = actuals_and_preds.groupby(grouping_variable)["error"].mean()
+average_value = actuals_and_preds.groupby(grouping_variable)["Actual"].mean()
+average_abs_error = actuals_and_preds.groupby(grouping_variable)["abs_error"].mean()
+average_prediction= actuals_and_preds.groupby(grouping_variable)["Predicted"].mean()
+
+WMAPE = average_abs_error/average_value
+WMPE = average_error/average_value
+
+# Create a dictionary with arrays as values and names as keys
+results = {"average_error": average_error, "average_abs_error": average_abs_error, "average_value": average_value, "average_prediction": average_prediction,
+        "WMAPE": WMAPE, "WMPE": WMPE}
+
+# Create a DataFrame from the dictionary
+results = pd.DataFrame(results)
+results
+
+
+# COMMAND ----------
+
+# Save the entire end-to-end model, including preprocessing layers
+end_to_end_model.save('my_model_with_preprocessing')
+
+
+# COMMAND ----------
+
+# example using hyperparameter optimization w/parallelism and MLFlow
+
+# COMMAND ----------
+
+
+# Assuming 'data', 'covariates', and 'target_variable' are predefined
+X = data[covariates]
+y = data[target_variable]
+
+# Split the original DataFrame into train and validation sets
+X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.2, random_state=40)
+
+# Define the function to preprocess inputs (Assuming defined elsewhere)
+def preprocess(inputs):
+    # Dummy preprocessing for illustration
+    # Replace this with your actual preprocessing code
+    return inputs
+
+# Build the model based on hyperparameters from Hyperopt
+def build_model(params):
+    inputs = {feature: Input(shape=(1,), name=feature, dtype='string' if feature in cat_features else 'float32') 
+              for feature in num_features + cat_features}
+    preprocessed_inputs = preprocess(inputs)
+
+    model = Sequential()
+    model.add(InputLayer(input_shape=(sum([normalizers[f].axis_size for f in num_features]) +
+                                      sum([one_hot_encoders[f].layers[1].output_shape[-1] for f in cat_features]),)))
+
+    for i in range(int(params['num_layers'])):
+        model.add(Dense(units=int(params['units']), activation='relu'))
+        if params['use_batch_norm']:
+            model.add(BatchNormalization())
+
+    model.add(Dense(1))  # Assume it's a regression task; for classification, adjust accordingly
+
+    lr_schedule = tf.keras.optimizers.schedules.ExponentialDecay(
+        initial_learning_rate=params['learning_rate'],
+        decay_steps=10000,
+        decay_rate=params['decay_rate'],
+        staircase=True)
+    
+    model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=lr_schedule), loss='mse')
+    
+    end_to_end_model = Model(inputs, model(preprocessed_inputs))
+    return end_to_end_model
+
+# Define the objective function for Hyperopt
+def objective(params):
+    model = build_model(params)
+    early_stop = tf.keras.callbacks.EarlyStopping(monitor='val_loss', patience=5)
+    history = model.fit(train_ds, validation_data=val_ds, epochs=50, callbacks=[early_stop], verbose=0)
+    best_val_loss = min(history.history['val_loss'])
+    return {'loss': best_val_loss, 'status': STATUS_OK}
+
+# Define the hyperparameter space
+space = {
+    'num_layers': hp.quniform('num_layers', 4, 10, 1),
+    'units': hp.quniform('units', 32, 512, 32),
+    'learning_rate': hp.loguniform('learning_rate', np.log(1e-4), np.log(1e-2)),
+    'decay_rate': hp.uniform('decay_rate', 0.8, 0.99),
+    'use_batch_norm': hp.choice('use_batch_norm', [False, True])
+}
+
+# Run the optimization
+max_evals = 50
+trials = SparkTrials(parallelism=5)
+best = fmin(objective, space=space, algo=tpe.suggest, max_evals=max_evals, trials=trials)
+
+print('Best hyperparameters:', best)
 
