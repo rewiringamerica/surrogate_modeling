@@ -133,23 +133,9 @@ val_ds = prepare_dataset(X_val, y_val, batch_size=batch_size)
 # COMMAND ----------
 
 
-model = tf.keras.Sequential([
-    # Add an input layer that matches the shape of preprocessed data
-    tf.keras.layers.InputLayer(input_shape=(len(num_features) + len(cat_features) * len(one_hot_encoders),)),
-    # Add more layers as needed
-    tf.keras.layers.Dense(64, activation='relu'),
-    tf.keras.layers.Dense(1)  # Adjust based on your output
-])
-
-model.compile(optimizer='adam', loss='mae')  # Adjust based on your problem
-model.fit(train_ds, validation_data=val_ds, epochs=10)  # Adjust epochs as needed
-
-# COMMAND ----------
-
-
 # Define a custom callback class
 # this will plot the loss history over epochs.
-# NOTE: if we include batch normalizations the train_loss on this plot will not be accurate but val loss will be
+# NOTE: if we include batch normalizations the train_loss on this plot will not be accurate but val loss will still be accurate.
 class LossHistory(tf.keras.callbacks.Callback):
     def on_train_begin(self, logs=None):
         # This function is called at the start of training.
@@ -173,6 +159,10 @@ class LossHistory(tf.keras.callbacks.Callback):
         plt.ylabel('Loss')
         plt.legend()
         plt.show()
+
+
+
+# COMMAND ----------
 
 
 # Define the model architecture
@@ -204,19 +194,19 @@ model = Sequential(
 )
 
 # Configure the model training
-
 model.compile(optimizer='adam', loss='mae')  
-# We will call using train_ds and val_ds which will conduct preprocessing on batches
-model.fit(train_ds, validation_data=val_ds, epochs=10)  # Adjust epochs as needed
+
+
 
 # Early stopping callback
-early_stopping = EarlyStopping(monitor="val_loss", patience=30)
+early_stopping = EarlyStopping(monitor="val_loss", patience=5)
 # Add the custom callback to the training process
+# We will fit using train_ds and val_ds which will conduct preprocessing on batches
 history = LossHistory()
 # Train the model with early stopping
 h = model.fit(
     train_ds,
-    epochs=60,
+    epochs=50,
     verbose = 2,
     validation_data=val_ds,
     callbacks=[early_stopping, history],
