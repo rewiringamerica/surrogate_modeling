@@ -3,6 +3,10 @@
 
 # COMMAND ----------
 
+import datagen
+
+# COMMAND ----------
+
 import os
 import pyspark.sql.functions as F
 import re
@@ -72,7 +76,7 @@ def clean_resstock_columns(
     return df
 
 
-def get_building_metadata():
+def raw_buildings_metadata():
     """
     Placeholder for pulling and light preprocessing of building metadata (may add type conversions). 
     """
@@ -95,7 +99,7 @@ def get_building_metadata():
     return building_metadata_cleaned
 
 
-def get_annual_outputs():
+def raw_annual_outputs():
     """
     Temp placeholder function for pulling and light preprocessing of annual energy consumption outputs
     Will replace with hourly (i.e., get_hourly_outputs() in datagen.py)
@@ -118,7 +122,7 @@ def get_annual_outputs():
     return annual_energy_consumption_cleaned
 
 
-def get_weather_data():
+def raw_weather_data():
     """
     Pull in weather data from all county TMY weather files and drop duplicated weather stations
     """
@@ -157,16 +161,16 @@ def get_weather_data():
 
 # COMMAND ----------
 
-building_metadata = get_building_metadata()
+building_metadata = raw_buildings_metadata()
 
 # COMMAND ----------
 
-annual_consumption = get_annual_outputs()
+annual_consumption = raw_annual_outputs()
 
 # COMMAND ----------
 
 # this takes ~3 min
-weather_data = get_weather_data()
+weather_data = raw_weather_data()
 
 # COMMAND ----------
 
