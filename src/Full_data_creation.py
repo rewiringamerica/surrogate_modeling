@@ -9,8 +9,8 @@ spark.conf.set("spark.sql.shuffle.partitions", 1536)
 # COMMAND ----------
 
 resstock_path = 'building_model.resstock_outputs_hourly'
-weather_data_full_path = 'building_model.weather_data_full_yearly'
-metadata_path = 'building_model.metadata_w_upgrades1_5'
+weather_data_full_path = 'building_model.weather_data_yearly'
+metadata_path = 'building_model.metadata_w_upgrades'
 
 resstock = spark.table(resstock_path)
 metadata = spark.table(metadata_path)

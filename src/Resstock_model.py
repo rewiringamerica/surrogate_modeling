@@ -38,7 +38,7 @@ spark.conf.set("spark.sql.shuffle.partitions", 1536)
 
 # COMMAND ----------
 
-full_data_path = ''
+full_data_path = 'building_model.resstock_yearly_with_metadata_weather_upgrades'
 resstock_yearly_with_metadata_weather = spark.table(full_data_path)
 resstock_yearly_with_metadata_weather_df = resstock_yearly_with_metadata_weather.toPandas()
 data = resstock_yearly_with_metadata_weather_df.copy()
@@ -57,7 +57,7 @@ covariates = ['in_occupants', 'temp_high', 'temp_low', 'temp_avg',
        'wind_speed_avg', 'ghi_avg', 'dni_avg', 'dhi_avg', 'std_temp_high',
        'std_temp_low', 'std_wind_speed', 'std_ghi', 'in_vintage', 'in_sqft', 'in_hvac_heating_efficiency_nominal_percent', 'in_infiltration_ach50',
         'in_window_wall_ratio_mean', 'in_bedrooms', 'in_geometry_stories', 'in_ashrae_iecc_climate_zone_2004','in_income_bin_midpoint',
-        'in_hvac_cooling_type', 'in_hvac_cooling_efficiency', 'in_hvac_cooling_partial_space_conditioning', 'in_is_vacant', 'in_is_rented',  'in_hvac_has_ducts', 'in_hvac_backup_heating_efficiency_nominal_percent', 'upgrade_id'] + additional
+        'in_hvac_cooling_type', 'in_hvac_cooling_efficiency', 'in_hvac_cooling_partial_space_conditioning', 'in_is_vacant', 'in_is_rented',  'in_hvac_has_ducts', 'in_hvac_backup_heating_efficiency_nominal_percent'] + additional
 
 
 
@@ -328,7 +328,7 @@ space = {
 }
 
 # Run the optimization
-max_evals = 50
+max_evals = 20
 with mlflow.start_run(tags={"mlflow.runName": "Best Model Run"}):
     trials = SparkTrials(parallelism=5)
     best_hyperparams = fmin(objective, space=space, algo=tpe.suggest, max_evals=max_evals, trials=trials)

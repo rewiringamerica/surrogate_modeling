@@ -9,6 +9,7 @@ from pyspark.sql.functions import col
 from pyspark.sql.functions import avg
 import re
 import pandas as pd
+import util_datagen
 spark.conf.set("spark.sql.shuffle.partitions", 1536)
 
 # COMMAND ----------
@@ -236,9 +237,9 @@ def apply_upgrade_05(df):
    df.loc[apply_logic_else, "in_hvac_backup_heating_efficiency_nominal_percent"] = df.loc[apply_logic_else, "in_hvac_heating_efficiency_nominal_percent"]
    df.loc[apply_logic_else, "in_hvac_heating_efficiency"] = "ASHP, SEER 15, 9.0 HSPF"
   
-   df.loc[apply_logic_asHP | apply_logic_else, "eligible_for_upgrade"] = 1
-   df.loc[apply_logic_asHP | apply_logic_else, "in_hvac_cooling_type"] = 'Heat Pump'
-   df.loc[apply_logic_asHP | apply_logic_else, "in_hvac_cooling_partial_space_conditioning"] = '100%'
+   df["eligible_for_upgrade"] = 1
+   df[ "in_hvac_cooling_type"] = 'Heat Pump'
+   df["in_hvac_cooling_partial_space_conditioning"] = '100%'
    df['in_heating_fuel'] = "Electricity"
    df['in_backup_heating_fuel'] = df['in_heating_fuel']
    return df
@@ -248,7 +249,8 @@ def apply_upgrade_05(df):
 # COMMAND ----------
 
 def apply_all_upgrades(df):
-    return pd.concat([apply_upgrade_01(df.copy()),
+    return pd.concat([df,
+                      apply_upgrade_01(df.copy()),
                       apply_upgrade_02(df.copy()),
                       apply_upgrade_03(df.copy()),
                       apply_upgrade_04(df.copy()),
@@ -263,39 +265,51 @@ metadata_w_upgrades = apply_all_upgrades(metadata)
 
 ## preprocessing of features
 
-metadata_w_upgrades['in_vintage'] = metadata_w_upgrades['in_vintage'].apply(vintage2age2010)
+metadata_w_upgrades['in_vintage'] = metadata_w_upgrades['in_vintage'].apply(util_datagen.vintage2age2010)
 
-metadata_w_upgrades['in_ducts_leakage'] = data['in_ducts_leakage'].fillna(0)
+metadata_w_upgrades['in_ducts_leakage'] = metadata_w_upgrades['in_ducts_leakage'].fillna(0)
 
-metadata_w_upgrades['in_geometry_stories'] = data['in_geometry_stories'].astype(float)
+metadata_w_upgrades['in_geometry_stories'] = metadata_w_upgrades['in_geometry_stories'].astype(float)
 
-metadata_w_upgrades['in_hvac_heating_efficiency_nominal_percent'] = metadata_w_upgrades['in_hvac_heating_efficiency'].apply(convert_heating_efficiency)
+metadata_w_upgrades['in_hvac_heating_efficiency_nominal_percent'] = metadata_w_upgrades['in_hvac_heating_efficiency'].apply(util_datagen.convert_heating_efficiency)
 
-metadata_w_upgrades['in_hvac_seer_rating'] = metadata_w_upgrades['in_hvac_heating_efficiency'].apply(extract_seer)
+metadata_w_upgrades['in_hvac_seer_rating'] = metadata_w_upgrades['in_hvac_heating_efficiency'].apply(util_datagen.extract_seer)
 
-metadata_w_upgrades['in_hvac_hspf_rating'] = metadata_w_upgrades['in_hvac_heating_efficiency'].apply(extract_hspf)
+metadata_w_upgrades['in_hvac_hspf_rating'] = metadata_w_upgrades['in_hvac_heating_efficiency'].apply(util_datagen.extract_hspf)
 
-metadata_w_upgrades['in_hvac_afue_rating'] = metadata_w_upgrades['in_hvac_heating_efficiency'].apply(extract_afue)
+metadata_w_upgrades['in_hvac_afue_rating'] = metadata_w_upgrades['in_hvac_heating_efficiency'].apply(util_datagen.extract_afue)
 
 
 # COMMAND ----------
 
 ## obtain cooling efficiency
-met_conditions =  metadata["in_hvac_cooling_type"].str.contains("Heat Pump", na=False)
-metadata.loc[met_conditions, "in_hvac_cooling_efficiency"] = "SEER " + " " + metadata.loc[mask, "in_hvac_seer_rating"].astype(str)
+met_conditions =  metadata_w_upgrades["in_hvac_cooling_type"].str.contains("Heat Pump", na=False)
+metadata_w_upgrades.loc[met_conditions, "in_hvac_cooling_efficiency"] = "SEER " + " " + metadata_w_upgrades.loc[met_conditions, "in_hvac_seer_rating"].astype(str)
 
-metadata_w_upgrades["in_hvac_cooling_efficiency"] = metadata_w_upgrades["in_hvac_cooling_efficiency"].apply(extract_cooling_efficiency)
+metadata_w_upgrades["in_hvac_cooling_efficiency"] = metadata_w_upgrades["in_hvac_cooling_efficiency"].apply(util_datagen.extract_cooling_efficiency)
 
 
 # COMMAND ----------
 
 ## Convert to SparkDF and write to directory
 
-table_name = 'metadata_w_upgrades1_5'
+table_name = 'metadata_w_upgrades'
 database_name = 'building_model'
 
-path = table_name + '.' + database_name
+path = database_name + '.' + table_name
 
 metadata_w_upgrades = spark.createDataFrame(metadata_w_upgrades)
 
-metadata_w_upgrades.write.saveAsTable(table_name, mode='overwrite', path = path)
+metadata_w_upgrades.write.saveAsTable(path)
+
+# COMMAND ----------
+
+
+
+# COMMAND ----------
+
+
+
+# COMMAND ----------
+
+

@@ -113,15 +113,13 @@ aggregation_level = 'yearly'
 
 weather_data_full = WeatherAggregation(weather_data = weather_data , weather_metadata = weather_metadata, aggregation_level = aggregation_level)
 
-table_name = 'weather_data_full_' + aggregation_level
+table_name = 'weather_data_' + aggregation_level
 database_name = 'building_model'
 
-path = table_name + '.' + database_name
+path = database_name + '.' + table_name
 
-(weather_data_full.write.saveAsTable(
-  table_name,
-  format='delta',
-  mode='overwrite', 
-  overwriteSchema = True,
-  path=path)
-  )
+weather_data_full.write.saveAsTable(path)
+
+# COMMAND ----------
+
+
