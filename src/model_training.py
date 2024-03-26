@@ -4,6 +4,7 @@
 # MAGIC - Access Mode: Single User or Shared (Not No Isolation Shared)
 # MAGIC - Runtime: >= Databricks Runtime 13.2 for ML or above (or >= Databricks Runtime 13.2 +  `%pip install databricks-feature-engineering`)
 # MAGIC - Node type: Single Node. Because of [this issue](https://kb.databricks.com/en_US/libraries/apache-spark-jobs-fail-with-environment-directory-not-found-error), worker nodes cannot access the directory needed to run inference on a keras trained model, meaning that the `score_batch()` function throws and OSError. Rather than dealing with the permissions errors, for now I am just using a single node cluster as a workaround.
+# MAGIC - Will work on GPU cluster
 # MAGIC - `USE CATALOG`, `CREATE SCHEMA` privleges on the `ml` Unity Catalog (Ask Miki if for access)
 
 # COMMAND ----------
@@ -11,6 +12,12 @@
 # install tensorflow if not installed on cluster
 # %pip install tensorflow
 # dbutils.library.restartPython()
+
+# COMMAND ----------
+
+import os
+# fix cublann OOM
+os.environ['TF_FORCE_GPU_ALLOW_GROWTH'] = 'true'
 
 # COMMAND ----------
 
@@ -27,6 +34,8 @@ import mlflow
 import tensorflow as tf
 from tensorflow import keras
 from tensorflow.keras import layers, models
+
+tf.config.list_physical_devices("GPU")
 
 # COMMAND ----------
 
@@ -285,10 +294,11 @@ class DataGenerator(keras.utils.Sequence):
 
 # COMMAND ----------
 
-#Takes ~30s to initialize both generators
-N = 10000 #using same as current model training for benchmarking
+#Takes ~30s to initialize both generators, 
+N = 50000 #using same size training set as current model training for benchmarking
+#(5x as many building since we aren't exploding out by 5 upgrades)
 
-_train_data, _val_data = train_data.limit(N).randomSplit(weights=[0.8,0.2], seed=42)
+_train_data, _val_data = train_data.sample(fraction=1.0).limit(N).randomSplit(weights=[0.8,0.2], seed=42)
 
 train_gen = DataGenerator(
     train_data = _train_data,
@@ -403,11 +413,11 @@ def create_model(layer_params=None):
 mlflow.tensorflow.autolog(log_models=False)
 mlflow.sklearn.autolog(log_models=False)
 
-#~35s/epoch
+#~1m/epoch w/CPU; 10s/epoch w/ GPU
 with mlflow.start_run() as run:
 
     training_params = {
-        "epochs": 10,
+        "epochs": 100,
         "batch_size": 64}
     
     layer_params = {
@@ -431,6 +441,11 @@ with mlflow.start_run() as run:
         training_set=train_gen.training_set,
         registered_model_name=model_name,
     )
+
+# COMMAND ----------
+
+results = model.predict(val_gen[0][0])
+np.hstack([results[c] for c in targets])
 
 # COMMAND ----------
 
@@ -459,7 +474,3 @@ batch_pred = fe.score_batch(model_uri=model_uri, df=test_data.limit(10), result_
 for i, target in enumerate(targets):
     batch_pred = batch_pred.withColumn(f"{target}_pred", F.col('prediction')[i])
 batch_pred.display()
-
-# COMMAND ----------
-
-
