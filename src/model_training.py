@@ -221,7 +221,8 @@ class DataGenerator(keras.utils.Sequence):
     def __getitem__(self, index):
         'Generate one batch of data'
         # Generate indexes of the batch
-        batch_pd = self.train_pd.head(self.batch_size).merge(self.weather_pd, on = 'weather_file_city', how = 'left')
+        batch_pd = self.train_pd.iloc[self.batch_size * index:self.batch_size * (index+1)]
+        batch_pd = batch_pd.merge(self.weather_pd, on = 'weather_file_city', how = 'left')
 
         # Convert DataFrame columns to NumPy arrays and create the dictionary
         X = convert_training_data_to_dict(
@@ -401,9 +402,8 @@ def create_model(layer_params=None):
 # Disable MLflow autologging and instead log the model using Feature Engineering in UC
 mlflow.tensorflow.autolog(log_models=False)
 mlflow.sklearn.autolog(log_models=False)
-# def train_model():
 
-#~40s/epoch
+#~35s/epoch
 with mlflow.start_run() as run:
 
     training_params = {
@@ -434,12 +434,6 @@ with mlflow.start_run() as run:
 
 # COMMAND ----------
 
-#test out prediction
-results = model.predict(val_gen[0][0])
-np.hstack([results[c] for c in targets])
-
-# COMMAND ----------
-
 # MAGIC %md ## Batch scoring
 # MAGIC Use `score_batch` to apply a packaged Feature Engineering in UC model to new data for inference. The input data only needs the primary key columns. The model automatically looks up all of the other feature values from the feature tables.
 
@@ -465,3 +459,7 @@ batch_pred = fe.score_batch(model_uri=model_uri, df=test_data.limit(10), result_
 for i, target in enumerate(targets):
     batch_pred = batch_pred.withColumn(f"{target}_pred", F.col('prediction')[i])
 batch_pred.display()
+
+# COMMAND ----------
+
+
