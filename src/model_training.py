@@ -16,6 +16,7 @@
 
 import itertools
 import numpy as np
+import math
 import pandas as pd
 import pyspark.sql.functions as F
 from pyspark.sql.types import ArrayType, DoubleType
@@ -25,20 +26,34 @@ import mlflow
 
 import tensorflow as tf
 from tensorflow import keras
-# import tensorflow.keras.backend as K
 from tensorflow.keras import layers, models
 
-# from sklearn.model_selection import train_test_split
-# from sklearn.metrics import mean_squared_error, r2_score
-# from tensorflow.keras.losses import MeanAbsoluteError
+# COMMAND ----------
+
+#target grouping
+consumption_group_dict = {
+    'heating' : [
+        'electricity__heating_fans_pumps',
+        'electricity__heating_hp_bkup',
+        'electricity__heating',
+        'fuel_oil__heating_hp_bkup',
+        'fuel_oil__heating',
+        'natural_gas__heating_hp_bkup',
+        'natural_gas__heating',
+        'propane__heating_hp_bkup',
+        'propane__heating'],
+    'cooling' : [
+        'electricity__cooling_fans_pumps',
+        'electricity__cooling']
+}
+
+targets = list(consumption_group_dict.keys())
 
 # COMMAND ----------
 
 # features we are and targets currently using for testing -- probably will store in a class at some point
 building_metadata_features = ["sqft", "occupants"]
-targets = ["site_energy__total"]
 
-# not including weekend/weekday for now
 weather_features = [
     "temp_air",
     # "relative_humidity",
@@ -47,7 +62,17 @@ weather_features = [
     "ghi",
     # "dni",
     # "diffuse_horizontal_illum",
+    "weekend"
 ]
+
+# COMMAND ----------
+
+# #3.5e-07 of mem per building for 2 bm features, 1 target (annual), and 3 weather features (8670)
+# n_buildings = 550000
+# n_upgrades = 10
+# mem_per_building_gb = 3.5e-7
+# mem_per_building_gb * n_buildings * n_upgrades
+# #df_pd.memory_usage(index=True, deep = True).sum() / 1E9
 
 # COMMAND ----------
 
@@ -83,56 +108,16 @@ weather_feature_lookups = [
 # Read in the "raw" data which contains the prediction target and the keys needed to join to the feature tables. 
 # We might want to do whatever filtering here (e.g, subset fo SF homes)
 # but would need to make modifications since we removed building features from this table
-raw_data = spark.sql(f"SELECT building_id, upgrade_id, weather_file_city, {','.join(targets)} FROM ml.surrogate_model.annual_outputs WHERE upgrade_id == 0")
-train_data, test_data = raw_data.randomSplit(weights=[0.8,0.2], seed=100)
+
+sum_str = ', '.join([f"{'+'.join(v)} AS {k}" for k, v in consumption_group_dict.items()])
+
+raw_data = spark.sql(f"SELECT building_id, upgrade_id, weather_file_city, {sum_str} FROM ml.surrogate_model.annual_outputs WHERE upgrade_id == 0")
+
+train_data, test_data = raw_data.randomSplit(weights=[0.8,0.2], seed=42)
 #       .where(F.col('geometry_building_type_acs') == 'Single-Family Detached')
 #       .where(F.col('vacancy_status') == 'Occupied')
 #       .where(F.col('sqft') < 8000)
 #       .where(F.col('occupants') < 11)
-
-# COMMAND ----------
-
-def convert_training_data_to_dict(train_pd):
-    X_train_bm = {col: np.array(train_pd[col]) for col in building_metadata_features}
-    X_train_weather = {col: np.array(np.vstack(train_pd[col].values)) for col in weather_features}
-    return {**X_train_bm, **X_train_weather}
-
-
-# # takes ~1m for 10K samples on single node cluster
-def load_data(raw_data, feature_lookups, targets, n_subset=100, val_split = .2, seed = 42):
-    # exclude column used to just join to weather data
-    exclude_columns = ["weather_file_city", "building_id", "upgrade_id"]
-    #exclude_columns = ["weather_file_city"]
-
-    # Create the training set that includes the raw input data merged with corresponding features from both feature tables
-    training_set = fe.create_training_set(
-        df=train_data.limit(n_subset),
-        feature_lookups=feature_lookups,
-        label=targets,
-        exclude_columns=exclude_columns,
-    )
-
-    # Load the TrainingSet into a dataframe which can be passed into keras for training a model
-    train_df, val_df = training_set.load_df().randomSplit(weights=[1-val_split,val_split], seed=seed)
-    #training_dict = train_df.select(building_metadata_features).toPandas().to_dict(orient='list')
-
-    # Convert DataFrame columns to NumPy arrays and create the dictionary
-    train_pd = train_df.toPandas()
-    X_train = convert_training_data_to_dict(train_pd)
-    y_train = {col: np.array(train_pd[col]) for col in targets}
-
-    val_pd = val_df.toPandas()
-    X_val = convert_training_data_to_dict(val_pd)
-    y_val = {col: np.array(val_pd[col]) for col in targets}
-
-    return X_train, X_val, y_train, y_val, training_set
-
-X_train, X_val, y_train, y_val, training_set = load_data(
-    raw_data=raw_data,
-    feature_lookups=building_metadata_feature_lookups + weather_feature_lookups,
-    targets=targets,
-    n_subset=100,
-)
 
 # COMMAND ----------
 
@@ -157,6 +142,11 @@ except:
 
 # COMMAND ----------
 
+def convert_training_data_to_dict(train_pd, building_metadata_features, weather_features):
+    X_train_bm = {col: np.array(train_pd[col]) for col in building_metadata_features}
+    X_train_weather = {col: np.array(np.vstack(train_pd[col].values)) for col in weather_features}
+    return {**X_train_bm, **X_train_weather}
+
 #this allows us to apply pre/post processing to the inference data
 class SurrogateModelingWrapper(mlflow.pyfunc.PythonModel):
    
@@ -166,11 +156,14 @@ class SurrogateModelingWrapper(mlflow.pyfunc.PythonModel):
     # def load_context(self, context):
 
     def preprocess_input(self, model_input):
-        model_input_dict = convert_training_data_to_dict(model_input)
+        model_input_dict = convert_training_data_to_dict(
+            model_input,
+            building_metadata_features=building_metadata_features,
+            weather_features=weather_features)
         return model_input_dict
 
     def postprocess_result(self, results):
-        return np.concatenate([results[c] for c in targets])
+        return np.hstack([results[c] for c in targets])
 
     def predict(self, context, model_input):
         processed_df = self.preprocess_input(model_input.copy())
@@ -179,6 +172,140 @@ class SurrogateModelingWrapper(mlflow.pyfunc.PythonModel):
 
 # COMMAND ----------
 
+class DataGenerator(keras.utils.Sequence):
+    'Generates data for Keras'
+    fe = FeatureEngineeringClient()
+
+    def __init__(self, train_data, building_metadata_features, weather_features, targets, batch_size=64):
+        self.batch_size = batch_size
+        self.targets = targets
+        self.building_metadata_features = building_metadata_features
+        self.weather_features = weather_features
+        self.training_set = self.init_training_set(train_data = train_data)
+        self.train_pd = self.init_training_features(train_data = train_data)
+        self.weather_pd = self.init_weather_features()
+        #self.training_set_with_index = self.training_set.rdd.zipWithIndex()
+        self.on_epoch_end()
+
+    def init_training_set(self, train_data):
+        # exclude column used to just join to weather data
+        # Create the training set that includes the raw input data merged 
+        # with corresponding features from both feature tables
+        training_set = self.fe.create_training_set(
+            df=train_data,
+            feature_lookups=building_metadata_feature_lookups + weather_feature_lookups,
+            label=self.targets,
+            exclude_columns=["building_id", "upgrade_id", "weather_file_city"],
+        )
+        return training_set
+    
+    def init_training_features(self, train_data):
+        # Create the training set that includes the raw input data merged with corresponding features
+        # from building model features only, and load into memory
+        training_set = self.fe.create_training_set(
+            df=train_data,
+            feature_lookups=building_metadata_feature_lookups,
+            label=self.targets,
+            exclude_columns=["building_id", "upgrade_id"],
+        )
+        return training_set.load_df().toPandas()
+
+    def init_weather_features(self):
+        weather_features_table = fe.read_table(name = "ml.surrogate_model.weather_features")
+        return weather_features_table.select(*self.weather_features, 'weather_file_city').toPandas()
+
+    def __len__(self):
+        # number of batches; last batch might be smaller
+        return math.ceil(len(self.train_pd) / self.batch_size)
+
+    def __getitem__(self, index):
+        'Generate one batch of data'
+        # Generate indexes of the batch
+        batch_pd = self.train_pd.head(self.batch_size).merge(self.weather_pd, on = 'weather_file_city', how = 'left')
+
+        # Convert DataFrame columns to NumPy arrays and create the dictionary
+        X = convert_training_data_to_dict(
+            train_pd = batch_pd,
+            building_metadata_features = self.building_metadata_features,
+            weather_features = self.weather_features)
+        y = {col: np.array(batch_pd[col]) for col in self.targets}
+
+        return X, y
+    
+    # def __getitem__(self, index):
+    #     'Generate one batch of data'
+    #     # Generate indexes of the batch
+    #     batch_pd = self.init_training_set(train_data = self.train_data.limit(self.batch_size))
+
+    #     X = convert_training_data_to_dict(
+    #         train_pd = batch_pd,
+    #         building_metadata_features = self.building_metadata_features,
+    #         weather_features = self.weather_features)
+        
+    #     y= {col: np.array(batch_pd[col]) for col in self.targets}
+
+    #     return X, y
+
+    # def __getitem__(self, index):
+    #     'Generate one batch of data'
+    #     # Generate indexes of the batch
+    #     min_idx = index*self.batch_size
+    #     max_idx = (index+1)*self.batch_size
+    #     batch_df = self.training_set_with_index.filter(lambda element: min_idx <= element[1] < max_idx).map(lambda element: element[0]).toDF()
+
+    #     # Convert DataFrame columns to NumPy arrays and create the dictionary
+    #     batch_pd = batch_df.toPandas()
+    #     X = convert_training_data_to_dict(
+    #         train_pd = batch_pd,
+    #         building_metadata_features = self.building_metadata_features,
+    #         weather_features = self.weather_features)
+    #     y= {col: np.array(batch_pd[col]) for col in self.targets}
+
+    #     return X, y
+
+    def on_epoch_end(self):
+        'Updates indexes after each epoch'
+        # self.training_set = self.training_set.orderBy(F.rand())
+        # self.training_set_with_index = self.training_set.rdd.zipWithIndex()
+        self.train_pd = self.train_pd.sample(frac=1.0)
+        pass
+
+# COMMAND ----------
+
+# #~25s to load full dataset into memory (without joining weather and bm features)
+# train_gen = DataGenerator(
+#     train_data = train_data,
+#     building_metadata_features=building_metadata_features,
+#     weather_features=weather_features,
+#     targets=targets)
+
+# #~.1s to load a batch
+# train_gen[0]
+
+# COMMAND ----------
+
+#Takes ~30s to initialize both generators
+N = 10000 #using same as current model training for benchmarking
+
+_train_data, _val_data = train_data.limit(N).randomSplit(weights=[0.8,0.2], seed=42)
+
+train_gen = DataGenerator(
+    train_data = _train_data,
+    building_metadata_features=building_metadata_features,
+    weather_features=weather_features,
+    targets=targets)
+
+val_gen = DataGenerator(
+    train_data = _val_data,
+    building_metadata_features=building_metadata_features,
+    weather_features=weather_features,
+    targets=targets)
+
+# COMMAND ----------
+
+# other than removing catagorical feature processing
+# and dependencies on the datagen class, this is identical to model in model.py
+# TODO: completely align models so they can read from same file
 def create_model(layer_params=None):
     # Building model
     bmo_inputs_dict = {
@@ -276,11 +403,12 @@ mlflow.tensorflow.autolog(log_models=False)
 mlflow.sklearn.autolog(log_models=False)
 # def train_model():
 
+#~40s/epoch
 with mlflow.start_run() as run:
 
     training_params = {
-        "epochs": 40,
-        "batch_size": 256}
+        "epochs": 10,
+        "batch_size": 64}
     
     layer_params = {
         'activation': 'leaky_relu',
@@ -289,22 +417,26 @@ with mlflow.start_run() as run:
 
     model = create_model(layer_params)
     history = model.fit(
-        X_train,
-        y_train,
-        validation_data=(X_val, y_val),
+        train_gen,
+        validation_data=val_gen,
         verbose=2,
         **training_params)
 
     pyfunc_model = SurrogateModelingWrapper(model)
 
-
     fe.log_model(
         model=pyfunc_model,
         artifact_path="pyfunc_surrogate_model_prediction",
         flavor=mlflow.pyfunc,
-        training_set=training_set,
+        training_set=train_gen.training_set,
         registered_model_name=model_name,
     )
+
+# COMMAND ----------
+
+#test out prediction
+results = model.predict(val_gen[0][0])
+np.hstack([results[c] for c in targets])
 
 # COMMAND ----------
 
@@ -325,12 +457,11 @@ def get_latest_model_version(model_name):
 
 # COMMAND ----------
 
-## For simplicity, this example uses inference_data_df as input data for prediction
+# batch inference on small set of held out test set
 latest_model_version = get_latest_model_version(model_name)
 model_uri = f"models:/{model_name}/{latest_model_version}"
+
 batch_pred = fe.score_batch(model_uri=model_uri, df=test_data.limit(10), result_type=ArrayType(DoubleType()))
+for i, target in enumerate(targets):
+    batch_pred = batch_pred.withColumn(f"{target}_pred", F.col('prediction')[i])
 batch_pred.display()
-
-# COMMAND ----------
-
-

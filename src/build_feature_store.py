@@ -109,7 +109,7 @@ fe = FeatureEngineeringClient()
 # COMMAND ----------
 
 # MAGIC %sql
-# MAGIC DROP TABLE IF EXISTS ml.surrogate_model.building_metadata;
+# MAGIC DROP TABLE IF EXISTS ml.surrogate_model.building_metadata_features;
 # MAGIC DROP TABLE IF EXISTS ml.surrogate_model.weather_features
 
 # COMMAND ----------
