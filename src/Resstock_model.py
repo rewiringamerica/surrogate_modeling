@@ -1,8 +1,6 @@
 # Databricks notebook source
 from pyspark.sql.functions import broadcast
 import itertools
-import math
-import re
 from typing import Dict
 import pyspark.sql.functions as F
 from pyspark.sql.functions import col
@@ -19,7 +17,7 @@ from tensorflow.keras.layers import Dense, BatchNormalization, InputLayer, Input
 from tensorflow.keras.callbacks import EarlyStopping
 from tensorflow.keras.layers import Normalization, StringLookup, CategoryEncoding
 from hyperopt import hp, fmin, tpe, Trials, STATUS_OK, SparkTrials
-
+import mlflow
 
 from tensorflow.keras.models import Sequential, Model
 from tensorflow.keras.layers import Dense
@@ -28,9 +26,7 @@ import itertools
 import logging
 import math
 import os
-import re
 import calendar
-from typing import Dict
 import matplotlib.pyplot as plt
 
 
@@ -64,7 +60,6 @@ covariates = ['in_occupants', 'temp_high', 'temp_low', 'temp_avg',
 
 # COMMAND ----------
 
-
 # Assume 'data', 'covariates', and 'target_variable' are predefined
 X = data[covariates]
 y = data[target_variable]
@@ -73,104 +68,110 @@ y = data[target_variable]
 X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.2, random_state=40)
 
 # Separate out the numeric and categorical feature names
-cat_features = X_train.select_dtypes(include=['object', 'category', 'bool']).columns.tolist()
+cat_features = X_train.select_dtypes(include=['object', 'category']).columns.tolist()
 num_features = X_train.select_dtypes(exclude=['object', 'category', 'bool']).columns.tolist()
+bool_features = X_train.select_dtypes(include=['bool']).columns.tolist()
 
-# Define Normalization layers for numeric features using training data statistics
-# This will also allow all preprocessing to part of the saved tensforflow graph
-normalizers = {}
-for feature in num_features:
-    normalizer = Normalization(axis=None)
-    feature_values = np.array(X_train[feature], dtype=np.float32)
-    normalizer.adapt(feature_values)
-    normalizers[feature] = normalizer
 
-# Define StringLookup and CategoryEncoding layers for categorical features
-# make one hot enoding part of the tensforflow graph
-one_hot_encoders = {}
+# Initialize input layers and preprocessing layers for all features. 
+inputs = {}
+preprocessed = []
+
+# precompute vocabularies for all features. orders of magnitude faster than having tf determine vocabularies.
+vocabularies = {}
 for feature in cat_features:
-    string_lookup = StringLookup(vocabulary=np.unique(X_train[feature]), output_mode="int")
-    one_hot_encoder = CategoryEncoding(num_tokens=string_lookup.vocabulary_size(), output_mode="one_hot")
-    one_hot_encoders[feature] = Sequential([string_lookup, one_hot_encoder])
+    vocabularies[feature] = X[feature].unique().tolist()
 
-# Function to preprocess inputs
-def preprocess(inputs):
-    processed_inputs = {}
-    # Normalize numeric features
-    for feature in num_features:
-        processed_inputs[feature] = normalizers[feature](inputs[feature])
-    # One-hot encode categorical features
-    for feature in cat_features:
-        processed_inputs[feature] = one_hot_encoders[feature](inputs[feature])
-    return processed_inputs
+# Set up the layers with precomputed vocabularies
+inputs = {}
+preprocessed = []
+for feature in cat_features:
+    # Create an input layer for the categorical feature
+    feature_input = Input(shape=(1,), name=feature, dtype='string')
+    inputs[feature] = feature_input
+    
+    # Create a StringLookup layer with the precomputed vocabulary
+    # Note: Add an OOV token if your model needs to handle unseen categories
+    lookup_layer = StringLookup(vocabulary=vocabularies[feature], output_mode='int', mask_token=None, oov_token='[UNK]')
+    indexed_data = lookup_layer(feature_input)
+    
+    # Create a CategoryEncoding layer for one-hot encoding using the size of the vocabulary
+    # Add 1 to account for the OOV token if used
+    one_hot_layer = CategoryEncoding(num_tokens=len(vocabularies[feature]) + 1, output_mode='one_hot')
+    one_hot_data = one_hot_layer(indexed_data)
+    preprocessed.append(one_hot_data)
 
-inputs = {feature: Input(shape=(1,), name=feature, dtype='string' if feature in cat_features else 'float32') 
-          for feature in num_features + cat_features}
-preprocessed_inputs = preprocess(inputs)
+for feature in num_features:
+    # Calculate mean and variance for the feature from the training set. This is much faster than having tf calculate it
+    feature_mean = X_train[feature].mean()
+    feature_variance = X_train[feature].var()
+    
+    # Create a Normalization layer for the feature
+    normalizer = Normalization(axis=None, mean = feature_mean, variance = feature_variance, name=f'norm_{feature}')
+    
+    # Directly set the weights of the Normalization layer to the precomputed statistics
+    # Note: Normalization expects the variance in the second position, not the standard deviation    
+    # Create the corresponding input layer
+    feature_input = Input(shape=(1,), name=feature, dtype='float32')
+    
+    # Apply the Normalization layer to the input layer
+    normalized_feature = normalizer(feature_input)
+    
+    # Store the input and processed features
+    inputs[feature] = feature_input
+    preprocessed.append(normalized_feature)
 
+# Boolean features
+for feature in bool_features:
+    inputs[feature] = Input(shape=(1,), name=feature, dtype='float32')
+    preprocessed.append(inputs[feature])
+
+# Combine preprocessed inputs
+all_preprocessed_inputs = tf.keras.layers.concatenate(preprocessed)
 
 
 # COMMAND ----------
 
-# define a batch size
-batch_size = 128
 
-# Convert data to tf.data.Dataset and apply preprocessing, shuffle, and batch
-def prepare_dataset(X, y, shuffle=False, batch_size=batch_size):
-    ds = tf.data.Dataset.from_tensor_slices((dict(X), y))
-    ds = ds.map(lambda x, y: (preprocess(x), y))
+# Build the rest of the neural network layers on top of the preprocessed inputs
+x = Dense(256, activation='relu')(all_preprocessed_inputs)
+x = BatchNormalization()(x)
+x = Dense(128, activation='relu')(x)
+x = BatchNormalization()(x)
+x = Dense(64, activation='relu')(x)
+x = BatchNormalization()(x)
+x = Dense(32, activation='relu')(x)
+x = BatchNormalization()(x)
+x = Dense(16, activation='relu')(x)
+x = BatchNormalization()(x)
+x = Dense(16, activation='relu')(x)
+x = BatchNormalization()(x)
+x = Dense(16, activation='relu')(x)
+x = BatchNormalization()(x)
+x = Dense(16, activation='relu')(x)
+x = BatchNormalization()(x)
+output = Dense(1, activation='linear')(x)
+
+# Create and compile the Model
+model = Model(inputs=list(inputs.values()), outputs=output)
+model.compile(optimizer='adam', loss='mae')
+
+
+
+
+# Define the df_to_dataset function for converting DataFrames to tf.data.Dataset
+# turn off shuffling. Not needed and changes the order of the data which becomes 
+# a problem in our evaluation code later.
+def df_to_dataset(features, labels, shuffle=False, batch_size=128):
+    dataset = tf.data.Dataset.from_tensor_slices((dict(features), labels))
     if shuffle:
-        ds = ds.shuffle(buffer_size=len(X))
-    ds = ds.batch(batch_size)
-    return ds
+        dataset = dataset.shuffle(buffer_size=len(features))
+    return dataset.batch(batch_size).prefetch(tf.data.AUTOTUNE)
 
-# Prepare training and validation datasets
-train_ds = prepare_dataset(X_train, y_train, shuffle=True, batch_size=batch_size)
-val_ds = prepare_dataset(X_val, y_val, batch_size=batch_size)
-
-# COMMAND ----------
-
-
-# Define the model architecture
-NN_model = Sequential(
-    [
-        # Add an input layer that matches the shape of preprocessed data
-        InputLayer(input_shape=(sum([normalizers[f].axis_size for f in num_features]) +
-                                             sum([one_hot_encoders[f].layers[1].output_shape[-1] for f in cat_features]),)),
-        Dense(256, activation="relu"),
-        # Batch normalization layer
-        BatchNormalization(),
-        # Hidden layers
-        Dense(128, activation="relu"),
-        BatchNormalization(),
-        Dense(64, activation="relu"),
-        BatchNormalization(),
-        Dense(32, activation="relu"),
-        BatchNormalization(),
-        Dense(16, activation="relu"),
-        BatchNormalization(),
-        Dense(16, activation="relu"),
-        BatchNormalization(),       
-        Dense(16, activation="relu"),
-        BatchNormalization(),       
-        Dense(16, activation="relu"),
-        BatchNormalization(),                                                
-        #Output layer
-        Dense(1, activation="linear"),
-    ]
-)
-
-output = NN_model(preprocessed_inputs)
-end_to_end_model = Model(inputs, output)
-
-# Configure the model training
-end_to_end_model.compile(optimizer='adam', loss='mae')  
-
-
-
-# COMMAND ----------
-
-
+# Prepare and train the model
+batch_size = 128
+train_ds = df_to_dataset(X_train, y_train, shuffle=False, batch_size=batch_size)
+val_ds = df_to_dataset(X_val, y_val, batch_size=batch_size)
 
 
 # COMMAND ----------
@@ -204,32 +205,28 @@ class LossHistory(tf.keras.callbacks.Callback):
         plt.show()
 
 
-
 # COMMAND ----------
 
-
-
 # Early stopping callback
-early_stopping = EarlyStopping(monitor="val_loss", patience=5)
+early_stopping = EarlyStopping(monitor="val_loss", patience=2)
 # Add the custom callback to the training process
 # We will fit using train_ds and val_ds which will conduct preprocessing on batches
 history = LossHistory()
 
 # Train the model with early stopping
-h = end_to_end_model.fit(
+h = model.fit(
     train_ds,
-    epochs=50,
+    epochs=5,
     verbose = 2,
     validation_data=val_ds,
     callbacks=[early_stopping, history],
 )
 
-
 # COMMAND ----------
 
-predictions = end_to_end_model.predict(X_val)
+predictions = model.predict(val_ds)
 # get correct loss on training data.
-mae = end_to_end_model.evaluate(train_ds, batch_size = 256)
+mae = model.evaluate(val_ds)
 
 # COMMAND ----------
 
@@ -243,7 +240,7 @@ actuals_and_preds = pd.concat([X_val, comparison], axis=1)
 comparison.index = X_val.index
 
 ## Group by any characteristic and view the error
-grouping_variable = ['upgrade_id']
+grouping_variable = ['in_hvac_cooling_type']
 average_error = actuals_and_preds.groupby(grouping_variable)["error"].mean()
 average_value = actuals_and_preds.groupby(grouping_variable)["Actual"].mean()
 average_abs_error = actuals_and_preds.groupby(grouping_variable)["abs_error"].mean()
@@ -264,12 +261,94 @@ results
 # COMMAND ----------
 
 # Save the entire end-to-end model, including preprocessing layers
-end_to_end_model.save('my_model_with_preprocessing')
+model.save('test_model_with_preprocessing')
 
 
 # COMMAND ----------
 
 # example using hyperparameter optimization w/parallelism and MLFlow. We use the HyperOpt package.
+
+# COMMAND ----------
+
+## lets make a function to build a model according to certain hyperparameters
+def build_model(hparams):
+
+    # precompute vocabularies for all features. orders of magnitude faster than having tf determine vocabularies.
+    vocabularies = {}
+    for feature in cat_features:
+        vocabularies[feature] = X[feature].unique().tolist()
+
+    # Set up the layers with precomputed vocabularies
+    inputs = {}
+    preprocessed = []
+    for feature in cat_features:
+        # Create an input layer for the categorical feature
+        feature_input = Input(shape=(1,), name=feature, dtype='string')
+        inputs[feature] = feature_input
+        
+        # Create a StringLookup layer with the precomputed vocabulary
+        # Note: Add an OOV token if your model needs to handle unseen categories
+        lookup_layer = StringLookup(vocabulary=vocabularies[feature], output_mode='int', mask_token=None, oov_token='[UNK]')
+        indexed_data = lookup_layer(feature_input)
+        
+        # Create a CategoryEncoding layer for one-hot encoding using the size of the vocabulary
+        # Add 1 to account for the OOV token if used
+        one_hot_layer = CategoryEncoding(num_tokens=len(vocabularies[feature]) + 1, output_mode='one_hot')
+        one_hot_data = one_hot_layer(indexed_data)
+        preprocessed.append(one_hot_data)
+
+    for feature in num_features:
+        # Calculate mean and variance for the feature from the training set. This is much faster than having tf calculate it
+        feature_mean = X_train[feature].mean()
+        feature_variance = X_train[feature].var()
+        
+        # Create a Normalization layer for the feature
+        normalizer = Normalization(axis=None, mean = feature_mean, variance = feature_variance, name=f'norm_{feature}')
+        
+        # Directly set the weights of the Normalization layer to the precomputed statistics
+        # Note: Normalization expects the variance in the second position, not the standard deviation    
+        # Create the corresponding input layer
+        feature_input = Input(shape=(1,), name=feature, dtype='float32')
+        
+        # Apply the Normalization layer to the input layer
+        normalized_feature = normalizer(feature_input)
+        
+        # Store the input and processed features
+        inputs[feature] = feature_input
+        preprocessed.append(normalized_feature)
+
+    # Boolean features
+    for feature in bool_features:
+        inputs[feature] = Input(shape=(1,), name=feature, dtype='float32')
+        preprocessed.append(inputs[feature])
+
+    # Combine preprocessed inputs
+    all_preprocessed_inputs = tf.keras.layers.concatenate(preprocessed)
+
+    
+    # Build neural network layers based on hyperparameters
+    x = all_preprocessed_inputs
+    for _ in range(hparams['num_layers']):
+        x = Dense(int(hparams['units_per_layer']), activation='relu')(x)
+        if hparams['batch_norm']:
+            x = BatchNormalization()(x)
+    
+    outputs = Dense(1, activation='linear')(x)  # Adjust based on your specific problem
+    
+    # Create the model
+    model = Model(inputs=list(inputs.values()), outputs=outputs)
+    
+    # Compile the model using the learning rate from hyperparameters
+    lr_schedule = tf.keras.optimizers.schedules.ExponentialDecay(
+        initial_learning_rate=hparams['learning_rate'],  # Use the hyperparameter
+        decay_steps=10000,
+        decay_rate=hparams['learning_rate_decay'],
+        staircase=True)
+    
+    model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=lr_schedule), loss='mae')
+    
+    return model
+
 
 # COMMAND ----------
 
@@ -281,56 +360,35 @@ y = data[target_variable]
 
 # Split the original DataFrame into train and validation sets
 X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.2, random_state=40)
+# Separate out the numeric and categorical feature names
+cat_features = X_train.select_dtypes(include=['object', 'category']).columns.tolist()
+num_features = X_train.select_dtypes(exclude=['object', 'category', 'bool']).columns.tolist()
+bool_features = X_train.select_dtypes(include=['bool']).columns.tolist()
 
-# Build the model based on hyperparameters from Hyperopt
-def build_model(params):
-    inputs = {feature: Input(shape=(1,), name=feature, dtype='string' if feature in cat_features else 'float32') 
-              for feature in num_features + cat_features}
-    preprocessed_inputs = preprocess(inputs)
 
-    model = Sequential()
-    model.add(InputLayer(input_shape=(sum([normalizers[f].axis_size for f in num_features]) +
-                                      sum([one_hot_encoders[f].layers[1].output_shape[-1] for f in cat_features]),)))
-
-    for i in range(int(params['num_layers'])):
-        model.add(Dense(units=int(params['units']), activation='relu'))
-        if params['use_batch_norm']:
-            model.add(BatchNormalization())
-
-    model.add(Dense(1))  # Assume it's a regression task; for classification, adjust accordingly
-
-    lr_schedule = tf.keras.optimizers.schedules.ExponentialDecay(
-        initial_learning_rate=params['learning_rate'],
-        decay_steps=10000,
-        decay_rate=params['decay_rate'],
-        staircase=True)
-    
-    model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=lr_schedule), loss='mse')
-    
-    end_to_end_model = Model(inputs, model(preprocessed_inputs))
-    return end_to_end_model
 
 # Define the objective function for Hyperopt
+
 def objective(params):
     model = build_model(params)
-    early_stop = tf.keras.callbacks.EarlyStopping(monitor='val_loss', patience=5, restore_best_weights=True)
-    history = model.fit(train_ds, validation_data=val_ds, epochs=50, callbacks=[early_stop], verbose=0)
+    early_stop = tf.keras.callbacks.EarlyStopping(monitor='val_loss', patience=1, restore_best_weights=True)
+    history = model.fit(train_ds, validation_data=val_ds, epochs=3, callbacks=[early_stop], verbose=0)
     best_val_loss = min(history.history['val_loss'])
     return {'loss': best_val_loss, 'status': STATUS_OK}
 
 # Define the hyperparameter space
 space = {
-    'num_layers': hp.quniform('num_layers', 4, 10, 1),
+    'num_layers': hp.quniform('num_layers', 5, 8, 1),
     'units': hp.quniform('units', 32, 512, 32),
     'learning_rate': hp.loguniform('learning_rate', np.log(1e-4), np.log(1e-2)),
-    'decay_rate': hp.uniform('decay_rate', 0.8, 0.99),
+    'decay_rate': hp.uniform('decay_rate', 0.9, 0.99),
     'use_batch_norm': hp.choice('use_batch_norm', [False, True])
 }
 
 # Run the optimization
-max_evals = 20
+max_evals = 10
 with mlflow.start_run(tags={"mlflow.runName": "Best Model Run"}):
-    trials = SparkTrials(parallelism=5)
+    trials = SparkTrials(parallelism=2)
     best_hyperparams = fmin(objective, space=space, algo=tpe.suggest, max_evals=max_evals, trials=trials)
     mlflow.log_params(best_hyperparams)
     
@@ -341,9 +399,9 @@ with mlflow.start_run(tags={"mlflow.runName": "Best Model Run"}):
         
     # Log the best model to MLflow
     mlflow.keras.log_model(best_model, "best_model")
-print('Best hyperparameters:', best)
+print('Best hyperparameters:', best_model)
 
 
 # COMMAND ----------
 
-
+hp.quniform('num_layers', 5, 8, 1)
