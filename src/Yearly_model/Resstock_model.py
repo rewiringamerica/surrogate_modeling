@@ -1,36 +1,60 @@
 # Databricks notebook source
-from pyspark.sql.functions import broadcast
+# MAGIC %md # Creating Feed Forward NN model for ResStock data
+# MAGIC
+# MAGIC ### Goal
+# MAGIC Create and experiment with FF NN models for ResStock data. All preprocessing layers (normalization and one hot encoding) part of tf model so can save the model and apply directly to a test dataset. 
+# MAGIC
+# MAGIC ### Process
+# MAGIC Loads the full data with upgrades and weather attached. Loads all data in memory so can only do Monthly or Yearly aggregation for now. 
+# MAGIC
+# MAGIC ##### Inputs: 
+# MAGIC - `building_model.resstock_yearly_with_metadata_weather_upgrades`: Contains the full data with upgrades and weather attached. All preprocessing has been applied already (besides normalization and one hot encoding).
+# MAGIC
+# MAGIC ##### Outputs: 
+# MAGIC - `saved_model`: A saved tf object containing the model including all preprocessing layers. 
+# MAGIC
+# MAGIC ### TODOs:
+# MAGIC
+# MAGIC #### Outstanding
+# MAGIC - Add hyperparameter optimization example
+# MAGIC
+# MAGIC #### Future Work
+# MAGIC - Add some analysis on future importance
+# MAGIC - Build model using difference from baseline as response
+# MAGIC - Add model using multiple input variables. 
+# MAGIC
+# MAGIC
+
+# COMMAND ----------
+
 import itertools
-from typing import Dict
 import pyspark.sql.functions as F
-from pyspark.sql.functions import col
-from pyspark.sql.functions import avg
-
-from sklearn.model_selection import train_test_split
-from tensorflow.keras import callbacks
-
 import pandas as pd
 import numpy as np
-from sklearn.preprocessing import OneHotEncoder
+import mlflow
 import tensorflow as tf
+import itertools
+import logging
+import os
+
+
+from sklearn.preprocessing import OneHotEncoder
 from tensorflow.keras.layers import Dense, BatchNormalization, InputLayer, Input
 from tensorflow.keras.callbacks import EarlyStopping
 from tensorflow.keras.layers import Normalization, StringLookup, CategoryEncoding
 from hyperopt import hp, fmin, tpe, Trials, STATUS_OK, SparkTrials
-import mlflow
-
 from tensorflow.keras.models import Sequential, Model
 from tensorflow.keras.layers import Dense
 from tensorflow.keras.losses import MeanAbsoluteError
-import itertools
-import logging
-import math
-import os
-import calendar
+from sklearn.model_selection import train_test_split
+from tensorflow.keras import callbacks
+from pyspark.sql.functions import col
+from pyspark.sql.functions import avg
+
 import matplotlib.pyplot as plt
 
 
-spark.conf.set("spark.sql.shuffle.partitions", 1536)
+
 
 # COMMAND ----------
 
