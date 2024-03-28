@@ -1,4 +1,24 @@
 # Databricks notebook source
+# MAGIC %md # Creating the Full Dataset used for modeling. 
+# MAGIC
+# MAGIC ### Goal
+# MAGIC Join the ResStock outputs to weather and metadata. And apply the necessary aggregation to energy consumption. 
+# MAGIC
+# MAGIC ### Process
+# MAGIC Please create the weather_data tables for the required aggregation, and the metadata with upgrades table, if you have not already done so, before running this notebook
+# MAGIC
+# MAGIC ##### Inputs: 
+# MAGIC - `building_model.resstock_outputs_hourly`: ResStock Hourly output table
+# MAGIC - `building_model.weather_data_yearly`: Contains yearly weather data. Can also use monthly or daily we just need to change the suffix
+# MAGIC - `building_model.metadata_w_upgrades`: Contains metadata with upgrades.
+# MAGIC
+# MAGIC ##### Outputs: 
+# MAGIC - `building_model.resstock_yearly_with_metadata_weather_upgrades`: Contains the final table used for modeling. Can also have a daily or monthly version as well
+# MAGIC
+# MAGIC
+
+# COMMAND ----------
+
 from pyspark.sql.functions import broadcast
 import pyspark.sql.functions as F
 from pyspark.sql.functions import col

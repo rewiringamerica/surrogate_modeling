@@ -1,10 +1,31 @@
 # Databricks notebook source
+# MAGIC %md # Creating Weather Data for given time aggregation
+# MAGIC
+# MAGIC ### Goal
+# MAGIC Generate a weather dataframe and write to a sparktable. Can be of Yearly, monthly or weekly directory.
+# MAGIC
+# MAGIC ### Process
+# MAGIC Join the weather_metadata to to the weather data file. And do some feature engineering and aggregations to convert hourly data to desired time aggregation
+# MAGIC
+# MAGIC ### I/Os
+# MAGIC
+# MAGIC ##### Inputs: 
+# MAGIC - `building_model.weather_files_metadata`: Contains the canonical_epw_filename and county_geoid
+# MAGIC - `building_model.weather_files_data`: Contains hourly weather data. Need to join with metadata to get county_geoids
+# MAGIC - `neighbors.project_upfront_cost_bucketed`: upfront costs by bucket and project
+# MAGIC
+# MAGIC ##### Outputs: 
+# MAGIC - `building_model.weather_data_yearly`: weather features on yearly aggregation. Can also create monthly or daily aggregations in which case we will have building_model.weather_data_daily or building_model.weather_data_monthly
+# MAGIC
+# MAGIC
+
+# COMMAND ----------
+
 from pyspark.sql.functions import broadcast
 import pyspark.sql.functions as F
 from pyspark.sql.functions import col
 from pyspark.sql.functions import avg
 spark.conf.set("spark.sql.shuffle.partitions", 1536)
-
 
 # COMMAND ----------
 

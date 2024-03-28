@@ -401,7 +401,3 @@ with mlflow.start_run(tags={"mlflow.runName": "Best Model Run"}):
     mlflow.keras.log_model(best_model, "best_model")
 print('Best hyperparameters:', best_model)
 
-
-# COMMAND ----------
-
-hp.quniform('num_layers', 5, 8, 1)

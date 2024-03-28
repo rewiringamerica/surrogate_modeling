@@ -1,4 +1,26 @@
 # Databricks notebook source
+# MAGIC %md # Creating Weather Data for given time aggregation
+# MAGIC
+# MAGIC ### Goal
+# MAGIC Given a metadata file, we will apply upgrades to it and append it to the original metadata. We then write this to a spark table.
+# MAGIC
+# MAGIC ### Process
+# MAGIC Apply upgrades as given in the YAML file. This file does not automatically parse the YAML code, instead we have translated the logic for the first five upgrades. 
+# MAGIC
+# MAGIC ##### Inputs: 
+# MAGIC - `building_model.resstock_metadata`: Metadata for base building models
+# MAGIC
+# MAGIC ##### Outputs: 
+# MAGIC - `building_model.metadata_w_upgrades`: weather features on yearly aggregation. Can also create monthly or daily aggregations in which case we will have building_model.weather_data_daily or building_model.weather_data_monthly
+# MAGIC
+# MAGIC ### TODOs:
+# MAGIC
+# MAGIC #### Future Work
+# MAGIC - Add upgrades 6-10
+# MAGIC - Add in automatic parsing of YAML files 
+
+# COMMAND ----------
+
 from pyspark.sql.functions import broadcast
 import itertools
 import math
@@ -7,7 +29,6 @@ from typing import Dict
 import pyspark.sql.functions as F
 from pyspark.sql.functions import col
 from pyspark.sql.functions import avg
-import re
 import pandas as pd
 import util_datagen
 spark.conf.set("spark.sql.shuffle.partitions", 1536)
@@ -249,6 +270,16 @@ def apply_upgrade_05(df):
 # COMMAND ----------
 
 def apply_all_upgrades(df):
+    ''' Creates a new dataframe with all of the upgrades attached
+
+    Currently applies all 5 of the upgrades available. 
+
+    Args:
+      df: A pandas dataframe containing the metadata for the base buildings
+
+  Returns:
+      A pandas dataframe containing metadata for the base building and all of the upgraded buildings.
+    '''
     return pd.concat([df,
                       apply_upgrade_01(df.copy()),
                       apply_upgrade_02(df.copy()),
@@ -301,15 +332,3 @@ path = database_name + '.' + table_name
 metadata_w_upgrades = spark.createDataFrame(metadata_w_upgrades)
 
 metadata_w_upgrades.write.saveAsTable(path)
-
-# COMMAND ----------
-
-
-
-# COMMAND ----------
-
-
-
-# COMMAND ----------
-
-
