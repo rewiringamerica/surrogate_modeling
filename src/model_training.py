@@ -10,8 +10,8 @@
 # COMMAND ----------
 
 # install tensorflow if not installed on cluster
-# %pip install tensorflow
-# dbutils.library.restartPython()
+%pip install ensorflow==2.15.0.post1
+dbutils.library.restartPython()
 
 # COMMAND ----------
 
@@ -61,7 +61,7 @@ targets = list(consumption_group_dict.keys())
 # COMMAND ----------
 
 # features we are and targets currently using for testing -- probably will store in a class at some point
-building_metadata_features = ["sqft", "occupants"]
+building_metadata_features = ["sqft", "occupants", "heating_fuel"]
 
 weather_features = [
     "temp_air",
@@ -115,18 +115,22 @@ weather_feature_lookups = [
 # COMMAND ----------
 
 # Read in the "raw" data which contains the prediction target and the keys needed to join to the feature tables. 
-# We might want to do whatever filtering here (e.g, subset fo SF homes)
-# but would need to make modifications since we removed building features from this table
-
+# Right now this is kind of hacky since we need to join to the bm table to do the required train data filtering
 sum_str = ', '.join([f"{'+'.join(v)} AS {k}" for k, v in consumption_group_dict.items()])
 
-raw_data = spark.sql(f"SELECT building_id, upgrade_id, weather_file_city, {sum_str} FROM ml.surrogate_model.annual_outputs WHERE upgrade_id == 0")
+raw_data = spark.sql(f"""
+                     SELECT B.building_id, B.upgrade_id, B.weather_file_city, {sum_str}
+                     FROM ml.surrogate_model.annual_outputs O
+                     LEFT JOIN ml.surrogate_model.building_metadata_features B 
+                        ON B.upgrade_id = O.upgrade_id AND B.building_id == O.building_id
+                     WHERE O.upgrade_id = 0
+                        AND geometry_building_type_acs = 'Single-Family Detached'
+                        AND vacancy_status = 'Occupied'
+                        AND sqft < 8000
+                        AND occupants < 11
+                     """)
 
 train_data, test_data = raw_data.randomSplit(weights=[0.8,0.2], seed=42)
-#       .where(F.col('geometry_building_type_acs') == 'Single-Family Detached')
-#       .where(F.col('vacancy_status') == 'Occupied')
-#       .where(F.col('sqft') < 8000)
-#       .where(F.col('occupants') < 11)
 
 # COMMAND ----------
 
@@ -151,9 +155,9 @@ except:
 
 # COMMAND ----------
 
-def convert_training_data_to_dict(train_pd, building_metadata_features, weather_features):
-    X_train_bm = {col: np.array(train_pd[col]) for col in building_metadata_features}
-    X_train_weather = {col: np.array(np.vstack(train_pd[col].values)) for col in weather_features}
+def convert_training_data_to_dict(train_df, building_metadata_features, weather_features):
+    X_train_bm = {col: np.array(train_df[col]) for col in building_metadata_features}
+    X_train_weather = {col: np.array(np.vstack(train_df[col].values)) for col in weather_features}
     return {**X_train_bm, **X_train_weather}
 
 #this allows us to apply pre/post processing to the inference data
@@ -185,15 +189,18 @@ class DataGenerator(keras.utils.Sequence):
     'Generates data for Keras'
     fe = FeatureEngineeringClient()
 
-    def __init__(self, train_data, building_metadata_features, weather_features, targets, batch_size=64):
+    def __init__(self, train_data, building_metadata_features, weather_features, targets, 
+                 batch_size=64, dtype=np.float32):
         self.batch_size = batch_size
+        self.dtype = dtype
         self.targets = targets
         self.building_metadata_features = building_metadata_features
         self.weather_features = weather_features
         self.training_set = self.init_training_set(train_data = train_data)
-        self.train_pd = self.init_training_features(train_data = train_data)
-        self.weather_pd = self.init_weather_features()
+        self.train_df = self.init_training_features(train_data = train_data)
+        self.weather_features_df = self.init_weather_features()
         #self.training_set_with_index = self.training_set.rdd.zipWithIndex()
+        self.building_metadata_vocab_dict = self.init_building_metadata_vocab_dict()
         self.on_epoch_end()
 
     def init_training_set(self, train_data):
@@ -223,22 +230,44 @@ class DataGenerator(keras.utils.Sequence):
         weather_features_table = fe.read_table(name = "ml.surrogate_model.weather_features")
         return weather_features_table.select(*self.weather_features, 'weather_file_city').toPandas()
 
+    def feature_dtype(self, feature_name):
+        is_string_feature = self.train_df[feature_name].dtype == 'O'
+        return tf.string if is_string_feature else self.dtype
+
+    def feature_vocab(self, feature_name):
+        """ Get all possible values for a feature
+
+        This method is used to create encoders for string (categorical/ordinal)
+        features
+        """
+        return self.train_df[feature_name].unique()
+    
+    def init_building_metadata_vocab_dict(self):
+        bm_dict = {}
+        for feature in self.building_metadata_features:
+            feature_vocab = []
+            feature_dtype = self.feature_dtype(feature)
+            if feature_dtype == tf.string:
+                feature_vocab = self.feature_vocab(feature)
+            bm_dict[feature] = {'dtype' : feature_dtype, 'vocab' : feature_vocab}
+        return bm_dict
+
     def __len__(self):
         # number of batches; last batch might be smaller
-        return math.ceil(len(self.train_pd) / self.batch_size)
+        return math.ceil(len(self.train_df) / self.batch_size)
 
     def __getitem__(self, index):
         'Generate one batch of data'
         # Generate indexes of the batch
-        batch_pd = self.train_pd.iloc[self.batch_size * index:self.batch_size * (index+1)]
-        batch_pd = batch_pd.merge(self.weather_pd, on = 'weather_file_city', how = 'left')
+        batch_df = self.train_df.iloc[self.batch_size * index:self.batch_size * (index+1)]
+        batch_df = batch_df.merge(self.weather_features_df, on = 'weather_file_city', how = 'left')
 
         # Convert DataFrame columns to NumPy arrays and create the dictionary
         X = convert_training_data_to_dict(
-            train_pd = batch_pd,
+            train_df = batch_df,
             building_metadata_features = self.building_metadata_features,
             weather_features = self.weather_features)
-        y = {col: np.array(batch_pd[col]) for col in self.targets}
+        y = {col: np.array(batch_df[col]) for col in self.targets}
 
         return X, y
     
@@ -277,7 +306,7 @@ class DataGenerator(keras.utils.Sequence):
         'Updates indexes after each epoch'
         # self.training_set = self.training_set.orderBy(F.rand())
         # self.training_set_with_index = self.training_set.rdd.zipWithIndex()
-        self.train_pd = self.train_pd.sample(frac=1.0)
+        self.train_df = self.train_df.sample(frac=1.0)
         pass
 
 # COMMAND ----------
@@ -295,8 +324,9 @@ class DataGenerator(keras.utils.Sequence):
 # COMMAND ----------
 
 #Takes ~30s to initialize both generators, 
-N = 50000 #using same size training set as current model training for benchmarking
+#N = 10000 #using same size training set as current model training for benchmarking
 #(5x as many building since we aren't exploding out by 5 upgrades)
+N = 100 #for testing
 
 _train_data, _val_data = train_data.sample(fraction=1.0).limit(N).randomSplit(weights=[0.8,0.2], seed=42)
 
@@ -317,12 +347,12 @@ val_gen = DataGenerator(
 # other than removing catagorical feature processing
 # and dependencies on the datagen class, this is identical to model in model.py
 # TODO: completely align models so they can read from same file
-def create_model(layer_params=None):
+def create_model(feature_params, layer_params=None):
     # Building model
     bmo_inputs_dict = {
         building_feature: layers.Input(
             name=building_feature, shape=(1,),
-            #dtype=train_gen.feature_dtype(building_feature)
+            dtype=feature_params[building_feature]['dtype']
         )
         for building_feature in building_metadata_features
     }
@@ -332,13 +362,13 @@ def create_model(layer_params=None):
         # handle categorical, ordinal, etc. features.
         # Here it is detected by dtype; perhaps explicit feature list and
         # handlers would be better
-        # if train_gen.feature_dtype(feature) == tf.string:
-        #     encoder = layers.StringLookup(
-        #         name=feature+'_encoder', output_mode='one_hot',
-        #         dtype=layer_params['dtype']
-        #     )
-        #     encoder.adapt(train_gen.feature_vocab(feature))
-        #     layer = encoder(layer)
+        if feature_params[feature]['dtype'] == tf.string:
+            encoder = layers.StringLookup(
+                name=feature+'_encoder', output_mode='one_hot',
+                dtype=layer_params['dtype']
+            )
+            encoder.adapt(feature_params[feature]['vocab'])
+            layer = encoder(layer)
         bmo_inputs.append(layer)
 
     bm = layers.Concatenate(name='concat_layer', dtype=layer_params['dtype'])(bmo_inputs)
@@ -413,11 +443,12 @@ def create_model(layer_params=None):
 mlflow.tensorflow.autolog(log_models=False)
 mlflow.sklearn.autolog(log_models=False)
 
-#~1m/epoch w/CPU; 10s/epoch w/ GPU
+#~1m/epoch w/CPU; 10s/epoch w/ GPU - Total of 15 min
 with mlflow.start_run() as run:
 
     training_params = {
-        "epochs": 100,
+        #"epochs": 100,
+        "epochs": 4, # for testing
         "batch_size": 64}
     
     layer_params = {
@@ -425,7 +456,7 @@ with mlflow.start_run() as run:
         'dtype': np.float32,
     }
 
-    model = create_model(layer_params)
+    model = create_model(feature_params = train_gen.building_metadata_vocab_dict, layer_params = layer_params)
     history = model.fit(
         train_gen,
         validation_data=val_gen,
@@ -444,6 +475,7 @@ with mlflow.start_run() as run:
 
 # COMMAND ----------
 
+#test out model predictions
 results = model.predict(val_gen[0][0])
 np.hstack([results[c] for c in targets])
 
@@ -474,3 +506,7 @@ batch_pred = fe.score_batch(model_uri=model_uri, df=test_data.limit(10), result_
 for i, target in enumerate(targets):
     batch_pred = batch_pred.withColumn(f"{target}_pred", F.col('prediction')[i])
 batch_pred.display()
+
+# COMMAND ----------
+
+
