@@ -9,8 +9,8 @@
 
 # COMMAND ----------
 
-# install tensorflow if not installed on cluster
-%pip install ensorflow==2.15.0.post1
+#install tensorflow if not installed on cluster
+%pip install tensorflow==2.15.0.post1
 dbutils.library.restartPython()
 
 # COMMAND ----------
@@ -61,7 +61,40 @@ targets = list(consumption_group_dict.keys())
 # COMMAND ----------
 
 # features we are and targets currently using for testing -- probably will store in a class at some point
-building_metadata_features = ["sqft", "occupants", "heating_fuel"]
+building_metadata_features = [
+    'heating_fuel',
+    'heating_appliance_type',
+    'heating_efficiency',
+    'heating_setpoint',
+    'heating_setpoint_offset_magnitude',
+    'ac_type',
+    'has_ac',
+    'cooled_space_proportion',
+    'cooling_efficiency_eer',
+    'cooling_setpoint',
+    'cooling_setpoint_offset_magnitude',
+    'has_ducts',
+    'ducts_insulation',
+    'ducts_leakage',
+    'infiltration_ach50',
+    'wall_material',
+    'insulation_wall',
+    'insulation_slab',
+    'insulation_rim_joist',
+    'insulation_floor',
+    'insulation_ceiling_roof',
+    'bedrooms',
+    'stories',
+    'foundation_type', 
+    'attic_type',
+    'climate_zone_temp',
+    'climate_zone_moisture',
+    'sqft',
+    'vintage',
+    'occupants',
+    'orientation',
+    'window_area'
+]
 
 weather_features = [
     "temp_air",
@@ -124,10 +157,10 @@ raw_data = spark.sql(f"""
                      LEFT JOIN ml.surrogate_model.building_metadata_features B 
                         ON B.upgrade_id = O.upgrade_id AND B.building_id == O.building_id
                      WHERE O.upgrade_id = 0
-                        AND geometry_building_type_acs = 'Single-Family Detached'
-                        AND vacancy_status = 'Occupied'
+                        --AND geometry_building_type_acs = 'Single-Family Detached'
+                        --AND is_vacant == 0
                         AND sqft < 8000
-                        AND occupants < 11
+                        AND occupants <= 10
                      """)
 
 train_data, test_data = raw_data.randomSplit(weights=[0.8,0.2], seed=42)
@@ -137,14 +170,12 @@ train_data, test_data = raw_data.randomSplit(weights=[0.8,0.2], seed=42)
 # Configure MLflow client to access models in Unity Catalog
 mlflow.set_registry_uri("databricks-uc")
 
-model_name = "ml.surrogate_model.surrogate_model"
-
 client = mlflow.tracking.client.MlflowClient()
 
-try:
-    client.delete_registered_model(model_name)  # Delete the model if already created
-except:
-    None
+# try:
+#     client.delete_registered_model(model_name)  # Delete the model if already created
+# except:
+#     None
 
 # COMMAND ----------
 
@@ -268,39 +299,7 @@ class DataGenerator(keras.utils.Sequence):
             building_metadata_features = self.building_metadata_features,
             weather_features = self.weather_features)
         y = {col: np.array(batch_df[col]) for col in self.targets}
-
         return X, y
-    
-    # def __getitem__(self, index):
-    #     'Generate one batch of data'
-    #     # Generate indexes of the batch
-    #     batch_pd = self.init_training_set(train_data = self.train_data.limit(self.batch_size))
-
-    #     X = convert_training_data_to_dict(
-    #         train_pd = batch_pd,
-    #         building_metadata_features = self.building_metadata_features,
-    #         weather_features = self.weather_features)
-        
-    #     y= {col: np.array(batch_pd[col]) for col in self.targets}
-
-    #     return X, y
-
-    # def __getitem__(self, index):
-    #     'Generate one batch of data'
-    #     # Generate indexes of the batch
-    #     min_idx = index*self.batch_size
-    #     max_idx = (index+1)*self.batch_size
-    #     batch_df = self.training_set_with_index.filter(lambda element: min_idx <= element[1] < max_idx).map(lambda element: element[0]).toDF()
-
-    #     # Convert DataFrame columns to NumPy arrays and create the dictionary
-    #     batch_pd = batch_df.toPandas()
-    #     X = convert_training_data_to_dict(
-    #         train_pd = batch_pd,
-    #         building_metadata_features = self.building_metadata_features,
-    #         weather_features = self.weather_features)
-    #     y= {col: np.array(batch_pd[col]) for col in self.targets}
-
-    #     return X, y
 
     def on_epoch_end(self):
         'Updates indexes after each epoch'
@@ -312,21 +311,10 @@ class DataGenerator(keras.utils.Sequence):
 # COMMAND ----------
 
 # #~25s to load full dataset into memory (without joining weather and bm features)
-# train_gen = DataGenerator(
-#     train_data = train_data,
-#     building_metadata_features=building_metadata_features,
-#     weather_features=weather_features,
-#     targets=targets)
-
-# #~.1s to load a batch
-# train_gen[0]
-
-# COMMAND ----------
-
-#Takes ~30s to initialize both generators, 
-#N = 10000 #using same size training set as current model training for benchmarking
+#N = 100000 #using same size training set as current model training for benchmarking
 #(5x as many building since we aren't exploding out by 5 upgrades)
-N = 100 #for testing
+##N = 100 #for testing
+N = train_data.count()
 
 _train_data, _val_data = train_data.sample(fraction=1.0).limit(N).randomSplit(weights=[0.8,0.2], seed=42)
 
@@ -344,9 +332,11 @@ val_gen = DataGenerator(
 
 # COMMAND ----------
 
-# other than removing catagorical feature processing
-# and dependencies on the datagen class, this is identical to model in model.py
-# TODO: completely align models so they can read from same file
+#print out the features to make sure they look right
+train_gen[0][0]
+
+# COMMAND ----------
+
 def create_model(feature_params, layer_params=None):
     # Building model
     bmo_inputs_dict = {
@@ -414,26 +404,42 @@ def create_model(feature_params, layer_params=None):
 
     # Combined model and separate towers for output groups
     cm = layers.Concatenate(name='combine_features')([bmo.output, wmo.output])
+    cm = layers.Dense(128, **layer_params)(cm)
+    cm = layers.Dense(64, **layer_params)(cm)
+    cm = layers.Dense(32, **layer_params)(cm)
     cm = layers.Dense(16, **layer_params)(cm)
     cm = layers.Dense(16, **layer_params)(cm)
     # cm is a chokepoint representing embedding of a building + climate it is in
 
+
     # building a separate tower for each output group
+    
+    # force output to be non-negative
+    layer_params_final = layer_params.copy()
+    layer_params_final['activation'] = 'relu' 
+
     final_outputs = {}
     for consumption_group in targets:
         io = layers.Dense(8, name=consumption_group+'_entry', **layer_params)(cm)
         # ... feel free to add more layers
         io = layers.Dense(8, name=consumption_group+'_mid', **layer_params)(io)
         # no activation on the output
-        io = layers.Dense(1, name=consumption_group, **layer_params)(io)
+        io = layers.Dense(1, name=consumption_group, **layer_params_final)(io)
         final_outputs[consumption_group] = io
 
     final_model = models.Model(
         inputs={**bmo.input, **wmo.input}, outputs=final_outputs)
 
+
+    def mape(y_true, y_pred):
+        """Version of Mean Absolute Percentage Error that ignores samples where y_true = 0"""
+        diff = tf.keras.backend.abs((y_true - y_pred) / y_true)
+        return 100. * tf.keras.backend.mean(diff[y_true != 0], axis=-1)
+
     final_model.compile(
         loss=keras.losses.MeanAbsoluteError(),
-        optimizer='adam'
+        optimizer='adam', 
+        metrics=[mape],
     )
     return final_model
 
@@ -443,12 +449,15 @@ def create_model(feature_params, layer_params=None):
 mlflow.tensorflow.autolog(log_models=False)
 mlflow.sklearn.autolog(log_models=False)
 
+#model_name = "ml.surrogate_model.surrogate_model_test"
+model_name = "ml.surrogate_model.surrogate_model"
+
 #~1m/epoch w/CPU; 10s/epoch w/ GPU - Total of 15 min
 with mlflow.start_run() as run:
 
     training_params = {
-        #"epochs": 100,
-        "epochs": 4, # for testing
+        "epochs": 100,
+        #"epochs": 4, # for testing
         "batch_size": 64}
     
     layer_params = {
@@ -461,7 +470,9 @@ with mlflow.start_run() as run:
         train_gen,
         validation_data=val_gen,
         verbose=2,
-        **training_params)
+        callbacks=[keras.callbacks.EarlyStopping(monitor='val_loss', patience=10)],
+        **training_params, 
+        )
 
     pyfunc_model = SurrogateModelingWrapper(model)
 
@@ -502,11 +513,7 @@ def get_latest_model_version(model_name):
 latest_model_version = get_latest_model_version(model_name)
 model_uri = f"models:/{model_name}/{latest_model_version}"
 
-batch_pred = fe.score_batch(model_uri=model_uri, df=test_data.limit(10), result_type=ArrayType(DoubleType()))
+batch_pred = fe.score_batch(model_uri=model_uri, df=test_data, result_type=ArrayType(DoubleType()))
 for i, target in enumerate(targets):
     batch_pred = batch_pred.withColumn(f"{target}_pred", F.col('prediction')[i])
 batch_pred.display()
-
-# COMMAND ----------
-
-
