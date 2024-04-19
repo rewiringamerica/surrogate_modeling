@@ -1,5 +1,5 @@
 # Databricks notebook source
-# MAGIC %md # Feature Store for Surrogate Model 
+# MAGIC %md # Model Training
 # MAGIC ### Cluster/ User Requirements
 # MAGIC - Access Mode: Single User or Shared (Not No Isolation Shared)
 # MAGIC - Runtime: >= Databricks Runtime 13.2 for ML or above (or >= Databricks Runtime 13.2 +  `%pip install databricks-feature-engineering`)
@@ -109,15 +109,6 @@ weather_features = [
 
 # COMMAND ----------
 
-# #3.5e-07 of mem per building for 2 bm features, 1 target (annual), and 3 weather features (8670)
-# n_buildings = 550000
-# n_upgrades = 10
-# mem_per_building_gb = 3.5e-7
-# mem_per_building_gb * n_buildings * n_upgrades
-# #df_pd.memory_usage(index=True, deep = True).sum() / 1E9
-
-# COMMAND ----------
-
 # MAGIC %md ## Train a model with Feature Engineering in Unity Catalog
 
 # COMMAND ----------
@@ -157,8 +148,6 @@ raw_data = spark.sql(f"""
                      LEFT JOIN ml.surrogate_model.building_metadata_features B 
                         ON B.upgrade_id = O.upgrade_id AND B.building_id == O.building_id
                      WHERE O.upgrade_id = 0
-                        --AND geometry_building_type_acs = 'Single-Family Detached'
-                        --AND is_vacant == 0
                         AND sqft < 8000
                         AND occupants <= 10
                      """)
@@ -169,13 +158,7 @@ train_data, test_data = raw_data.randomSplit(weights=[0.8,0.2], seed=42)
 
 # Configure MLflow client to access models in Unity Catalog
 mlflow.set_registry_uri("databricks-uc")
-
 client = mlflow.tracking.client.MlflowClient()
-
-# try:
-#     client.delete_registered_model(model_name)  # Delete the model if already created
-# except:
-#     None
 
 # COMMAND ----------
 
@@ -196,8 +179,6 @@ class SurrogateModelingWrapper(mlflow.pyfunc.PythonModel):
    
     def __init__(self, trained_model):
         self.model = trained_model
-
-    # def load_context(self, context):
 
     def preprocess_input(self, model_input):
         model_input_dict = convert_training_data_to_dict(
