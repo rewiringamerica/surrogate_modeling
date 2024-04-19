@@ -415,8 +415,8 @@ def create_model(feature_params, layer_params=None):
     # building a separate tower for each output group
     
     # force output to be non-negative
-    layer_params_final = layer_params.copy()
-    layer_params_final['activation'] = 'relu' 
+    # layer_params_final = layer_params.copy()
+    # layer_params_final['activation'] = 'relu' 
 
     final_outputs = {}
     for consumption_group in targets:
@@ -424,7 +424,7 @@ def create_model(feature_params, layer_params=None):
         # ... feel free to add more layers
         io = layers.Dense(8, name=consumption_group+'_mid', **layer_params)(io)
         # no activation on the output
-        io = layers.Dense(1, name=consumption_group, **layer_params_final)(io)
+        io = layers.Dense(1, name=consumption_group, **layer_params)(io)
         final_outputs[consumption_group] = io
 
     final_model = models.Model(
