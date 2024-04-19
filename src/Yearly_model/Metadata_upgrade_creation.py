@@ -38,12 +38,13 @@ spark.conf.set("spark.sql.shuffle.partitions", 1536)
 # Resstock metadata loading and preprocessing
 metadata = spark.table('building_model.resstock_metadata')
 
-eligible_households = ['Single-Family Detached', 'Single-Family Attached']
+#eligible_households = ['Single-Family Detached', 'Single-Family Attached']
+eligible_households = ['Single-Family Attached']
 metadata = metadata.filter(col("in_geometry_building_type_acs").isin(eligible_households))
 
 
-## remove ineligible fuels like None and other fuel since Resstock doesn't model this
-ineligible_fuels = ['Other Fuel', 'None']
+## remove ineligible Other fuels Resstock doesn't model this
+ineligible_fuels = ['Other Fuel']
 metadata = (metadata.filter(~col("in_heating_fuel").isin(ineligible_fuels)))
 
 ## also remove shared cooling systems and shared heating systems (small number still left after previous filter)
@@ -331,4 +332,8 @@ path = database_name + '.' + table_name
 
 metadata_w_upgrades = spark.createDataFrame(metadata_w_upgrades)
 
-metadata_w_upgrades.write.saveAsTable(path)
+metadata_w_upgrades.write.saveAsTable(name = path, mode = 'overwrite')
+
+# COMMAND ----------
+
+

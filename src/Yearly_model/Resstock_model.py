@@ -31,7 +31,7 @@ import itertools
 import pyspark.sql.functions as F
 import pandas as pd
 import numpy as np
-import mlflow
+# import mlflow
 import tensorflow as tf
 import itertools
 import logging
@@ -42,7 +42,7 @@ from sklearn.preprocessing import OneHotEncoder
 from tensorflow.keras.layers import Dense, BatchNormalization, InputLayer, Input
 from tensorflow.keras.callbacks import EarlyStopping
 from tensorflow.keras.layers import Normalization, StringLookup, CategoryEncoding
-from hyperopt import hp, fmin, tpe, Trials, STATUS_OK, SparkTrials
+# from hyperopt import hp, fmin, tpe, Trials, STATUS_OK, SparkTrials
 from tensorflow.keras.models import Sequential, Model
 from tensorflow.keras.layers import Dense
 from tensorflow.keras.losses import MeanAbsoluteError
@@ -50,35 +50,49 @@ from sklearn.model_selection import train_test_split
 from tensorflow.keras import callbacks
 from pyspark.sql.functions import col
 from pyspark.sql.functions import avg
+from pyspark.sql.types import FloatType
 
 import matplotlib.pyplot as plt
 
 
+import os
+# fix cublann OOM
+os.environ['TF_FORCE_GPU_ALLOW_GROWTH'] = 'true'
+tf.config.list_physical_devices("GPU")
 
 
 # COMMAND ----------
 
 full_data_path = 'building_model.resstock_yearly_with_metadata_weather_upgrades'
 resstock_yearly_with_metadata_weather = spark.table(full_data_path)
-resstock_yearly_with_metadata_weather_df = resstock_yearly_with_metadata_weather.toPandas()
+resstock_yearly_with_metadata_weather_df = resstock_yearly_with_metadata_weather.where(F.col('upgrade_id') == 0).toPandas()
 data = resstock_yearly_with_metadata_weather_df.copy()
 
 
 # COMMAND ----------
 
+data['sum_out_heating_total'] = data.sum_out_electricity_heating_total + data.sum_out_natural_gas_heating_total + data.sum_out_fuel_oil_heating_total + data.sum_out_propane_heating_total
+
+# COMMAND ----------
+
 ## let's use only one output variable for now
-target_variable = 'sum_out_electricity_cooling_total'
+target_variable = ['sum_out_electricity_cooling_total', 'sum_out_heating_total']
 
 additional = ['in_insulation_ceiling', 'in_insulation_floor', 'in_insulation_foundation_wall', 'in_insulation_rim_joist', 'in_insulation_roof', 'in_insulation_slab',
               'in_insulation_wall', 'in_cooling_setpoint', 'in_heating_setpoint', 'in_cooling_setpoint_has_offset',
-              'in_cooling_setpoint_offset_magnitude', 'in_heating_setpoint_offset_magnitude', 'in_heating_setpoint_has_offset']
+              'in_cooling_setpoint_offset_magnitude', 'in_heating_setpoint_offset_magnitude', 'in_heating_setpoint_has_offset', 
+              ]
 
 covariates = ['in_occupants', 'temp_high', 'temp_low', 'temp_avg',
        'wind_speed_avg', 'ghi_avg', 'dni_avg', 'dhi_avg', 'std_temp_high',
        'std_temp_low', 'std_wind_speed', 'std_ghi', 'in_vintage', 'in_sqft', 'in_hvac_heating_efficiency_nominal_percent', 'in_infiltration_ach50',
         'in_window_wall_ratio_mean', 'in_bedrooms', 'in_geometry_stories', 'in_ashrae_iecc_climate_zone_2004','in_income_bin_midpoint',
-        'in_hvac_cooling_type', 'in_hvac_cooling_efficiency', 'in_hvac_cooling_partial_space_conditioning', 'in_is_vacant', 'in_is_rented',  'in_hvac_has_ducts', 'in_hvac_backup_heating_efficiency_nominal_percent'] + additional
+        'in_hvac_cooling_type', 'in_hvac_cooling_efficiency', 'in_hvac_cooling_partial_space_conditioning', 'in_is_vacant', 'in_is_rented',  'in_hvac_has_ducts', 'in_hvac_backup_heating_efficiency_nominal_percent', 'in_heating_fuel'] + additional
 
+
+
+
+# COMMAND ----------
 
 
 
@@ -174,14 +188,14 @@ x = Dense(16, activation='relu')(x)
 x = BatchNormalization()(x)
 x = Dense(16, activation='relu')(x)
 x = BatchNormalization()(x)
-output = Dense(1, activation='linear')(x)
+output = Dense(2, activation='linear')(x)
 
 # Create and compile the Model
+
 model = Model(inputs=list(inputs.values()), outputs=output)
-model.compile(optimizer='adam', loss='mae')
 
-
-
+model.compile(optimizer='adam', 
+              loss="mae")
 
 # Define the df_to_dataset function for converting DataFrames to tf.data.Dataset
 # turn off shuffling. Not needed and changes the order of the data which becomes 
@@ -194,8 +208,12 @@ def df_to_dataset(features, labels, shuffle=False, batch_size=128):
 
 # Prepare and train the model
 batch_size = 128
-train_ds = df_to_dataset(X_train, y_train, shuffle=False, batch_size=batch_size)
-val_ds = df_to_dataset(X_val, y_val, batch_size=batch_size)
+
+#split train set into test and val, and use what was called the "val" set as the test set
+train_size = int(X_train.shape[0]*.8)
+train_ds = df_to_dataset(X_train[:train_size], y_train[:train_size], shuffle=False, batch_size=batch_size)
+val_ds = df_to_dataset(X_train[train_size:], y_train[train_size:], batch_size=batch_size)
+test_ds = df_to_dataset(X_val, y_val, batch_size=batch_size)
 
 
 # COMMAND ----------
@@ -232,7 +250,7 @@ class LossHistory(tf.keras.callbacks.Callback):
 # COMMAND ----------
 
 # Early stopping callback
-early_stopping = EarlyStopping(monitor="val_loss", patience=2)
+early_stopping = EarlyStopping(monitor="val_loss", patience=5)
 # Add the custom callback to the training process
 # We will fit using train_ds and val_ds which will conduct preprocessing on batches
 history = LossHistory()
@@ -240,7 +258,7 @@ history = LossHistory()
 # Train the model with early stopping
 h = model.fit(
     train_ds,
-    epochs=5,
+    epochs=100,
     verbose = 2,
     validation_data=val_ds,
     callbacks=[early_stopping, history],
@@ -248,14 +266,90 @@ h = model.fit(
 
 # COMMAND ----------
 
-predictions = model.predict(val_ds)
+predictions = np.clip(model.predict(test_ds), a_min = 0, a_max = None)
 # get correct loss on training data.
-mae = model.evaluate(val_ds)
+mae = model.evaluate(test_ds)
+
+# COMMAND ----------
+
+# Create table for comparsion with other methods 
+@udf(returnType=FloatType())
+def get_percent_error(pred:float, true:float) -> float:
+    if true == 0:
+        return None
+    return abs(pred - true)/true
+
+df_true = pd.DataFrame(y_val).reset_index()
+df_true.columns = ['building_id', 'cooling', 'heating']
+df_true['hvac'] = df_true.cooling + df_true.heating
+df_pred = pd.DataFrame(predictions)
+df_pred.columns = ['cooling', 'heating']
+df_pred['building_id'] = y_val.index.values
+df_pred['hvac'] = df_pred.cooling + df_pred.heating
+
+df_y = spark.createDataFrame(df_true.melt(id_vars = 'building_id').merge(df_pred.melt(id_vars = 'building_id'), on = ['building_id', 'variable'], suffixes = ['_true', '_pred']))
+
+df_metadata = spark.createDataFrame(X_val_pd.reset_index().rename(columns= {'index' : 'building_id'})[['building_id', 'in_heating_fuel', 'in_hvac_cooling_type']])
+
+df_eval = (
+    df_metadata
+        .join(df_y.withColumnRenamed('variable', 'end_use'), on =  ['building_id'])
+        .replace({'AC' : 'Central AC'}, subset = 'in_hvac_cooling_type')
+        .withColumn('in_heating_fuel', 
+                    F.when(F.col('in_hvac_cooling_type') == 'Heat Pump', F.lit('Heat Pump'))
+                    .otherwise(F.col('in_heating_fuel')))
+        .withColumn('type', 
+            F.when(F.col('end_use') == 'cooling', F.col('in_hvac_cooling_type'))
+            .when(F.col('end_use') == 'heating', F.col('in_heating_fuel'))
+            .otherwise(F.lit('Total')))
+        .withColumn('abs_error', F.abs(F.col('value_pred') -  F.col('value_true')))
+        .withColumn('percent_error', get_percent_error(F.col('value_pred'), F.col('value_true')))
+)
+
+
+def get_error_metric_table(df, groupby_cols = []):
+    df_metrics = (
+        df
+            .groupby(*groupby_cols)
+            .agg(
+                F.mean('abs_error').alias('Mean Abs Error'), 
+                F.median('abs_error').alias('Median Abs Error'), 
+                (F.median('percent_error')*100).alias('Median APE'), 
+                (F.mean('percent_error')*100).alias('MAPE'), 
+                )
+    )
+    return df_metrics
+
+metrics_by_end_use_type = get_error_metric_table(df = df_eval.where(F.col('end_use') != 'hvac'), groupby_cols = ['end_use' ,'type'])
+metrics_by_end_use = get_error_metric_table(df = df_eval, groupby_cols = ['end_use']) .withColumn('type', F.lit('Total'))
+
+df_metrics_combined = metrics_by_end_use_type.unionByName(metrics_by_end_use).toPandas()
+
+df_metrics_combined.to_csv('gs://the-cube/export/surrogate_model_metrics/feed_forward.csv', index=False)
+
+# COMMAND ----------
+
+def get_results(data_sub, predictions, groupby_cols = ['upgrade_id']):
+    X_train_df, X_test_df, y_train, y_test = train_test_split(data_sub, data_sub[target_variable], test_size=0.2, random_state=40)
+    comparison = pd.concat([pd.DataFrame({"Predicted": predictions[:,0], "Actual": y_test.iloc[:,0]}), X_test_df], axis = 1)
+
+    comparison['Error'] = comparison["Predicted"] - comparison["Actual"]
+    comparison['Abs Error'] = np.abs(comparison['Error'])
+    comparison['APE'] = (comparison['Abs Error']/comparison['Actual']).replace([np.inf, -np.inf], np.nan)
+
+    comparison_agg = comparison.groupby(groupby_cols).agg({
+        "Error" : ["mean", 'median'], 
+        "Abs Error" : ["mean", 'median', 'sum'], 
+        "APE" : ['mean', 'median'], 
+        "Actual" : ['sum'], 
+    })
+
+    #comparison_agg['WAPE'] = comparison_agg['Abs Error','sum']/comparison_agg['Actual', 'sum']
+    return comparison_agg.drop([('Abs Error','sum'), 'Actual'],axis=1)
 
 # COMMAND ----------
 
 ## view error by grouping variable
-
 y = y_val
 comparison = pd.DataFrame({"Predicted": np.hstack(predictions), "Actual": y_val})
 comparison['abs_error'] = np.abs(comparison["Predicted"] - comparison["Actual"])
