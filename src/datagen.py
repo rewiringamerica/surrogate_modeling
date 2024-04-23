@@ -1161,3 +1161,12 @@ class DataGen(tf.keras.utils.Sequence):
         return features, self.batch_output_features(batch_ids)
 
 
+if __name__ == '__main__':
+    np.random.seed(42)  # 42 is always the answer
+    N = 5
+    get_building_metadata = BuildingMetadataBuilder()
+    building_ids = get_building_metadata.building_ids
+    np.random.shuffle(building_ids)
+    building_ids = building_ids[:N]
+    train_gen = DataGen(building_ids)
+    train_gen[0]
