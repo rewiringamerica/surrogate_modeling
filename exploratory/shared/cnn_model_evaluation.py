@@ -15,9 +15,7 @@ dbutils.library.restartPython()
 
 # COMMAND ----------
 
-import os
-# fix cublann OOM
-os.environ['TF_FORCE_GPU_ALLOW_GROWTH'] = 'true'
+
 
 # COMMAND ----------
 
@@ -29,81 +27,29 @@ from databricks.feature_engineering import FeatureEngineeringClient
 import mlflow
 import tensorflow as tf
 
+import os
+# fix cublann OOM
+os.environ['TF_FORCE_GPU_ALLOW_GROWTH'] = 'true'
+
 tf.config.list_physical_devices("GPU")
 
 # COMMAND ----------
 
-# create a FeatureEngineeringClient.
-fe = FeatureEngineeringClient()
-
-mlflow.set_registry_uri('databricks-uc')
-
-#target grouping
-consumption_group_dict = {
-    'heating' : [
-        'electricity__heating_fans_pumps',
-        'electricity__heating_hp_bkup',
-        'electricity__heating',
-        'fuel_oil__heating_hp_bkup',
-        'fuel_oil__heating',
-        'natural_gas__heating_hp_bkup',
-        'natural_gas__heating',
-        'propane__heating_hp_bkup',
-        'propane__heating'],
-    'cooling' : [
-        'electricity__cooling_fans_pumps',
-        'electricity__cooling']
-}
-
-targets = list(consumption_group_dict.keys())
-
-model_name = "ml.surrogate_model.surrogate_model"
+from model_db import Model
+from datagen_db import DataGenerator, load_inference_data
 
 # COMMAND ----------
 
-# Read in the "raw" data which contains the prediction target and the keys needed to join to the feature tables. 
-# Right now this is kind of hacky since we need to join to the bm table to do the required train data filtering
-sum_str = ', '.join([f"{'+'.join(v)} AS {k}" for k, v in consumption_group_dict.items()])
-
-raw_data = spark.sql(f"""
-                     SELECT B.building_id, B.upgrade_id, B.weather_file_city, {sum_str}
-                     FROM ml.surrogate_model.annual_outputs O
-                     LEFT JOIN ml.surrogate_model.building_metadata_features B 
-                        ON B.upgrade_id = O.upgrade_id AND B.building_id == O.building_id
-                     WHERE O.upgrade_id = 0
-                        AND sqft < 8000
-                        AND occupants <= 10
-                     """)
-
-train_data, test_data = raw_data.randomSplit(weights=[0.8,0.2], seed=42)
+model = Model(name="surrogate_model")
 
 # COMMAND ----------
 
-# MAGIC %md ## Batch scoring
-# MAGIC Use `score_batch` to apply a packaged Feature Engineering in UC model to new data for inference. The input data only needs the primary key columns. The model automatically looks up all of the other feature values from the feature tables.
+# #~25s to load full dataset into memory (without joining weather and bm features)
+_, _, test_data = load_inference_data()
 
 # COMMAND ----------
 
-# Helper function
-def get_latest_model_version(model_name):
-    latest_version = 1
-    mlflow_client = mlflow.tracking.client.MlflowClient()
-    for mv in mlflow_client.search_model_versions(f"name='{model_name}'"):
-        version_int = int(mv.version)
-        if version_int > latest_version:
-            latest_version = version_int
-    return latest_version
-
-# COMMAND ----------
-
-model_name = "ml.surrogate_model.surrogate_model"
-# batch inference on small set of held out test set
-latest_model_version = get_latest_model_version(model_name)
-model_uri = f"models:/{model_name}/{latest_model_version}"
-
-batch_pred = fe.score_batch(model_uri=model_uri, df=test_data, result_type=ArrayType(DoubleType()))
-for i, target in enumerate(targets):
-    batch_pred = batch_pred.withColumn(f"{target}_pred", F.col('prediction')[i])
+batch_pred = model.score_batch(test_data = test_data, targets = DataGenerator.consumption_group_dict.keys())
 
 # COMMAND ----------
 
@@ -169,7 +115,7 @@ metrics_by_enduse = evalute_metrics(
 ).withColumn('type', F.lit('Total'))
 
 
-df_metrics_combined = df_metrics.unionByName(df_metrics_total).toPandas()
+df_metrics_combined = metrics_by_enduse_type.unionByName(metrics_by_enduse).toPandas()
 
 # COMMAND ----------
 

@@ -1,15 +1,48 @@
 # Databricks notebook source
-# MAGIC %md # Feature Store for Surrogate Model 
-# MAGIC ### Cluster/ User Requirements
+# MAGIC %md # Build Surrogate Model Feature Stores
+# MAGIC
+# MAGIC ### Goal
+# MAGIC Transform surrogate model features (building metadata and weather) and write to feature store.
+# MAGIC
+# MAGIC ### Process
+# MAGIC * Transform building metadata into features and subset to features of interest
+# MAGIC * Pivot weather data into wide vector format with pkey `weather_file_city` and a 8670-length timeseries vector for each weather feature column
+# MAGIC * Write building metadata features and weather features to feature store tables
+# MAGIC
+# MAGIC ### I/Os
+# MAGIC
+# MAGIC ##### Inputs: 
+# MAGIC - `ml.surrogate_model.building_metadata`: Building metadata indexed by (building_id)
+# MAGIC - `ml.surrogate_model.weather_data_hourly`: Hourly weather data indexed by (weather_file_city, hour datetime)
+# MAGIC
+# MAGIC ##### Outputs: 
+# MAGIC - `ml.surrogate_model.building_features`: Building metadata features indexed by (building_id)
+# MAGIC - `ml.surrogate_model.weather_features_hourly`: Weather data indexed by (weather_file_city) with a 8670-length timeseries vector for each weather feature column
+# MAGIC
+# MAGIC ### TODOs:
+# MAGIC
+# MAGIC #### Outstanding
+# MAGIC
+# MAGIC #### Future Work
+# MAGIC - Add upgrades to the building metadata table
+# MAGIC - Extend building metadata features to cover those related to all end uses and to SF Attatched homes 
+# MAGIC - More largely, updates to the feature table should merge and not overwrite, and in general transformation that are a hyperparameter of the model (i.e, that we may want to vary in different models) should be done downstream of this table. Sorting out exactly which transformations should happen in each of the `build_dataset`, `build_feature_store` and `model_training` files is still a WIP. 
+# MAGIC
+# MAGIC ---
+# MAGIC Cluster/ User Requirements
 # MAGIC - Access Mode: Single User or Shared (Not No Isolation Shared)
 # MAGIC - Runtime: >= Databricks Runtime 13.2 for ML or above (or >= Databricks Runtime 13.2 +  `%pip install databricks-feature-engineering`)
-# MAGIC - `USE CATALOG`, `CREATE SCHEMA` privleges on the `ml` Unity Catalog (Ask Miki if for access)
+# MAGIC - `USE CATALOG`, `CREATE SCHEMA` privleges on the `ml` Unity Catalog (Ask Miki for access if permission is denied)
 
 # COMMAND ----------
 
+# DBTITLE 1,Imports
 from itertools import chain
 import re
+from typing import Dict
 
+from pyspark.sql import DataFrame
+from pyspark.sql.column import Column
 import pyspark.sql.functions as F
 from pyspark.sql.types import IntegerType, FloatType
 
@@ -17,23 +50,25 @@ from databricks.feature_engineering import FeatureEngineeringClient
 
 # COMMAND ----------
 
-# MAGIC %md ## Feature Preprocessing
+# MAGIC %md ## Feature Transformation
 
 # COMMAND ----------
 
+# DBTITLE 1,Feature transformation helper functions
 # Constants
 BTU_PER_WH = 3.413
 
 EER_CONVERSION = {
-    'EER': 1.0,
-    'SEER': .875,
-    'SEER2': 0.91,  # ~=SEER*1.04 (https://www.marathonhvac.com/seer-to-seer2/)
-    'EER2': 1.04
+    "EER": 1.0,
+    "SEER": 0.875,
+    "SEER2": 0.91,  # ~=SEER*1.04 (https://www.marathonhvac.com/seer-to-seer2/)
+    "EER2": 1.04,
 }
 
+
 @udf(returnType=FloatType())
-def extract_percentage(value:str) -> float:
-    """ Extract percentage of space given
+def extract_percentage(value: str) -> float:
+    """Extract percentage of space given
 
     >>> extract_percentage('100% Conditioned')
     1.0
@@ -44,31 +79,32 @@ def extract_percentage(value:str) -> float:
     >>> extract_percentage('10% Leakage, Uninsulated')
     0.1
     """
-    if value == 'None':
+    if value == "None":
         return 0.0
-    match = re.match(r'^<?(\d+)%', value)
+    match = re.match(r"^<?(\d+)%", value)
     try:
         return (match and float(match.group(1))) / 100.0
     except ValueError:
-        raise ValueError(
-            f'Cannot extract cooled space percentage from: f{value}')
+        raise ValueError(f"Cannot extract cooled space percentage from: f{value}")
+
 
 @udf(returnType=IntegerType())
 def vintage2age2000(vintage: str) -> int:
-    """ vintage of the building in the year of 2000
+    """vintage of the building in the year of 2000
     >>> vintage2age2000('<1940')
     70
     >>> vintage2age2000('1960s')
     40
     """
     vintage = vintage.strip()
-    if vintage.startswith('<'):  # '<1940' bin in resstock
+    if vintage.startswith("<"):  # '<1940' bin in resstock
         return 70
     return 2000 - int(vintage[:4])
 
+
 @udf(returnType=IntegerType())
 def extract_r_value(construction_type: str) -> int:
-    """ Extract R-value from an unformatted string
+    """Extract R-value from an unformatted string
 
     Assumption: all baseline walls have similar R-value of ~4.
     The returned value is for additional insulation only. Examples:
@@ -90,19 +126,21 @@ def extract_r_value(construction_type: str) -> int:
     19
     """
     lower = construction_type.lower()
-    if lower == 'none' or 'uninsulated' in lower:
+    if lower == "none" or "uninsulated" in lower:
         return 0
     m = re.search(r"\br-?(\d+)\b", construction_type, flags=re.I)
     if not m:
         raise ValueError(
-            f'Cannot determine R-value of the construction type: '
-            f'{construction_type}'
+            f"Cannot determine R-value of the construction type: "
+            f"{construction_type}"
         )
     return int(m.group(1))
 
+
+# TODO: figure out why raise value error is triggering
 @udf(returnType=FloatType())
 def extract_cooling_efficiency(cooling_efficiency: str) -> float:
-    """ Convert a ResStock cooling efficiency into EER value
+    """Convert a ResStock cooling efficiency into EER value
 
     >>> extract_cooling_efficiency('AC, SEER 13') / EER_CONVERSION['SEER']
     13.0
@@ -113,22 +151,23 @@ def extract_cooling_efficiency(cooling_efficiency: str) -> float:
     >>> extract_cooling_efficiency('None') >= 99
     True
     """
-    if cooling_efficiency == 'None':
+    if cooling_efficiency == "None":
         # insanely high efficiency to mimic a nonexistent cooling
-        return 999.
-    
+        return 999.0
+
     m = re.search(r"\b(SEER2|SEER|EER)\s+(\d+\.?\d*)", cooling_efficiency)
     if m:
         try:
             return EER_CONVERSION[m.group(1)] * float(m.group(2))
         except (ValueError, KeyError):
             raise ValueError(
-                f'Cannot extract cooling efficiency from: {cooling_efficiency}')
-    else:
-        return 0.
-        # raise ValueError(
-        #         f'Cannot extract cooling efficiency from: {cooling_efficiency}')
-            
+                f"Cannot extract cooling efficiency from: {cooling_efficiency}"
+            )
+    # else:
+    #     return 0.
+    # raise ValueError(
+    #         f'Cannot extract cooling efficiency from: {cooling_efficiency}')
+
 
 @udf(returnType=IntegerType())
 def extract_heating_efficiency(heating_efficiency: str) -> int:
@@ -155,20 +194,21 @@ def extract_heating_efficiency(heating_efficiency: str) -> int:
         number = float(efficiency.strip().split(" ", 1)[0].strip("%"))
     except ValueError:
         raise ValueError(
-            f'Cannot extract heating efficiency from: {heating_efficiency}'
+            f"Cannot extract heating efficiency from: {heating_efficiency}"
         )
 
     if efficiency.endswith("AFUE"):
         return int(number)
     if efficiency.endswith("HSPF"):
-        return int(number*100/BTU_PER_WH)
+        return int(number * 100 / BTU_PER_WH)
 
     # 'Other' - e.g. wood stove - is not supported
     return int(number)
 
+
 @udf(returnType=FloatType())
-def temp_from(temperature_string, base_temp = 0) -> float:
-    """ Convert string Fahrenheit degrees to float F - base_temp deg
+def temp_from(temperature_string, base_temp=0) -> float:
+    """Convert string Fahrenheit degrees to float F - base_temp deg
 
     >>> temp70('70F', base_temp = 70)
     0.0
@@ -176,12 +216,12 @@ def temp_from(temperature_string, base_temp = 0) -> float:
     -3.0
     """
     if not re.match(r"\d+F", temperature_string):
-        raise ValueError(
-            f"Unrecognized temperature format: {temperature_string}")
+        raise ValueError(f"Unrecognized temperature format: {temperature_string}")
     return float(temperature_string.strip().lower()[:-1]) - base_temp
 
+
 @udf(returnType=IntegerType())
-def extract_window_area(value):
+def extract_window_area(value: str) -> int:
     """
     >>> extract_window_area('F9 B9 L9 R9')
     36
@@ -199,50 +239,59 @@ def extract_window_area(value):
 
 
 # Make various mapping expressions
-def make_map_type_from_dict(mapping):
+def make_map_type_from_dict(mapping: Dict) -> Column:
     """
     Create a MapType mapping from a dict to pass to Pyspark
     https://stackoverflow.com/a/42983199
     """
     return F.create_map([F.lit(x) for x in chain(*mapping.items())])
 
-yes_no_mapping = make_map_type_from_dict({'Yes' : 1, 'No' : 0})
+
+yes_no_mapping = make_map_type_from_dict({"Yes": 1, "No": 0})
 
 orientation_degrees_mapping = make_map_type_from_dict(
     {
-        'North': 0,
-        'Northeast': 45,
-        'East': 90,
-        'Southeast': 135,
-        'South': 180,
-        'Southwest': 225,
-        'West': 270,
-        'Northwest': 315,
+        "North": 0,
+        "Northeast": 45,
+        "East": 90,
+        "Southeast": 135,
+        "South": 180,
+        "Southwest": 225,
+        "West": 270,
+        "Northwest": 315,
     }
 )
 
-# https://en.wikipedia.org/wiki/Luminous_efficacy 
+# https://en.wikipedia.org/wiki/Luminous_efficacy
 luminous_efficacy_mapping = make_map_type_from_dict(
     {
-        '100% CFL': 0.12,  # 8-15%
-        '100% Incandescent': 0.02,  # 1.2-2.6%
-        '100% LED': 0.15,  # 11-30%
+        "100% CFL": 0.12,  # 8-15%
+        "100% Incandescent": 0.02,  # 1.2-2.6%
+        "100% LED": 0.15,  # 11-30%
     }
 )
 
 # COMMAND ----------
 
-def transform_building_features():
+# DBTITLE 1,Feature table transformation functions
+def transform_building_features() -> DataFrame:
   """
   Read and transform subset of building_metadata features for single family dettatched homes.
-  Copied from _get_building_metadata() in datagen.py and translated into Pyspark. 
+  Adapted from _get_building_metadata() in datagen.py 
+  TODO: add back attatched sf homes and features relevant for all end uses
   """
   building_metadata_transformed = (
           spark.read.table("ml.surrogate_model.building_metadata")
-          # filter to sf detatched homes with modeled heating fuel
-          .where(F.col('geometry_building_type_acs') == 'Single-Family Detached') #subset to detatched until we figure out shared heating/cooling coding
-          .where(F.col('hvac_heating_efficiency') != 'Other') #other fuels are not modeled in resstock
-          .where(F.col('vacancy_status') == 'Occupied') #other fuels are not modeled in resstock
+          # filter to sf detatched homes with modeled heating fuel 
+          # (subset to detatched until we figure out shared heating/cooling coding representation)
+          .where(F.col('geometry_building_type_acs') == 'Single-Family Detached')
+          # other fuels are not modeled in resstock
+          .where(F.col('hvac_heating_efficiency') != 'Other') 
+          # not interested in vacant homes
+          .where(F.col('vacancy_status') == 'Occupied')
+          
+          # add upgrade id corresponding to baseline scenario
+          .withColumn('upgrade_id', F.lit('0'))
 
           # heating tranformations
           .withColumn('heating_appliance_type', F.expr("replace(hvac_heating_type_and_fuel, heating_fuel, '')")) 
@@ -292,7 +341,7 @@ def transform_building_features():
           # subset to all possible features of interest (will expand in future)
           .select(
               # primary keys
-              'building_id', 
+              F.col('building_id').cast('string'), 
               'upgrade_id', 
               # foreign key
               'weather_file_city',
@@ -334,24 +383,23 @@ def transform_building_features():
               'occupants',
               'orientation',
               'window_area',
-              #'lighting_efficiency'
           )
   )
   return building_metadata_transformed
     
 
-def transform_weather_features():
+def transform_weather_features()->DataFrame:
   """
-  Read and transform weather timeseries table, 
-  storing all weather ts as a 8670 len array within each weather feature as a column
+  Read and transform weather timeseries table. Pivot from long format indexed by (weather_file_city, hour)
+  to a table indexed by weather_file_city with a 8670 len array timeseries for each weather feature column
   """
-  weather_df =  spark.read.table("ml.surrogate_model.weather_data")
+  weather_df =  spark.read.table("ml.surrogate_model.weather_data_hourly")
   weather_pkeys = ["weather_file_city"]
 
   weather_data_arrays = (
       weather_df
         .groupBy(weather_pkeys).agg(
-          *[F.collect_list(c).alias(c) for c in weather_df.columns if c not in weather_pkeys]
+          *[F.collect_list(c).alias(c) for c in weather_df.columns if c not in weather_pkeys + ['datetime_formatted']]
         )
   )
   return weather_data_arrays
@@ -359,28 +407,36 @@ def transform_weather_features():
 
 # COMMAND ----------
 
-weather_data_transformed = transform_weather_features()
+# DBTITLE 1,Transform building metadata
 building_metadata_transformed = transform_building_features()
 
 # COMMAND ----------
 
-building_metadata_transformed.groupby('climate_zone_temp', 'climate_zone_moisture').count().display()
+# DBTITLE 1,Transform weather features
+weather_data_transformed = transform_weather_features()
 
 # COMMAND ----------
 
-# MAGIC %md ## Create new schema in catalog in the Unity Catalog MetaStore
+# MAGIC %md ## Create Feature Store
+# MAGIC
+
+# COMMAND ----------
+
+# MAGIC %md ### Create/Use schema in catalog in the Unity Catalog MetaStore
 # MAGIC
 # MAGIC To use an existing catalog, you must have the `USE CATALOG` privilege on the catalog.
 # MAGIC To create a new schema in the catalog, you must have the `CREATE SCHEMA` privilege on the catalog.
 
 # COMMAND ----------
 
+# DBTITLE 1,Check if you have access on ml catalog
 # MAGIC %sql
 # MAGIC -- if you do not see `ml` listed here, this means you do not have permissions
 # MAGIC SHOW CATALOGS
 
 # COMMAND ----------
 
+# DBTITLE 1,Set up catalog and schema
 # MAGIC %sql
 # MAGIC -- Use existing catalog:
 # MAGIC USE CATALOG ml;
@@ -390,53 +446,44 @@ building_metadata_transformed.groupby('climate_zone_temp', 'climate_zone_moistur
 
 # COMMAND ----------
 
-# MAGIC %md ## Create the feature table
-# MAGIC
-# MAGIC See [API reference for GCP](https://docs.gcp.databricks.com/machine-learning/feature-store/python-api.html).
-# MAGIC
-# MAGIC TODO: Once features are mostly set, modify to update features rather than create/drop following [tutorial](https://docs.databricks.com/en/_extras/notebooks/source/machine-learning/feature-store-with-uc-taxi-example.html)
+# MAGIC %md ### Create/modify the feature stores
 
 # COMMAND ----------
 
-# create a FeatureEngineeringClient.
+# DBTITLE 1,Create a FeatureEngineeringClient
 fe = FeatureEngineeringClient()
 
 # COMMAND ----------
 
-# %sql
-# DROP TABLE IF EXISTS ml.surrogate_model.building_metadata_features;
-# DROP TABLE IF EXISTS ml.surrogate_model.weather_features
+# DBTITLE 1,Write out building metadata feature store
+table_name = "ml.surrogate_model.building_features"
+if spark.catalog.tableExists(table_name):
+    fe.write_table(name=table_name, df=building_metadata_transformed, mode="merge")
+else:
+    fe.create_table(
+        name=table_name,
+        primary_keys=["building_id", "upgrade_id"],
+        df=building_metadata_transformed,
+        schema=building_metadata_transformed.schema,
+        description="building metadata features",
+    )
 
 # COMMAND ----------
 
-# fe.create_table(
-#     name="ml.surrogate_model.building_metadata_features",
-#     primary_keys=["building_id", "upgrade_id"],
-#     df=building_metadata_transformed,
-#     schema=building_metadata_transformed.schema,
-#     description="building metadata features",
-# )
+# DBTITLE 1,Write out weather data feature store
+table_name = "ml.surrogate_model.weather_features_hourly"
 
-fe.write_table(
-    name="ml.surrogate_model.building_metadata_features",
-    df=building_metadata_transformed,
-    mode="merge",
-)
-
-# fe.create_table(
-#     name="ml.surrogate_model.weather_features",
-#     primary_keys=["weather_file_city"],
-#     df=weather_data_transformed,
-#     schema=weather_data_transformed.schema,
-#     description="weather timeseries array features",
-# )
-
-# fe.write_table(
-#     name="ml.surrogate_model.building_metadata_features",
-#     df=weather_data_transformed,
-#     mode="merge",
-# )
-
-# COMMAND ----------
-
-
+if spark.catalog.tableExists(table_name):
+    fe.write_table(
+        name=table_name,
+        df=weather_data_transformed,
+        mode="merge",
+    )
+else:
+    fe.create_table(
+        name=table_name,
+        primary_keys=["weather_file_city"],
+        df=weather_data_transformed,
+        schema=weather_data_transformed.schema,
+        description="hourly weather timeseries array features",
+    )

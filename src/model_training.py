@@ -1,5 +1,34 @@
 # Databricks notebook source
 # MAGIC %md # Model Training
+# MAGIC
+# MAGIC ### Goal
+# MAGIC Train deep learning model to predict energy a building's HVAC energy consumption
+# MAGIC
+# MAGIC ### Process
+# MAGIC * Transform building metadata into features and subset to features of interest
+# MAGIC * Pivot weather data into wide vector format with pkey `weather_file_city` and a 8670-length timeseries vector for each weather feature column
+# MAGIC * Write building metadata features and weather features to feature store tables
+# MAGIC
+# MAGIC ### I/Os
+# MAGIC
+# MAGIC ##### Inputs: 
+# MAGIC - `ml.surrogate_model.building_metadata`: Building metadata indexed by (building_id)
+# MAGIC - `ml.surrogate_model.weather_data_hourly`: Hourly weather data indexed by (weather_file_city, hour datetime)
+# MAGIC
+# MAGIC ##### Outputs: 
+# MAGIC - `ml.surrogate_model.building_metadata`: Building metadata features indexed by (building_id)
+# MAGIC - `ml.surrogate_model.weather_data_hourly`: Weather data indexed by (weather_file_city) with a 8670-length timeseries vector for each weather feature column
+# MAGIC
+# MAGIC ### TODOs:
+# MAGIC
+# MAGIC #### Outstanding
+# MAGIC
+# MAGIC #### Future Work
+# MAGIC - Add upgrades to the building metadata table
+# MAGIC - Extend building metadata features to cover those related to all end uses and to SF Attatched homes 
+# MAGIC - More largely, updates to the feature table should merge and not overwrite, and in general transformation that are a hyperparameter of the model (i.e, that we may want to vary in different models) should be done downstream of this table. Sorting out exactly which transformations should happen in each of the `build_dataset`, `build_feature_store` and `model_training` files is still a WIP. 
+# MAGIC
+# MAGIC ---
 # MAGIC ### Cluster/ User Requirements
 # MAGIC - Access Mode: Single User or Shared (Not No Isolation Shared)
 # MAGIC - Runtime: >= Databricks Runtime 13.2 for ML or above (or >= Databricks Runtime 13.2 +  `%pip install databricks-feature-engineering`)
@@ -9,103 +38,44 @@
 
 # COMMAND ----------
 
-#install tensorflow if not installed on cluster
+# DBTITLE 1,Install tensorflow
+# install tensorflow if not installed on cluster
 %pip install tensorflow==2.15.0.post1
 dbutils.library.restartPython()
 
 # COMMAND ----------
 
-import os
-# fix cublann OOM
-os.environ['TF_FORCE_GPU_ALLOW_GROWTH'] = 'true'
-
-# COMMAND ----------
+# DBTITLE 1,Import
+# Reflect package changes without reimporting
+%load_ext autoreload
+%autoreload 2
 
 import itertools
 import numpy as np
 import math
+import os
 import pandas as pd
+from typing import Dict, Tuple
+
 import pyspark.sql.functions as F
-from pyspark.sql.types import ArrayType, DoubleType
+
+
+from pyspark.sql import DataFrame
 
 from databricks.feature_engineering import FeatureEngineeringClient, FeatureLookup
 import mlflow
-
 import tensorflow as tf
-from tensorflow import keras
+
+import keras
 from tensorflow.keras import layers, models
 
+from model_db import Model
+from datagen_db import DataGenerator, create_dataset
+
+# fix cublann OOM
+os.environ["TF_FORCE_GPU_ALLOW_GROWTH"] = "true"
+# check that GPU is available
 tf.config.list_physical_devices("GPU")
-
-# COMMAND ----------
-
-#target grouping
-consumption_group_dict = {
-    'heating' : [
-        'electricity__heating_fans_pumps',
-        'electricity__heating_hp_bkup',
-        'electricity__heating',
-        'fuel_oil__heating_hp_bkup',
-        'fuel_oil__heating',
-        'natural_gas__heating_hp_bkup',
-        'natural_gas__heating',
-        'propane__heating_hp_bkup',
-        'propane__heating'],
-    'cooling' : [
-        'electricity__cooling_fans_pumps',
-        'electricity__cooling']
-}
-
-targets = list(consumption_group_dict.keys())
-
-# COMMAND ----------
-
-# features we are and targets currently using for testing -- probably will store in a class at some point
-building_metadata_features = [
-    'heating_fuel',
-    'heating_appliance_type',
-    'heating_efficiency',
-    'heating_setpoint',
-    'heating_setpoint_offset_magnitude',
-    'ac_type',
-    'has_ac',
-    'cooled_space_proportion',
-    'cooling_efficiency_eer',
-    'cooling_setpoint',
-    'cooling_setpoint_offset_magnitude',
-    'has_ducts',
-    'ducts_insulation',
-    'ducts_leakage',
-    'infiltration_ach50',
-    'wall_material',
-    'insulation_wall',
-    'insulation_slab',
-    'insulation_rim_joist',
-    'insulation_floor',
-    'insulation_ceiling_roof',
-    'bedrooms',
-    'stories',
-    'foundation_type', 
-    'attic_type',
-    'climate_zone_temp',
-    'climate_zone_moisture',
-    'sqft',
-    'vintage',
-    'occupants',
-    'orientation',
-    'window_area'
-]
-
-weather_features = [
-    "temp_air",
-    # "relative_humidity",
-    "wind_speed",
-    # "wind_direction",
-    "ghi",
-    # "dni",
-    # "diffuse_horizontal_illum",
-    "weekend"
-]
 
 # COMMAND ----------
 
@@ -113,363 +83,31 @@ weather_features = [
 
 # COMMAND ----------
 
-# create a FeatureEngineeringClient.
-fe = FeatureEngineeringClient()
+model = Model(name="test")
 
 # COMMAND ----------
 
-#select only a small subset of features for now
-# and define the lookup keys that will be used to join with the inputs at train/inference time
-building_metadata_feature_lookups = [
-    FeatureLookup(
-        table_name="ml.surrogate_model.building_metadata_features",
-        feature_names=building_metadata_features,
-        lookup_key=["building_id", "upgrade_id"],
-    ),
-]
-
-weather_feature_lookups = [
-    FeatureLookup(
-        table_name="ml.surrogate_model.weather_features",
-        feature_names=weather_features,
-        lookup_key=["weather_file_city"],
-    ),
-]
-
-# COMMAND ----------
-
-# Read in the "raw" data which contains the prediction target and the keys needed to join to the feature tables. 
-# Right now this is kind of hacky since we need to join to the bm table to do the required train data filtering
-sum_str = ', '.join([f"{'+'.join(v)} AS {k}" for k, v in consumption_group_dict.items()])
-
-raw_data = spark.sql(f"""
-                     SELECT B.building_id, B.upgrade_id, B.weather_file_city, {sum_str}
-                     FROM ml.surrogate_model.annual_outputs O
-                     LEFT JOIN ml.surrogate_model.building_metadata_features B 
-                        ON B.upgrade_id = O.upgrade_id AND B.building_id == O.building_id
-                     WHERE O.upgrade_id = 0
-                        AND sqft < 8000
-                        AND occupants <= 10
-                     """)
-
-train_data, test_data = raw_data.randomSplit(weights=[0.8,0.2], seed=42)
-
-# COMMAND ----------
-
-# Configure MLflow client to access models in Unity Catalog
-mlflow.set_registry_uri("databricks-uc")
-client = mlflow.tracking.client.MlflowClient()
-
-# COMMAND ----------
-
-# MAGIC %md
-# MAGIC The code in the next cell trains a keras model and logs the model with the Feature Engineering in UC.
-# MAGIC
-# MAGIC The code starts an MLflow experiment to track training parameters and results. Note that model autologging is disabled (`mlflow.sklearn.autolog(log_models=False)`); this is because the model is logged using `fe.log_model`.
-
-# COMMAND ----------
-
-def convert_training_data_to_dict(train_df, building_metadata_features, weather_features):
-    X_train_bm = {col: np.array(train_df[col]) for col in building_metadata_features}
-    X_train_weather = {col: np.array(np.vstack(train_df[col].values)) for col in weather_features}
-    return {**X_train_bm, **X_train_weather}
-
-#this allows us to apply pre/post processing to the inference data
-class SurrogateModelingWrapper(mlflow.pyfunc.PythonModel):
-   
-    def __init__(self, trained_model):
-        self.model = trained_model
-
-    def preprocess_input(self, model_input):
-        model_input_dict = convert_training_data_to_dict(
-            model_input,
-            building_metadata_features=building_metadata_features,
-            weather_features=weather_features)
-        return model_input_dict
-
-    def postprocess_result(self, results):
-        return np.hstack([results[c] for c in targets])
-
-    def predict(self, context, model_input):
-        processed_df = self.preprocess_input(model_input.copy())
-        predictions_df = self.model.predict(processed_df)
-        return self.postprocess_result(predictions_df)
-
-# COMMAND ----------
-
-class DataGenerator(keras.utils.Sequence):
-    'Generates data for Keras'
-    fe = FeatureEngineeringClient()
-
-    def __init__(self, train_data, building_metadata_features, weather_features, targets, 
-                 batch_size=64, dtype=np.float32):
-        self.batch_size = batch_size
-        self.dtype = dtype
-        self.targets = targets
-        self.building_metadata_features = building_metadata_features
-        self.weather_features = weather_features
-        self.training_set = self.init_training_set(train_data = train_data)
-        self.train_df = self.init_training_features(train_data = train_data)
-        self.weather_features_df = self.init_weather_features()
-        #self.training_set_with_index = self.training_set.rdd.zipWithIndex()
-        self.building_metadata_vocab_dict = self.init_building_metadata_vocab_dict()
-        self.on_epoch_end()
-
-    def init_training_set(self, train_data):
-        # exclude column used to just join to weather data
-        # Create the training set that includes the raw input data merged 
-        # with corresponding features from both feature tables
-        training_set = self.fe.create_training_set(
-            df=train_data,
-            feature_lookups=building_metadata_feature_lookups + weather_feature_lookups,
-            label=self.targets,
-            exclude_columns=["building_id", "upgrade_id", "weather_file_city"],
-        )
-        return training_set
-    
-    def init_training_features(self, train_data):
-        # Create the training set that includes the raw input data merged with corresponding features
-        # from building model features only, and load into memory
-        training_set = self.fe.create_training_set(
-            df=train_data,
-            feature_lookups=building_metadata_feature_lookups,
-            label=self.targets,
-            exclude_columns=["building_id", "upgrade_id"],
-        )
-        return training_set.load_df().toPandas()
-
-    def init_weather_features(self):
-        weather_features_table = fe.read_table(name = "ml.surrogate_model.weather_features")
-        return weather_features_table.select(*self.weather_features, 'weather_file_city').toPandas()
-
-    def feature_dtype(self, feature_name):
-        is_string_feature = self.train_df[feature_name].dtype == 'O'
-        return tf.string if is_string_feature else self.dtype
-
-    def feature_vocab(self, feature_name):
-        """ Get all possible values for a feature
-
-        This method is used to create encoders for string (categorical/ordinal)
-        features
-        """
-        return self.train_df[feature_name].unique()
-    
-    def init_building_metadata_vocab_dict(self):
-        bm_dict = {}
-        for feature in self.building_metadata_features:
-            feature_vocab = []
-            feature_dtype = self.feature_dtype(feature)
-            if feature_dtype == tf.string:
-                feature_vocab = self.feature_vocab(feature)
-            bm_dict[feature] = {'dtype' : feature_dtype, 'vocab' : feature_vocab}
-        return bm_dict
-
-    def __len__(self):
-        # number of batches; last batch might be smaller
-        return math.ceil(len(self.train_df) / self.batch_size)
-
-    def __getitem__(self, index):
-        'Generate one batch of data'
-        # Generate indexes of the batch
-        batch_df = self.train_df.iloc[self.batch_size * index:self.batch_size * (index+1)]
-        batch_df = batch_df.merge(self.weather_features_df, on = 'weather_file_city', how = 'left')
-
-        # Convert DataFrame columns to NumPy arrays and create the dictionary
-        X = convert_training_data_to_dict(
-            train_df = batch_df,
-            building_metadata_features = self.building_metadata_features,
-            weather_features = self.weather_features)
-        y = {col: np.array(batch_df[col]) for col in self.targets}
-        return X, y
-
-    def on_epoch_end(self):
-        'Updates indexes after each epoch'
-        # self.training_set = self.training_set.orderBy(F.rand())
-        # self.training_set_with_index = self.training_set.rdd.zipWithIndex()
-        self.train_df = self.train_df.sample(frac=1.0)
-        pass
+str(model)
 
 # COMMAND ----------
 
 # #~25s to load full dataset into memory (without joining weather and bm features)
-#N = 100000 #using same size training set as current model training for benchmarking
-#(5x as many building since we aren't exploding out by 5 upgrades)
-##N = 100 #for testing
-N = train_data.count()
-
-_train_data, _val_data = train_data.sample(fraction=1.0).limit(N).randomSplit(weights=[0.8,0.2], seed=42)
-
-train_gen = DataGenerator(
-    train_data = _train_data,
-    building_metadata_features=building_metadata_features,
-    weather_features=weather_features,
-    targets=targets)
-
-val_gen = DataGenerator(
-    train_data = _val_data,
-    building_metadata_features=building_metadata_features,
-    weather_features=weather_features,
-    targets=targets)
+train_gen, val_gen, test_data = create_dataset(n_subset=100)
 
 # COMMAND ----------
 
-#print out the features to make sure they look right
+# print out the features to make sure they look right
 train_gen[0][0]
 
 # COMMAND ----------
 
-def create_model(feature_params, layer_params=None):
-    # Building model
-    bmo_inputs_dict = {
-        building_feature: layers.Input(
-            name=building_feature, shape=(1,),
-            dtype=feature_params[building_feature]['dtype']
-        )
-        for building_feature in building_metadata_features
-    }
-
-    bmo_inputs = []
-    for feature, layer in bmo_inputs_dict.items():
-        # handle categorical, ordinal, etc. features.
-        # Here it is detected by dtype; perhaps explicit feature list and
-        # handlers would be better
-        if feature_params[feature]['dtype'] == tf.string:
-            encoder = layers.StringLookup(
-                name=feature+'_encoder', output_mode='one_hot',
-                dtype=layer_params['dtype']
-            )
-            encoder.adapt(feature_params[feature]['vocab'])
-            layer = encoder(layer)
-        bmo_inputs.append(layer)
-
-    bm = layers.Concatenate(name='concat_layer', dtype=layer_params['dtype'])(bmo_inputs)
-    bm = layers.Dense(32, name='second_dense', **layer_params)(bm)
-    bm = layers.Dense(8, name='third_dense', **layer_params)(bm)
-
-    bmo = models.Model(inputs=bmo_inputs_dict, outputs=bm, name='building_features_model')
-
-    # Weather data model
-    weather_inputs_dict = {
-        weather_feature: layers.Input(
-            name=weather_feature, shape=(None, 1,), dtype=layer_params['dtype'])
-        for weather_feature in weather_features
-    }
-    weather_inputs = list(weather_inputs_dict.values())
-
-    wm = layers.Concatenate(
-        axis=-1, name='weather_concat_layer', dtype=layer_params['dtype']
-    )(weather_inputs)
-    wm = layers.Conv1D(
-        filters=16,
-        kernel_size=8,
-        padding='same',
-        data_format='channels_last',
-        name='first_1dconv',
-        **layer_params
-    )(wm)
-    wm = layers.Conv1D(
-        filters=8,
-        kernel_size=8,
-        padding='same',
-        data_format='channels_last',
-        name='last_1dconv',
-        **layer_params
-    )(wm)
-
-    # sum the time dimension
-    wm = layers.Lambda(
-        lambda x: tf.keras.backend.sum(x, axis=1), dtype=layer_params['dtype'])(wm)
-
-    wmo = models.Model(
-        inputs=weather_inputs_dict, outputs=wm, name='weather_features_model')
-
-    # Combined model and separate towers for output groups
-    cm = layers.Concatenate(name='combine_features')([bmo.output, wmo.output])
-    cm = layers.Dense(128, **layer_params)(cm)
-    cm = layers.Dense(64, **layer_params)(cm)
-    cm = layers.Dense(32, **layer_params)(cm)
-    cm = layers.Dense(16, **layer_params)(cm)
-    cm = layers.Dense(16, **layer_params)(cm)
-    # cm is a chokepoint representing embedding of a building + climate it is in
-
-
-    # building a separate tower for each output group
-    
-    # force output to be non-negative
-    # layer_params_final = layer_params.copy()
-    # layer_params_final['activation'] = 'relu' 
-
-    final_outputs = {}
-    for consumption_group in targets:
-        io = layers.Dense(8, name=consumption_group+'_entry', **layer_params)(cm)
-        # ... feel free to add more layers
-        io = layers.Dense(8, name=consumption_group+'_mid', **layer_params)(io)
-        # no activation on the output
-        io = layers.Dense(1, name=consumption_group, **layer_params)(io)
-        final_outputs[consumption_group] = io
-
-    final_model = models.Model(
-        inputs={**bmo.input, **wmo.input}, outputs=final_outputs)
-
-
-    def mape(y_true, y_pred):
-        """Version of Mean Absolute Percentage Error that ignores samples where y_true = 0"""
-        diff = tf.keras.backend.abs((y_true - y_pred) / y_true)
-        return 100. * tf.keras.backend.mean(diff[y_true != 0], axis=-1)
-
-    final_model.compile(
-        loss=keras.losses.MeanAbsoluteError(),
-        optimizer='adam', 
-        metrics=[mape],
-    )
-    return final_model
+keras_model = model.fit_model(train_gen = train_gen, val_gen=val_gen, epochs=2)
 
 # COMMAND ----------
 
-# Disable MLflow autologging and instead log the model using Feature Engineering in UC
-mlflow.tensorflow.autolog(log_models=False)
-mlflow.sklearn.autolog(log_models=False)
-
-#model_name = "ml.surrogate_model.surrogate_model_test"
-model_name = "ml.surrogate_model.surrogate_model"
-
-#~1m/epoch w/CPU; 10s/epoch w/ GPU - Total of 15 min
-with mlflow.start_run() as run:
-
-    training_params = {
-        "epochs": 100,
-        #"epochs": 4, # for testing
-        "batch_size": 64}
-    
-    layer_params = {
-        'activation': 'leaky_relu',
-        'dtype': np.float32,
-    }
-
-    model = create_model(feature_params = train_gen.building_metadata_vocab_dict, layer_params = layer_params)
-    history = model.fit(
-        train_gen,
-        validation_data=val_gen,
-        verbose=2,
-        callbacks=[keras.callbacks.EarlyStopping(monitor='val_loss', patience=10)],
-        **training_params, 
-        )
-
-    pyfunc_model = SurrogateModelingWrapper(model)
-
-    fe.log_model(
-        model=pyfunc_model,
-        artifact_path="pyfunc_surrogate_model_prediction",
-        flavor=mlflow.pyfunc,
-        training_set=train_gen.training_set,
-        registered_model_name=model_name,
-    )
-
-# COMMAND ----------
-
-#test out model predictions
-results = model.predict(val_gen[0][0])
-np.hstack([results[c] for c in targets])
+# test out model predictions
+results = keras_model.predict(val_gen[0][0])
+np.hstack([results[c] for c in train_gen.targets])
 
 # COMMAND ----------
 
@@ -478,23 +116,4 @@ np.hstack([results[c] for c in targets])
 
 # COMMAND ----------
 
-# Helper function
-def get_latest_model_version(model_name):
-    latest_version = 1
-    mlflow_client = mlflow.tracking.client.MlflowClient()
-    for mv in mlflow_client.search_model_versions(f"name='{model_name}'"):
-        version_int = int(mv.version)
-        if version_int > latest_version:
-            latest_version = version_int
-    return latest_version
-
-# COMMAND ----------
-
-# batch inference on small set of held out test set
-latest_model_version = get_latest_model_version(model_name)
-model_uri = f"models:/{model_name}/{latest_model_version}"
-
-batch_pred = fe.score_batch(model_uri=model_uri, df=test_data, result_type=ArrayType(DoubleType()))
-for i, target in enumerate(targets):
-    batch_pred = batch_pred.withColumn(f"{target}_pred", F.col('prediction')[i])
-batch_pred.display()
+pred_df = model.score_batch(test_data = test_data, targets = train_gen.targets)
