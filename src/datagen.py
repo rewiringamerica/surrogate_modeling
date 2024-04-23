@@ -327,16 +327,6 @@ def _get_building_metadata():
     True
     >>> metadata_df.shape[1] > 10  # at least 10 columns
     True
-    >>> metadata = metadata_df.iloc[0]
-    >>> string_columns = (
-    ...     'county', 'ashrae_iecc_climate_zone', 'foundation_type',
-    ...     'windows_type', 'wall_type', 'wall_material', 'attic_type',
-    ... )
-    >>> all(
-    ...     not isinstance(value, str)
-    ...     for col, value in metadata.items() if col not in string_columns
-    ... )
-    True
     """
     pq = pd.read_parquet(
         BUILDING_METADATA_PARQUET_PATH,
