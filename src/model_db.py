@@ -1,16 +1,12 @@
 import numpy as np
 
-from pyspark.sql.types import ArrayType, DoubleType
+import mlflow
 import pyspark.sql.functions as F
-
 import tensorflow as tf
+from databricks.feature_engineering import FeatureEngineeringClient
+from pyspark.sql.types import ArrayType, DoubleType
 from tensorflow import keras
 from tensorflow.keras import layers, models
-import mlflow
-
-from databricks.feature_engineering import FeatureEngineeringClient
-
-from datagen_db import SurrogateModelingWrapper
 
 class Model:
     # Configure MLflow client to access models in Unity Catalog
@@ -28,6 +24,7 @@ class Model:
         # self.time_granularity = time_granularity
         self.batch_size = batch_size
         self.dtype = dtype
+        self.artifact_path = 'model'
 
     def __str__(self):
         return f"{self.catalog}.{self.schema}.{self.name}"
@@ -190,19 +187,27 @@ class Model:
             return None
         return latest_version
     
-    def get_model_uri(self, version = None, verbose = True):
-        if version is None:
-            latest_version = self.get_latest_model_version()
-            if not latest_version:
-                raise ValueError(f"No version of the model {str(self)} has been registered yet")
-            if verbose:
-                print(f"Returning URI for latest model version: {latest_version}")
-            
+    def get_latest_registered_model_uri(self, verbose = True):
+        latest_version = self.get_latest_model_version()
+        if not latest_version:
+            raise ValueError(f"No version of the model {str(self)} has been registered yet")
+        if verbose:
+            print(f"Returning URI for latest model version: {latest_version}")
+
         return f"models:/{str(self)}/{latest_version}"
     
-    def score_batch(self, test_data, targets = None):
+    def get_model_uri(self, run_id = None, version = None, verbose = True):
+        if run_id is None:
+            return self.get_latest_registered_model_uri(verbose=verbose)
+        else:
+             return f'runs:/{run_id}/{self.artifact_path}'
+         
+    
+    def score_batch(self, test_data, run_id = None, version = None, targets = None):
         batch_pred = self.fe.score_batch(
-            model_uri=self.get_model_uri(), df=test_data, result_type=ArrayType(DoubleType())
+            model_uri=self.get_model_uri(run_id = run_id, version= version, verbose = True),
+            df=test_data,
+            result_type=ArrayType(DoubleType())
         )
         if targets: 
             for i, target in enumerate(targets):

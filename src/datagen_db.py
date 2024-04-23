@@ -1,17 +1,13 @@
-import numpy as np
 import math
 from typing import Dict, Tuple
 
-from pyspark.sql import DataFrame
-
-from databricks.feature_engineering import FeatureEngineeringClient, FeatureLookup
-from tensorflow import keras
 import mlflow
+import numpy as np
 import tensorflow as tf
+from databricks.feature_engineering import FeatureEngineeringClient, FeatureLookup
 
-from src import spark,dbutils
 
-class DataGenerator(keras.utils.Sequence):
+class DataGenerator(tf.keras.utils.Sequence):
     fe = FeatureEngineeringClient()
 
     building_feature_table_name = "ml.surrogate_model.building_features"
@@ -204,113 +200,18 @@ class DataGenerator(keras.utils.Sequence):
         )
 
         # Convert DataFrame columns to NumPy arrays and create the dictionary
-        X = convert_training_data_to_dict(
-            building_feature_df=batch_df,
-            building_features=self.building_features,
-            weather_features=self.weather_features,
-        )
+        X = self.convert_training_data_to_dict(building_feature_df=batch_df)
         y = {col: np.array(batch_df[col]) for col in self.targets}
         return X, y
+    
+    def convert_training_data_to_dict(self, building_feature_df):
+        X_train_bm = {col: np.array(building_feature_df[col]) for col in self.building_features}
+        X_train_weather = {
+            col: np.array(np.vstack(building_feature_df[col].values)) for col in self.weather_features
+        }
+        return {**X_train_bm, **X_train_weather}
 
     def on_epoch_end(self):
         """Updates indices after each epoch"""
         self.building_feature_df = self.building_feature_df.sample(frac=1.0)
-
-
-# this allows us to apply pre/post processing to the inference data
-class SurrogateModelingWrapper(mlflow.pyfunc.PythonModel):
-    def __init__(self, trained_model, train_gen):
-        self.model = trained_model
-        self.building_features = train_gen.building_features
-        self.weather_features = train_gen.weather_features
-        self.targets = train_gen.targets
-
-    def preprocess_input(self, model_input):
-        model_input_dict = convert_training_data_to_dict(
-            model_input,
-            building_features=self.building_features,
-            weather_features=self.weather_features,
-        )
-        return model_input_dict
-
-    def postprocess_result(self, results):
-        return np.hstack([results[c] for c in self.targets])
-
-    def predict(self, context, model_input):
-        processed_df = self.preprocess_input(model_input.copy())
-        predictions_df = self.model.predict(processed_df)
-        return self.postprocess_result(predictions_df)
-
-
-def convert_training_data_to_dict(building_feature_df, building_features, weather_features):
-    X_train_bm = {col: np.array(building_feature_df[col]) for col in building_features}
-    X_train_weather = {
-        col: np.array(np.vstack(building_feature_df[col].values)) for col in weather_features
-    }
-    return {**X_train_bm, **X_train_weather}
-
-
-def load_inference_data(
-    consumption_group_dict= DataGenerator.consumption_group_dict,
-    building_feature_table_name= DataGenerator.building_feature_table_name,
-    outputs_table_name="ml.surrogate_model.building_upgrade_simulation_outputs_annual",
-    n_subset=None,
-    p_val=0.15,
-    p_test=0.15,
-    seed=42,
-) -> Tuple[DataFrame, DataFrame, DataFrame]:
-
-    # Read in the "raw" data which contains the prediction target and the keys needed to join to the feature tables.
-    # Right now this is kind of hacky since we need to join to the bm table to do the required train data filtering
-    sum_str = ", ".join(
-        [f"{'+'.join(v)} AS {k}" for k, v in consumption_group_dict.items()]
-    )
-
-    inference_data = spark.sql(
-        f"""
-                        SELECT B.building_id, B.upgrade_id, B.weather_file_city, {sum_str}
-                        FROM {outputs_table_name} O
-                        LEFT JOIN {building_feature_table_name} B 
-                            ON B.upgrade_id = O.upgrade_id AND B.building_id == O.building_id
-                        WHERE O.upgrade_id = 0
-                            AND sqft < 8000
-                            AND occupants <= 10
-                        """
-    )
-
-    if n_subset is not None:
-        n_total = inference_data.count()
-        if n_subset > n_total:
-            print(
-                "'n_subset' is more than the total number of records, returning all records..."
-            )
-        else:
-            inference_data = inference_data.sample(
-                fraction=n_subset / n_total, seed=seed
-            )
-
-    p_train = 1 - p_val - p_test
-    return inference_data.randomSplit(weights=[p_train, p_val, p_test], seed=seed)
-
-
-def create_dataset(
-    datagen_params: Dict = {},
-    n_subset: int = None,
-    p_val: float = 0.15,
-    p_test: float = 0.15,
-    seed: int = 42,
-) -> Tuple[DataGenerator, DataGenerator, DataFrame]:
-    
-    train_data, val_data, test_data = load_inference_data(
-        n_subset=n_subset,
-        p_val=p_val,
-        p_test=p_test,
-        seed=seed,
-        **datagen_params
-    )
-
-    train_gen = DataGenerator(train_data=train_data, **datagen_params)
-    val_gen = DataGenerator(train_data=val_data, **datagen_params)
-
-    return train_gen, val_gen, test_data
 
