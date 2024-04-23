@@ -425,7 +425,7 @@ def _get_building_metadata():
             extract_heating_efficiency),
         ac_type=pq['in.hvac_cooling_efficiency'].str.split(',').str[0],
         has_ac=(
-            pq['in.hvac_cooling_efficiency'].str.split(',').str[0] == 'None'
+            pq['in.hvac_cooling_efficiency'].str.split(',').str[0] != 'None'
         ).astype(int),
         has_ducts=pq['in.hvac_has_ducts'].map({'Yes': 1, 'No': 0}),
         ducts_insulation=pq['in.ducts'].map(extract_r_value),
