@@ -14,26 +14,23 @@ spark.conf.set("spark.databricks.io.cache.enabled","true")
 
 # COMMAND ----------
 
-bucketed_savings = (
-    spark.table(f"test.project_savings_upfront_cost_bucketed_explore_kwh_ratio_method")
+#predicted baseline energy consumption by bucket
+predicted_bucketed_baseline_consumption = (
+    spark.table("housing_profile.baseline_savings_upfront_cost_bucketed")
     .select('id', 'bucket_id', 'end_use', 'kwh_upgrade_median', 'kwh_upgrade_percentile', 'cooling_type', 'baseline_appliance_fuel')
     ).alias('pred')
 
-#savings by building for single family homes in upgrade scenarios
-savings_by_building_bucket = spark.sql(
+# baseline energy consumption by building for single family homes in upgrade scenarios
+actual_baseline_consumption_by_building_bucket = spark.sql(
     f"""
     SELECT building_id, bucket_id, SUM(kwh_upgrade) AS kwh_upgrade
-    FROM test.resstock_annual_project_savings_by_building_geography_enduse_fuel_bucket_explore_kwh_ratio_method
+    FROM housing_profile.resstock_annual_baseline_consumption_by_building_geography_enduse_fuel_bucket
     WHERE acs_housing_type == 'Single-Family'
     GROUP BY building_id, bucket_id
     """
 ).alias('true')
 
 sf_detached_buildings = spark.sql("SELECT building_id FROM building_model.resstock_metadata WHERE in_geometry_building_type_acs == 'Single-Family Detached'")
-
-# COMMAND ----------
-
-spark.table('test.resstock_annual_project_savings_by_building_geography_enduse_fuel_bucket_explore_kwh_ratio_method')
 
 # COMMAND ----------
 
@@ -57,8 +54,8 @@ def absolute_error(pred, true):
         return None
 
 error_by_building_bucket=(
-    savings_by_building_bucket
-            .join(bucketed_savings,F.col('true.bucket_id') == F.col('pred.id'))
+    actual_baseline_consumption_by_building_bucket
+            .join(predicted_bucketed_baseline_consumption,F.col('true.bucket_id') == F.col('pred.id'))
             .join(sf_detached_buildings,on = 'building_id')
             .withColumn('type', 
                     F.when(F.col('cooling_type') == 'Heat Pump AC', F.lit("Heat Pump"))
@@ -103,4 +100,8 @@ metrics_buckets.display()
 
 # COMMAND ----------
 
-metrics_buckets.toPandas().to_csv('gs://the-cube/export/surrogate_model_metrics/bucketed.csv', float_format = '{:.2f}')
+metrics_buckets.toPandas().to_csv('gs://the-cube/export/surrogate_model_metrics/bucketed.csv', float_format="%.2f")
+
+# COMMAND ----------
+
+

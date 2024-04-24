@@ -4,12 +4,17 @@
 
 # COMMAND ----------
 
-from src.model_db import Model
+# install required packages: note that tensorflow must be installed at the notebook-level
+%pip install gcsfs==2023.5.0 tensorflow==2.15.0.post1
+
+# COMMAND ----------
+
+from src.databricks.model import Model
 
 # COMMAND ----------
 
 #init a model
-model = Model(name="test")
+model = Model(name='sf_detatched_hvac_baseline')
 
 # COMMAND ----------
 
@@ -24,3 +29,7 @@ pred_df = model.score_batch(test_data = test_data, targets = ['heating', 'coolin
 #pred_df = model.score_batch(test_data = test_data, run_id = '6deab2c9e96a402ab0bf2c6d1108f53e', targets = ['heating', 'cooling']) # score unregistered model
 
 pred_df.display()
+
+# COMMAND ----------
+
+

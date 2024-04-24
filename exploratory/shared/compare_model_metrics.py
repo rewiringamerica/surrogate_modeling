@@ -7,8 +7,8 @@ import pandas as pd
 
 # COMMAND ----------
 
-bucket_metrics = pd.read_csv('gs://the-cube/export/surrogate_model_metrics/cnn.csv', keep_default_na=False)
-cnn_metrics = pd.read_csv('gs://the-cube/export/surrogate_model_metrics/cnn.csv', keep_default_na=False)
+bucket_metrics = pd.read_csv('gs://the-cube/export/surrogate_model_metrics/bucketed.csv', keep_default_na=False)
+cnn_metrics = pd.read_csv('gs://the-cube/export/surrogate_model_metrics/cnn/ml.surrogate_model.sf_detatched_hvac_baseline_v1.csv', keep_default_na=False)
 ff_metrics = pd.read_csv('gs://the-cube/export/surrogate_model_metrics/feed_forward.csv', keep_default_na=False)
 
 # COMMAND ----------
@@ -30,10 +30,16 @@ metrics_combined = metrics_combined.pivot(
     columns = ['metric', 'method'], 
     values = 'value')
 
-# COMMAND ----------
-
-
+metrics_combined 
 
 # COMMAND ----------
 
-metrics_combined.to_csv('gs://the-cube/export/surrogate_model_metrics/comparison.csv', float_format = '%.2f')
+metrics_combined.sort_values(['end_use', 'type']).to_csv('gs://the-cube/export/surrogate_model_metrics/comparison.csv', float_format = '%.2f')
+
+# COMMAND ----------
+
+metrics_combined.sort_values(['end_use', 'type'])
+
+# COMMAND ----------
+
+

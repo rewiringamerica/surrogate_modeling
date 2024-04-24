@@ -22,7 +22,7 @@
 # MAGIC ### TODOs:
 # MAGIC
 # MAGIC #### Outstanding
-# MAGIC - Figure out issues with training on GPU
+# MAGIC - Figure out issues with training on GPU: When using the existing default tf version on a GPU cluster, the code errors out at eval time with various inscritible errors. By downgrading to required tensorflow version in `requirements.txt`, it then shows no GPUs avaialble, and during training it seems to show 0% GPU utilization, which makes me assume that it is not actually using the GPU. However, it seems to train faster on a GPU cluster than on a CPU cluster with even more memory. Further, when the downgraded tf version is installed at the cluster level, it also doesn't work. 
 # MAGIC - Troubleshoot `env_manager` issues with loading env that model was trained in
 # MAGIC
 # MAGIC #### Future Work
@@ -36,11 +36,15 @@
 # MAGIC - Runtime: >= Databricks Runtime 14.3 ML (or >= Databricks Runtime 14.3 +  `%pip install databricks-feature-engineering`)
 # MAGIC - Node type: Single Node. Because of [this issue](https://kb.databricks.com/en_US/libraries/apache-spark-jobs-fail-with-environment-directory-not-found-error), worker nodes cannot access the directory needed to run inference on a keras trained model, meaning that the `score_batch()` function throws and OSError. 
 # MAGIC - `USE CATALOG`, `CREATE SCHEMA` privleges on the `ml` Unity Catalog (Ask Miki if for access)
-# MAGIC - Libraries: `gcsfs==2023.5.0`. Ignore all requirements in `requriements.txt`. 
 
 # COMMAND ----------
 
-# DBTITLE 1,Widget Mode Debug Tool
+# install required packages: note that tensorflow must be installed at the notebook-level
+%pip install gcsfs==2023.5.0 tensorflow==2.15.0.post1
+
+# COMMAND ----------
+
+# this controls the training parameters, with test mode on a much smaller training set for fewer epochs
 dbutils.widgets.dropdown("Mode", "Test", ["Test", "Production"])
 
 if dbutils.widgets.get('Mode') == 'Test':
@@ -52,26 +56,28 @@ print(DEBUG)
 # COMMAND ----------
 
 # DBTITLE 1,Import
-# import os
-# os.environ['TF_FORCE_GPU_ALLOW_GROWTH'] = 'true'
-%load_ext autoreload
-%autoreload 2
-
-from typing import Tuple
-
-import mlflow
-import numpy as np
-import pandas as pd
-import pyspark.sql.functions as F
-from pyspark.sql import DataFrame
-from pyspark.sql.types import FloatType
-from tensorflow import keras
-
-from datagen_db import DataGenerator
-from model_db import Model
-
-# check that GPU is available
-# tf.config.list_physical_devices("GPU")
+# MAGIC %load_ext autoreload
+# MAGIC %autoreload 2
+# MAGIC
+# MAGIC import os
+# MAGIC os.environ['TF_FORCE_GPU_ALLOW_GROWTH'] = 'true'
+# MAGIC
+# MAGIC from typing import Tuple, Dict
+# MAGIC
+# MAGIC import mlflow
+# MAGIC import numpy as np
+# MAGIC import pandas as pd
+# MAGIC import pyspark.sql.functions as F
+# MAGIC import tensorflow as tf
+# MAGIC from pyspark.sql import DataFrame
+# MAGIC from pyspark.sql.types import FloatType
+# MAGIC from tensorflow import keras
+# MAGIC
+# MAGIC from datagen import DataGenerator
+# MAGIC from model import Model
+# MAGIC
+# MAGIC # list available GPUs
+# MAGIC tf.config.list_physical_devices("GPU")
 
 # COMMAND ----------
 
@@ -79,7 +85,8 @@ from model_db import Model
 
 # COMMAND ----------
 
-def load_inference_data(
+# DBTITLE 1,Data loading function
+def load_data(
     consumption_group_dict= DataGenerator.consumption_group_dict,
     building_feature_table_name= DataGenerator.building_feature_table_name,
     n_subset=None,
@@ -87,44 +94,60 @@ def load_inference_data(
     p_test=0.15,
     seed=42,
 ) -> Tuple[DataFrame, DataFrame, DataFrame]:
+    """
+    Load the data for model training prediction containing the targets and the keys needed to join to feature tables
 
-    # Read in the "raw" data which contains the prediction target and the keys needed to join to the feature tables.
-    # Right now this is kind of hacky since we need to join to the bm table to do the required train data filtering
+    Parameters:
+        consumption_group_dict (dict): Dictionary mapping consumption categories (e.g., 'heating') to columns. 
+            Default is DataGenerator.consumption_group_dict.
+        building_feature_table_name (str): Name of the building feature table. 
+            Default is DataGenerator.building_feature_table_name
+        n_subset (int): Number of subset records to select. Default is None (select all records).
+        p_val (float): Proportion of data to use for validation. Default is 0.15.
+        p_test (float): Proportion of data to use for testing. Default is 0.15.
+        seed (int): Seed for random sampling. Default is 42.
+
+    Returns:
+        train data (DataFrame)
+        val_data (DataFrame)
+        test_data (DataFrame)
+    """
+    # Read outputs table and sum over consumption columns within each consumption group 
+    # join to the bm table to get required keys to join on and filter the building models based on charactaristics 
     sum_str = ", ".join(
         [f"{'+'.join(v)} AS {k}" for k, v in consumption_group_dict.items()]
     )
-
     inference_data = spark.sql(
         f"""
-                        SELECT B.building_id, B.upgrade_id, B.weather_file_city, {sum_str}
-                        FROM ml.surrogate_model.building_upgrade_simulation_outputs_annual O
-                        LEFT JOIN {building_feature_table_name} B 
-                            ON B.upgrade_id = O.upgrade_id AND B.building_id == O.building_id
-                        WHERE O.upgrade_id = 0
-                            AND sqft < 8000
-                            AND occupants <= 10
-                        """
+        SELECT B.building_id, B.upgrade_id, B.weather_file_city, {sum_str}
+        FROM ml.surrogate_model.building_upgrade_simulation_outputs_annual O
+        LEFT JOIN {building_feature_table_name} B 
+            ON B.upgrade_id = O.upgrade_id AND B.building_id == O.building_id
+        WHERE O.upgrade_id = 0
+            AND sqft < 8000
+            AND occupants <= 10
+        """
     )
 
+    # Subset the data if n_subset is specified
     if n_subset is not None:
         n_total = inference_data.count()
         if n_subset > n_total:
-            print(
-                "'n_subset' is more than the total number of records, returning all records..."
-            )
+            print("'n_subset' is more than the total number of records, returning all records...")
         else:
             inference_data = inference_data.sample(
                 fraction=n_subset / n_total, seed=seed
             )
 
     p_train = 1 - p_val - p_test
+
+    # Split the data into train, validation, and test sets
     return inference_data.randomSplit(weights=[p_train, p_val, p_test], seed=seed)
 
 # COMMAND ----------
 
 # DBTITLE 1,Load data
-# consumption_group_dict={'cooling': ['electricity__cooling_fans_pumps', 'electricity__cooling']} 
-train_data, val_data, test_data = load_inference_data(n_subset=100 if DEBUG else None)
+train_data, val_data, test_data = load_data(n_subset=100 if DEBUG else None)
 
 # COMMAND ----------
 
@@ -148,29 +171,86 @@ if DEBUG:
 # COMMAND ----------
 
 # DBTITLE 1,Define wrapper class for processing at inference time
-# this allows us to apply pre/post processing to the inference data
 class SurrogateModelingWrapper(mlflow.pyfunc.PythonModel):
-    def __init__(self, trained_model, train_gen):
+    """
+    A wrapper class that applies the pre/post processing to the data at inference time,
+    where the pre-processing must transform the inputs to match the format used during training.
+    This is then packaged up as part of the model, and will automatically be applied when 
+    running inference with the packaged mlflow model. 
+
+    Attributes:
+        - model: The trained mlflow keras model
+        - building_features (list of str) : List of building features that the model was trained on
+        - weather_features (list of str) : List of weather features that the model was trained on
+        - targets (list of str) : List of consumption group targets 
+    """
+
+    def __init__(self, trained_model, train_gen:DataGenerator):
+        """
+        Parameters:
+        - trained_model: The trained mlflow keras model
+        - train_gen (DataGenerator): The training data generator
+        """
         self.model = trained_model
         self.building_features = train_gen.building_features
         self.weather_features = train_gen.weather_features
         self.targets = train_gen.targets
 
-    def preprocess_input(self, model_input):
-        return self.convert_training_data_to_dict(model_input)
+    def preprocess_input(self, model_input:pd.DataFrame)->Dict[str,np.ndarray]:
+        """
+        Preprocesses the model input of P features over N samples 
 
-    def postprocess_result(self, results):
-        return np.hstack([results[c] for c in self.targets])
+        Parameters:
+        - model_input (pd.Dataframe): The input features for the model of shape [N, P].
 
-    def predict(self, context, model_input):
+        Returns:
+        - The preprocessed feature data in format {feature_name(str) : np.array [N,]}
+        """
+        return self.convert_feature_dataframe_to_dict(model_input)
+
+    def postprocess_result(self, results:Dict[str,np.ndarray]) -> np.ndarray:
+        """
+        Postprocesses the model results for N samples over M targets. 
+
+        Parameters:
+        - results (dict of {str: np.ndarray}): The outputs of the model in format {target_name (str) : np.ndarray [N,]}
+
+        Returns:
+        - The model predictions floored at 0: np.ndarray of shape [N, M]
+                                   
+        """
+        return np.clip(np.hstack([results[c] for c in self.targets]), a_min=0, a_max=None)
+
+    def predict(self, context, model_input:pd.DataFrame) -> np.ndarray:
+        """
+        Makes predictions using the model for N samples over M targets. 
+
+        Parameters:
+        - context (Any): Ignored here. It's a placeholder for additional data or utility methods.
+        - model_input (pd.Dataframe): The input features for the model of shape [N, P]
+
+        Returns:
+        - The model predictions floored at 0: np.ndarray of shape [N, M]
+        """
         processed_df = self.preprocess_input(model_input.copy())
         predictions_df = self.model.predict(processed_df)
         return self.postprocess_result(predictions_df)
-    
-    def convert_training_data_to_dict(self, building_feature_df):
-        X_train_bm = {col: np.array(building_feature_df[col]) for col in self.building_features}
+
+    def convert_feature_dataframe_to_dict(self, feature_df:pd.DataFrame)->Dict[str,np.ndarray]:
+        """
+        Converts the feature data from a pandas dataframe to a dictionary. 
+
+        Parameters:
+        - feature_df: : The input features for the model of shape [N, P] where feature columns 
+                        for weather features contain len 8760 arrays.
+
+        Returns:
+        - The preprocessed feature data in format {feature_name (str) : 
+                np.array of shape [N] for building model features and shape [N,8760] for weather features} 
+        """
+        X_train_bm = {col: np.array(feature_df[col]) for col in self.building_features}
         X_train_weather = {
-            col: np.array(np.vstack(building_feature_df[col].values)) for col in self.weather_features
+            col: np.array(np.vstack(feature_df[col].values)) for col in self.weather_features
         }
         return {**X_train_bm, **X_train_weather}
 
@@ -182,44 +262,48 @@ model = Model(name='test' if DEBUG else 'sf_detatched_hvac_baseline')
 # COMMAND ----------
 
 # DBTITLE 1,Fit model
-# Train keras model and logs the model with the Feature Engineering in UC. 
+# Train keras model and log the model with the Feature Engineering in UC. 
 
-# The code starts an MLflow experiment to track training parameters and results. Note that model autologging is disabled (`mlflow.sklearn.autolog(log_models=False)`); this is because the model is logged using `fe.log_model`.
-
+# Set the activation function and numeric data type for the model's layers
 layer_params = {
-    "activation": "leaky_relu",
-    "dtype": np.float32
+    "activation": "leaky_relu", 
+    "dtype": np.float32 
 }
 
-# Disable MLflow autologging and instead log the model using Feature Engineering in UC
-mlflow.tensorflow.autolog(log_models=False)
+# Disable MLflow autologging and instead log the model using Feature Engineering in UC using `fe.log_model
+mlflow.tensorflow.autolog(log_models=False) 
 mlflow.sklearn.autolog(log_models=False)
 
+# Starts an MLflow experiment to track training parameters and results.
 with mlflow.start_run() as run:
-    run_id = mlflow.active_run().info.run_id
 
-    keras_model = model.create_model(train_gen=train_gen, layer_params=layer_params)
+    # Get the unique ID of the current run in case we aren't registering it
+    run_id = mlflow.active_run().info.run_id  
+    
+    # Create the keras model
+    keras_model = model.create_model(train_gen=train_gen, layer_params=layer_params)  
 
+    # Fit the model
     history = keras_model.fit(
         train_gen,
         validation_data=val_gen,
-        epochs = 2,
-        batch_size = train_gen.batch_size, 
-        verbose=2,
-        callbacks=[keras.callbacks.EarlyStopping(monitor="val_loss", patience=10)]
+        epochs = 2 if DEBUG else 100,  
+        batch_size = train_gen.batch_size,
+        verbose=2, 
+        callbacks=[keras.callbacks.EarlyStopping(monitor="val_loss", patience=8)]
     )
 
-    pyfunc_model = SurrogateModelingWrapper(keras_model, train_gen)
+    # wrap in custom class that defines pre and post processing steps to be applied when called at inference time
+    pyfunc_model = SurrogateModelingWrapper(keras_model, train_gen) 
 
     # If in test mode, don't register the model, just pull it based on run_id in evaluation testing
     model.fe.log_model(
         model=pyfunc_model,
         artifact_path=model.artifact_path,
-        flavor=mlflow.pyfunc,
+        flavor=mlflow.pyfunc,  # since using custom pyfunc wrapper 
         training_set=train_gen.training_set,
-        registered_model_name= None if DEBUG else str(model),
+        registered_model_name= None if DEBUG else str(model),  # registered the model name if in DEBUG mode
     )
-    
 
 # COMMAND ----------
 
@@ -276,6 +360,7 @@ def evalute_metrics(df, groupby_cols = []):
 # DBTITLE 1,Run inference on test set
 if not DEBUG:
     # score using  latest registered model
+    mlflow.pyfunc.get_model_dependencies(model.get_model_uri())
     pred_df = model.score_batch(test_data = test_data, targets = train_gen.targets) 
 
 # COMMAND ----------
@@ -299,10 +384,10 @@ if not DEBUG:
                     F.when(F.col('end_use') == 'cooling', F.col('ac_type'))
                     .otherwise(F.col('heating_fuel'))
             )
-            .withColumn('pred', #floor predictions at 0
-                    F.when(F.col('end_use') == 'heating', F.greatest(F.col('prediction')[0], F.lit(0)))
-                    .when(F.col('end_use') == 'cooling',F.greatest(F.col('prediction')[1], F.lit(0)))
-                    .otherwise(F.greatest(F.col('prediction')[1] + F.col('prediction')[0], F.lit(0)))
+            .withColumn('pred',
+                    F.when(F.col('end_use') == 'heating', F.col('prediction')[0])
+                    .when(F.col('end_use') == 'cooling',F.col('prediction')[1])
+                    .otherwise(F.col('prediction')[1] + F.col('prediction')[0])
             )
             .withColumn('absolute_error', F.abs(F.col('pred') -  F.col('true')))
             .withColumn('absolute_percentage_error', APE(F.col('pred'), F.col('true')))
@@ -314,7 +399,7 @@ if not DEBUG:
     )
 
     metrics_by_enduse = evalute_metrics(
-        df = pred_df_long.where(F.col('end_use') != 'hvac'), 
+        df = pred_df_long, 
         groupby_cols = ['end_use']
     ).withColumn('type', F.lit('Total'))
 
