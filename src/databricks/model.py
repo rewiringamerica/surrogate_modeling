@@ -87,10 +87,10 @@ class Model:
         bm = layers.Concatenate(name="concat_layer", dtype=layer_params["dtype"])(
             bmo_inputs
         )
-        bm = layers.Dense(128, name="second_dense", **layer_params)(bm)
-        bm = layers.Dense(64, name="third_dense", **layer_params)(bm)
-        bm = layers.Dense(32, name="fourth_dense", **layer_params)(bm)
-        bm = layers.Dense(8, name="first_dense", **layer_params)(bm)
+        bm = layers.Dense(128, name="first_dense", **layer_params)(bm)
+        bm = layers.Dense(64, name="second_dense", **layer_params)(bm)
+        bm = layers.Dense(32, name="third_dense", **layer_params)(bm)
+        bm = layers.Dense(8, name="fourth_dense", **layer_params)(bm)
 
         bmo = models.Model(
             inputs=bmo_inputs_dict, outputs=bm, name="building_features_model"
