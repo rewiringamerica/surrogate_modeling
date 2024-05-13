@@ -230,14 +230,12 @@ class Model:
             * the run id if specified (usually used for an unregistered model)
             * the model version if specified
             * the latest registered model otherwise 
-        Returns the input dataframe with a column containing predicted values as an array (one for each target),
-        as well as a column split out for each target if the target names `targets` are passed. 
+        Returns the input dataframe with a column containing predicted values as an array (one for each target)
 
         Parameters:
         - test_data (DataFrame): the test data to run inference on containing the keys to join to feature tables on.
         - run_id (str): the ID of the run. Defaults to None. 
         - version (int): the version of the model. Ignored if run_id is passed. Defaults to None. 
-        - targets (List[str]): the list of target columns.
 
         Returns:
         - DataFrame: test data with predictions
@@ -248,9 +246,6 @@ class Model:
             df=test_data,
             result_type=ArrayType(DoubleType())
         )
-        if targets: 
-            for i, target in enumerate(targets):
-                batch_pred = batch_pred.withColumn(f"{target}_pred", F.col("prediction")[i])
         return batch_pred
     
     

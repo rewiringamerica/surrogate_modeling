@@ -37,6 +37,7 @@
 # COMMAND ----------
 
 # DBTITLE 1,Imports
+from functools import reduce 
 from itertools import chain
 import re
 from typing import Dict
@@ -44,7 +45,7 @@ from typing import Dict
 from pyspark.sql import DataFrame
 from pyspark.sql.column import Column
 import pyspark.sql.functions as F
-from pyspark.sql.types import IntegerType, FloatType
+from pyspark.sql.types import IntegerType, DoubleType
 
 from databricks.feature_engineering import FeatureEngineeringClient
 
@@ -66,7 +67,7 @@ EER_CONVERSION = {
 }
 
 
-@udf(returnType=FloatType())
+@udf(returnType=DoubleType())
 def extract_percentage(value: str) -> float:
     """Extract percentage of space given
 
@@ -85,7 +86,7 @@ def extract_percentage(value: str) -> float:
     try:
         return (match and float(match.group(1))) / 100.0
     except ValueError:
-        raise ValueError(f"Cannot extract cooled space percentage from: f{value}")
+        raise ValueError(f"Cannot extract percentage from: f{value}")
 
 
 @udf(returnType=IntegerType())
@@ -138,7 +139,7 @@ def extract_r_value(construction_type: str) -> int:
 
 
 # TODO: figure out why raise value error is triggering
-@udf(returnType=FloatType())
+@udf(returnType=DoubleType())
 def extract_cooling_efficiency(cooling_efficiency: str) -> float:
     """Convert a ResStock cooling efficiency into EER value
 
@@ -206,7 +207,7 @@ def extract_heating_efficiency(heating_efficiency: str) -> int:
     return int(number)
 
 
-@udf(returnType=FloatType())
+@udf(returnType=DoubleType())
 def temp_from(temperature_string, base_temp=0) -> float:
     """Convert string Fahrenheit degrees to float F - base_temp deg
 
@@ -364,6 +365,7 @@ def transform_building_features() -> DataFrame:
               'ducts_leakage',
               'infiltration_ach50',
               # insulalation
+              'wall_type', #only used for upgrades
               'wall_material',
               'insulation_wall',
               'insulation_slab',
@@ -386,6 +388,110 @@ def transform_building_features() -> DataFrame:
           )
   )
   return building_metadata_transformed
+
+
+# Mapping of climate zone temperature  -> threshold, insulation
+# where climate zone temperature is the first character in the ASHRAE IECC climate zone
+# ('1', 13, 30) means units in climate zones 1A (1-anything) with R13 insulation or less are upgraded to R30
+BASIC_ENCLOSURE_INSULATION = spark.createDataFrame([
+    ('1', 13, 30),
+    ('2', 30, 49),
+    ('3', 30, 49),
+    ('4', 38, 60),
+    ('5', 38, 60),
+    ('6', 38, 60),
+    ('7', 38, 60)], 
+    ('climate_zone_temp', 'existing_insulation_max_threshold', 'insulation_upgrade'))
+
+
+# Define a function to apply upgrades based on upgrade_id
+def apply_upgrades(building_features: DataFrame, upgrade_id: int) -> DataFrame:
+    """
+    Augment building features to reflect the upgrade. Source:
+    https://oedi-data-lake.s3.amazonaws.com/nrel-pds-building-stock/end-use-load-profiles-for-us-building-stock/2022/EUSS_ResRound1_Technical_Documentation.pdf
+    In case of contradictions, consult: https://github.com/NREL/resstock/blob/run/euss/EUSS-project-file_2018_10k.yml. 
+
+    Args:
+          building_features: (DataFrame) building features coming from metadata.
+          upgrade_id: (int)
+
+    Returns:
+          DataFrame: building_features, augmented to reflect the upgrade.
+    """
+    # TODO: implement upgrades 2, 5, 6, 7, 8
+
+    building_features = building_features.withColumn('upgrade_id', F.lit(upgrade_id))
+    
+    if upgrade_id == '0': #baseline: return as is
+        return building_features
+
+    if upgrade_id == '1': # basic enclosure
+        return (
+            building_features
+                # Upgrade insulation of ceiling/roof
+                # Map the climate zone number to the insulation params for the upgrade
+                .join(BASIC_ENCLOSURE_INSULATION, on = 'climate_zone_temp')
+                # Attic floor insulation if 
+                .withColumn('insulation_ceiling_roof', 
+                    F.when(
+                        (F.col('attic_type') == 'Vented Attic') & (F.col('insulation_ceiling_roof') <= F.col('existing_insulation_max_threshold')),
+                        F.col('insulation_upgrade'))
+                    .otherwise(F.col('insulation_ceiling_roof')))
+                .drop('climate_zone_temp', 'existing_insulation_max_threshold')
+                
+                # Air leakage reduction if high levels of infiltration
+                .withColumn('infiltration_ach50', 
+                    F.when(F.col('infiltration_ach50') >= 15, F.col('infiltration_ach50') * 0.7)
+                    .otherwise(F.col('infiltration_ach50')))
+
+                # Duct sealing: update duct leakage rate and insulation if there is some leakage
+                .withColumn('ducts_leakage', 
+                    F.when(F.col('ducts_leakage') > 0, 0.1)
+                    .otherwise(F.col('ducts_leakage')))
+                .withColumn('ducts_insulation', 
+                    F.when(F.col('ducts_leakage') > 0, 8.0)
+                    .otherwise(F.col('ducts_insulation')))
+                
+                # Drill-and-fill wall insulation if the wall type is uninsulated
+                .withColumn('insulation_wall', 
+                    F.when(F.col('wall_type') == 'Wood Stud, Uninsulated', extract_r_value(F.lit('Wood Stud, R-13')))
+                    .otherwise(F.col('insulation_wall')))
+            )
+    
+    def upgrade_to_hp(building_features: DataFrame, ducted_efficiency:str, non_ducted_efficiency:str) -> DataFrame:
+        # Note that all baseline hps are lower efficiency than specified upgrade thresholds (<=SEER 15; <=HSPF 8.5)
+        return ( 
+                building_features
+                    .withColumn('heating_appliance_type',  F.lit('ASHP'))
+                    .withColumn('heating_fuel',  F.lit('Electricity'))
+                    .withColumn('cooling_efficiency_eer',
+                        F.when(F.col('has_ducts') == 1, extract_cooling_efficiency(F.lit(ducted_efficiency)))
+                        .otherwise(extract_cooling_efficiency(F.lit(non_ducted_efficiency))))
+                    .withColumn('heating_efficiency',
+                        F.when(F.col('has_ducts') == 1, extract_heating_efficiency(F.lit(ducted_efficiency)))
+                        .otherwise(extract_heating_efficiency(F.lit(non_ducted_efficiency))))
+                    .withColumn('ac_type', F.lit('Heat Pump'))
+                    .withColumn('has_ac', F.lit(1))
+                    .withColumn('cooled_space_proportion', F.lit(1.0)) #heat_pump_fraction_heat_load_served=1
+                    #.withColumn('backup_heating_efficiency', F.lit(1.0))
+            )
+
+
+    if upgrade_id == '3': # heat pump: min efficiency, electric backup
+        return (
+            building_features
+                .transform(upgrade_to_hp, 'Heat Pump, SEER 15, 9 HSPF', 'Heat Pump, SEER 15, 9 HSPF')
+        )
+
+    if upgrade_id == '4': # heat pump: high efficiency, electric backup
+        return (
+            building_features
+                .transform(upgrade_to_hp, 'Heat Pump, SEER 24, 13 HSPF', 'Heat Pump, SEER 29.3, 14 HSPF')
+        )
+
+    # Raise an error if an unsupported upgrade ID is provided
+    raise ValueError(f"Upgrade id={upgrade_id} is not yet supported")
+
     
 
 def transform_weather_features()->DataFrame:
@@ -409,6 +515,23 @@ def transform_weather_features()->DataFrame:
 
 # DBTITLE 1,Transform building metadata
 building_metadata_transformed = transform_building_features()
+
+# COMMAND ----------
+
+
+#create a metadata df for baseline and each HVAC upgrade
+upgrade_ids = ['0', '1', '3', '4']
+building_metadata_hvac_upgrades = reduce (
+    DataFrame.unionAll,
+    [apply_upgrades(building_features=building_metadata_transformed, upgrade_id=upgrade) for upgrade in upgrade_ids]
+)
+
+# building_metadata_hvac_upgrades.dropDuplicates(subset=building_metadata_transformed.drop('upgrade_id').columns).groupby('upgrade_id').count().display()
+   
+
+# COMMAND ----------
+
+building_metadata_hvac_upgrades.groupby('upgrade_id').count().display()
 
 # COMMAND ----------
 
@@ -457,14 +580,15 @@ fe = FeatureEngineeringClient()
 
 # DBTITLE 1,Write out building metadata feature store
 table_name = "ml.surrogate_model.building_features"
+df = building_metadata_hvac_upgrades
 if spark.catalog.tableExists(table_name):
-    fe.write_table(name=table_name, df=building_metadata_transformed, mode="merge")
+    fe.write_table(name=table_name, df=df, mode="merge")
 else:
     fe.create_table(
         name=table_name,
         primary_keys=["building_id", "upgrade_id"],
-        df=building_metadata_transformed,
-        schema=building_metadata_transformed.schema,
+        df=df,
+        schema=df.schema,
         description="building metadata features",
     )
 
@@ -472,18 +596,18 @@ else:
 
 # DBTITLE 1,Write out weather data feature store
 table_name = "ml.surrogate_model.weather_features_hourly"
-
+df = weather_data_transformed
 if spark.catalog.tableExists(table_name):
     fe.write_table(
         name=table_name,
-        df=weather_data_transformed,
+        df=df,
         mode="merge",
     )
 else:
     fe.create_table(
         name=table_name,
         primary_keys=["weather_file_city"],
-        df=weather_data_transformed,
-        schema=weather_data_transformed.schema,
+        df=df,
+        schema=df.schema,
         description="hourly weather timeseries array features",
     )

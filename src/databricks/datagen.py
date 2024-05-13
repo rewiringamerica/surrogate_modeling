@@ -109,8 +109,8 @@ class DataGenerator(tf.keras.utils.Sequence):
         "cooling": ["electricity__cooling_fans_pumps", "electricity__cooling"],
     }
 
-    # just baseline for now
-    upgrade_ids = ["0"]
+    # baseline and HVAC upgrades
+    upgrade_ids = ["0", "1", "3", "4"]
 
     def __init__(
         self,
