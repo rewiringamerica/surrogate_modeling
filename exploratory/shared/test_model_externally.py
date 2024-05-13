@@ -49,43 +49,12 @@ test_data = spark.sql("SELECT building_id, upgrade_id, weather_file_city FROM ml
 
 # COMMAND ----------
 
-from databricks.feature_engineering import FeatureEngineeringClient
-fe = FeatureEngineeringClient()
-from pyspark.sql.types import ArrayType, DoubleType
-
-# COMMAND ----------
-
-# test predictions and make sure nothing errors out
-import mlflow
-model_uri = "models:/ml.surrogate_model.test/36"
-mlflow.pyfunc.get_model_dependencies(model_uri)
-
-
-batch_pred = fe.score_batch(
-    model_uri=model_uri,
-    df=test_data,
-    result_type=ArrayType(DoubleType())
-)
-
-# COMMAND ----------
-
-
-batch_pred.display()
-
-# COMMAND ----------
-
 # test predictions and make sure nothing errors out
 import mlflow
 mlflow.pyfunc.get_model_dependencies(model.get_model_uri())
 
 pred_df = model.score_batch(test_data = test_data) # score using  latest registered model
 
-#pred_df = model.score_batch(test_data = test_data, run_id = '6deab2c9e96a402ab0bf2c6d1108f53e', targets = ['heating', 'cooling']) # score unregistered model
-
-# COMMAND ----------
+#pred_df = model.score_batch(test_data = test_data, run_id = '6deab2c9e96a402ab0bf2c6d1108f53e') # score unregistered model
 
 pred_df.display()
-
-# COMMAND ----------
-
-
