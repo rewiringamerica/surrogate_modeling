@@ -195,12 +195,9 @@ class SurrogateModelingWrapper(mlflow.pyfunc.PythonModel):
         """
         Parameters:
         - trained_model: The trained mlflow keras model
-        - train_gen (DataGenerator): The training data generator
+        See class attributes for details on other params. 
         """
         self.model = trained_model
-        # self.building_features = train_gen.building_features
-        # self.weather_features = train_gen.weather_features
-        # self.targets = train_gen.targets
         self.building_features = building_features
         self.weather_features = weather_features
         self.targets = targets
@@ -303,7 +300,11 @@ with mlflow.start_run() as run:
     )
 
     # wrap in custom class that defines pre and post processing steps to be applied when called at inference time
-    pyfunc_model = SurrogateModelingWrapper(keras_model, train_gen.building_features, train_gen.weather_features, train_gen.targets) 
+    pyfunc_model = SurrogateModelingWrapper(
+        trained_model=keras_model,
+        building_features=train_gen.building_features,
+        weather_features=train_gen.weather_features,
+        targets=train_gen.targets) 
 
     # If in test mode, don't register the model, just pull it based on run_id in evaluation testing
     model.fe.log_model(
@@ -311,8 +312,7 @@ with mlflow.start_run() as run:
         artifact_path=model.artifact_path,
         flavor=mlflow.pyfunc,  # since using custom pyfunc wrapper 
         training_set=train_gen.training_set,
-        #registered_model_name= None if DEBUG else str(model)  # registered the model name if in DEBUG mode
-        registered_model_name= str(model)  # registered the model name if in DEBUG mode
+        registered_model_name= None if DEBUG else str(model)  # registered the model name if in DEBUG mode
     )
 
 # COMMAND ----------

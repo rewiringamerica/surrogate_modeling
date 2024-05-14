@@ -1,11 +1,6 @@
 # Databricks notebook source
-# MAGIC %md # Test to make sure model works in different notebook
+# MAGIC %md # Evaluate CNN Model
 # MAGIC
-
-# COMMAND ----------
-
-# install required packages: note that tensorflow must be installed at the notebook-level
-%pip install gcsfs==2023.5.0 tensorflow==2.15.0.post1
 
 # COMMAND ----------
 
@@ -16,10 +11,6 @@ from pyspark.sql.window import Window
 
 targets = ['heating', 'cooling']
 pred_df = spark.table('ml.surrogate_model.test_predictions').drop('temp_air', 'wind_speed', 'ghi', 'weekend')
-
-# COMMAND ----------
-
-pred_df.drop(*train_gen.weather_features).write.mode('overwrite').saveAsTable('ml.surrogate_model.test_predictions')
 
 # COMMAND ----------
 
@@ -62,11 +53,16 @@ pred_df_savings = (
 
 # COMMAND ----------
 
-pred_df_savings.groupby('baseline_heating_fuel', 'upgrade_id').agg(
+
+pred_df_savings.groupby('baseline_heating_fuel', 'baseline_ac_type', 'upgrade_id').agg(
     F.mean(F.col('absolute_percentage_error')[2]).alias('mean_absolute_percentage_error'),
     F.median(F.col('absolute_percentage_error')[2]).alias('median_absolute_percentage_error'),
+    F.mean(F.col('absolute_error')[2]).alias('mean_absolute_error'),
+    F.median(F.col('absolute_error')[2]).alias('median_absolute_error'),
     F.mean(F.col('absolute_percentage_error_savings')[2]).alias('mean_absolute_percentage_error_savings'),
     F.median(F.col('absolute_percentage_error_savings')[2]).alias('median_absolute_percentage_error_savings'),
+    F.mean(F.col('absolute_error_savings')[2]).alias('mean_absolute_error_savings'),
+    F.median(F.col('absolute_error_savings')[2]).alias('median_absolute_error_savings'),
     ).display()
 
 # COMMAND ----------
@@ -75,3 +71,11 @@ pred_df_savings.groupby('heating_fuel').agg(
     F.mean(F.col('absolute_percentage_error')[0]).alias('mean_absolute_percentage_error'),
     F.median(F.col('absolute_percentage_error')[0]).alias('median_absolute_percentage_error'),
     ).display()
+
+# COMMAND ----------
+
+# MAGIC %md ## Format for comparing to other models
+
+# COMMAND ----------
+
+

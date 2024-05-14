@@ -7,9 +7,17 @@ import pandas as pd
 
 # COMMAND ----------
 
+# MAGIC %md ## Compare Model Metrics: HVAC Baseline
+
+# COMMAND ----------
+
 bucket_metrics = pd.read_csv('gs://the-cube/export/surrogate_model_metrics/bucketed.csv', keep_default_na=False)
 cnn_metrics = pd.read_csv('gs://the-cube/export/surrogate_model_metrics/cnn/ml.surrogate_model.sf_detatched_hvac_baseline_v1.csv', keep_default_na=False)
 ff_metrics = pd.read_csv('gs://the-cube/export/surrogate_model_metrics/feed_forward.csv', keep_default_na=False)
+
+# COMMAND ----------
+
+bucket_metrics = bucket_metrics[bucket_metrics.upgrade_id == '0'].drop(columns=['Mean Abs Error - Savings', 'Median Abs Error - Savings', 'Median APE - Savings', 'MAPE - Savings', 'upgrade_id'])
 
 # COMMAND ----------
 
@@ -35,10 +43,6 @@ metrics_combined
 # COMMAND ----------
 
 metrics_combined.sort_values(['end_use', 'type']).to_csv('gs://the-cube/export/surrogate_model_metrics/comparison.csv', float_format = '%.2f')
-
-# COMMAND ----------
-
-metrics_combined.sort_values(['end_use', 'type'])
 
 # COMMAND ----------
 
