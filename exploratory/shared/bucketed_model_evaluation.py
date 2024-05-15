@@ -3,9 +3,14 @@
 
 # COMMAND ----------
 
+# MAGIC %pip install gcsfs==2023.5.0
+
+# COMMAND ----------
+
 import pandas as pd
 from pyspark.sql.types import BooleanType, FloatType
 import pyspark.sql.functions as F
+from pyspark.sql.window import Window
 
 # COMMAND ----------
 
@@ -32,6 +37,7 @@ actual_baseline_consumption_by_building_bucket = spark.sql(
     SELECT building_id, bucket_id, SUM(kwh_upgrade) AS kwh_upgrade, SUM(kwh_delta) AS kwh_delta
     FROM housing_profile.resstock_annual_baseline_consumption_by_building_geography_enduse_fuel_bucket
     WHERE acs_housing_type == 'Single-Family'
+        AND end_use IN ('heating', 'cooling')
     GROUP BY building_id, bucket_id
     """
 ).alias('true')
@@ -47,107 +53,123 @@ actual_consumption_savings_by_building_bucket = spark.sql(
     """
 ).alias('true')
 
-sf_detached_buildings = spark.sql("SELECT building_id FROM building_model.resstock_metadata WHERE in_geometry_building_type_acs == 'Single-Family Detached'")
+sf_detached_buildings = spark.sql(
+    """
+    SELECT building_id, in_heating_fuel, in_hvac_cooling_type 
+    FROM building_model.resstock_metadata
+    WHERE in_geometry_building_type_acs == 'Single-Family Detached'
+    AND in_heating_fuel != 'Other Fuel'
+    """
+)
 
 pep_projects = spark.sql('SELECT DISTINCT appliance_option, insulation_option, upgrade_id_pep AS upgrade_id  FROM housing_profile.pep_projects@v11')
 
 # COMMAND ----------
 
-# Function to check if x is between the two elements of in interval
-@F.udf(BooleanType())
-def in_interval(x, interval):
-    return x >= interval[0] and x <= interval[1]
-
 @F.udf(FloatType())
-def absolute_percentage_error(pred, true):
-    if true != 0:
-        return abs((true - pred) / true)
+def absolute_percentage_error(pred, true, eps = 1E3):
+    if true > eps:
+        return abs((true - pred) / true)*100
     else:
         return None
     
 @F.udf(FloatType())
-def absolute_error(pred, true):
-    if true != 0:
+def absolute_error(pred, true, eps = 1E3):
+    if true > eps:
         return abs(true - pred)
     else:
         return None
 
-error_by_building_bucket_baseline=(
+prediction_actual_by_building_bucket_baseline=(
     actual_baseline_consumption_by_building_bucket
             .join(predicted_bucketed_baseline_consumption,F.col('true.bucket_id') == F.col('pred.id'))
             .join(sf_detached_buildings,on = 'building_id')
             .drop('bucket_id')
     )
 
-error_by_building_bucket_upgrade=(
+prediction_actual_by_building_bucket_upgrade=(
     actual_consumption_savings_by_building_bucket 
             .join(predicted_bucketed_upgrade_consumption,F.col('true.bucket_id') == F.col('pred.id'))
             .join(sf_detached_buildings,on = 'building_id')
             .drop('bucket_id')
     )
 
-error_by_building_upgrade =(
-    error_by_building_bucket_baseline
-        .unionByName(error_by_building_bucket_upgrade, allowMissingColumns=True)
+
+hvac_prediction_actual_by_building_upgrade =(
+    prediction_actual_by_building_bucket_baseline
+        .unionByName(prediction_actual_by_building_bucket_upgrade, allowMissingColumns=True)
+        .withColumn('cooling_type', 
+                    F.when(F.col('in_hvac_cooling_type') == 'Heat Pump AC', F.lit("Heat Pump"))
+                    .when(F.col('in_hvac_cooling_type') == 'None', F.lit("No Cooling"))
+                    .otherwise(F.col('in_hvac_cooling_type')))
+        .withColumn('baseline_appliance_fuel', 
+            F.when(F.col('cooling_type') == 'Heat Pump', F.lit("Heat Pump"))
+             .when(F.col('in_heating_fuel') == 'None', F.lit("No Heating"))
+            .otherwise(F.col('in_heating_fuel')))
         .join(pep_projects, on = ['appliance_option', 'insulation_option'])
-        .withColumn('type', 
-                    F.when(F.col('cooling_type') == 'Heat Pump AC', F.lit("Heat Pump"))
-                    .otherwise(F.coalesce('baseline_appliance_fuel', 'cooling_type')))
+        .groupby('building_id', 'upgrade_id', 'baseline_appliance_fuel', 'cooling_type')
+        .agg(
+            *[F.sum(c).alias(c) 
+              for c in ['kwh_upgrade_median', 'kwh_upgrade', 'kwh_delta_median', 'kwh_delta']]
+        )
+)
+
+error_by_building_upgrade =(
+    hvac_prediction_actual_by_building_upgrade
         .withColumn('absolute_percentage_error', absolute_percentage_error(F.col('kwh_upgrade_median'), F.col('kwh_upgrade')))
         .withColumn('absolute_error', absolute_error(F.col('kwh_upgrade_median'), F.col('kwh_upgrade')))
         .withColumn('absolute_percentage_error_savings', absolute_percentage_error(F.col('kwh_delta_median'), F.col('kwh_delta')))
         .withColumn('absolute_error_savings', absolute_error(F.col('kwh_delta_median'), F.col('kwh_delta')))
-
 )
 
 # COMMAND ----------
 
-
+# save the predictions to a delta table so that we can plot the building level predictions compared to other models
+(error_by_building_upgrade
+    .write
+    .format("delta")
+    .mode("overwrite")
+    .option("overwriteSchema", "true")
+    .saveAsTable('ml.surrogate_model.bucketed_hvac_predictions')
+)
 
 # COMMAND ----------
 
-def evalute_metrics(df, groupby_cols = []):
-    metrics = (
+def aggregate_metrics(df, groupby_cols):
+
+    # for computing various statistics of interest over all building ids within a bucket
+    aggregation_expression = [
+        f(F.col(c)).alias(f"{f.__name__}_{c}")
+        for f in [F.median, F.mean] 
+        for c in ['absolute_error', 'absolute_percentage_error', 'absolute_error_savings', 'absolute_percentage_error_savings']
+    ]
+
+    return (
         df
             .groupby(*groupby_cols)
-            .agg(
-                F.mean('absolute_error').alias('Mean Abs Error'),
-                F.median('absolute_error').alias('Median Abs Error'),
-                (F.median('absolute_percentage_error')*100).alias('Median APE'), 
-                (F.mean('absolute_percentage_error')*100).alias('MAPE'), 
-                
-                F.mean('absolute_error_savings').alias('Mean Abs Error - Savings'),
-                F.median('absolute_error_savings').alias('Median Abs Error - Savings'),
-                (F.median('absolute_percentage_error_savings')*100).alias('Median APE - Savings'), 
-                (F.mean('absolute_percentage_error_savings')*100).alias('MAPE - Savings'), 
-            )
-    )
-    return metrics
+            .agg(*aggregation_expression)
+        )
 
 # COMMAND ----------
 
-metrics_by_enduse_type_upgrade = evalute_metrics(
-    df = error_by_building_upgrade.where(F.col('end_use').isin(['heating', 'cooling'])), 
-    groupby_cols=['end_use', 'type', 'upgrade_id']
-    )
+metrics_by_heating_fuel_upgrade = aggregate_metrics(
+    df = error_by_building_upgrade,
+    groupby_cols=['baseline_appliance_fuel', 'upgrade_id']
+    ).withColumnRenamed('baseline_appliance_fuel', 'type')
 
-metrics_by_enduse_upgrade  = evalute_metrics(
-    df = error_by_building_upgrade.where(F.col('end_use').isin(['heating', 'cooling'])), 
-    groupby_cols=['end_use', 'upgrade_id']
-).withColumn('type', F.lit('Total'))
+metrics_by_cooling_type_upgrade = aggregate_metrics(
+    df = error_by_building_upgrade.where(F.col("cooling_type") != 'Heat Pump'), #already accounted for in heating summary above
+    groupby_cols=['cooling_type', 'upgrade_id']
+    ).withColumnRenamed('cooling_type',  'type')
 
+metrics_by_upgrade = aggregate_metrics(
+    df = error_by_building_upgrade,
+    groupby_cols=['upgrade_id']
+    ).withColumn('type', F.lit('Total'))
 
-metrics_by_end_use  = evalute_metrics(
-    df = error_by_building_upgrade.where(F.col('end_use').isin(['heating', 'cooling'])), 
-    groupby_cols=['end_use']
-).withColumn('type', F.lit('Total')).withColumn('upgrade_id', F.lit('Total'))
-
-metrics_buckets = metrics_by_enduse_type_upgrade.unionByName(metrics_by_enduse_upgrade).unionByName(metrics_by_end_use)
-
-# COMMAND ----------
-
-metrics_buckets.toPandas().to_csv('gs://the-cube/export/surrogate_model_metrics/bucketed.csv', float_format="%.2f", index=None)
+metrics_buckets = metrics_by_heating_fuel_upgrade.unionByName(metrics_by_cooling_type_upgrade ).unionByName(metrics_by_upgrade)
 
 # COMMAND ----------
 
-
+#write out aggegated metrics
+metrics_buckets.toPandas().to_csv('gs://the-cube/export/surrogate_model_metrics/bucketed_hvac.csv', index=None)

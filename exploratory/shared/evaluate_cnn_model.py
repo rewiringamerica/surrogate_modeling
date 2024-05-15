@@ -4,19 +4,34 @@
 
 # COMMAND ----------
 
+!pip install seaborn==v0.13.0
+dbutils.library.restartPython()
+
+# COMMAND ----------
+
+import pandas as pd
 import pyspark.sql.functions as F
+import seaborn as sns
 from pyspark.sql.window import Window
 
 # COMMAND ----------
 
-targets = ['heating', 'cooling']
-pred_df = spark.table('ml.surrogate_model.test_predictions').drop('temp_air', 'wind_speed', 'ghi', 'weekend')
+
+MODEL_NAME = 'sf_detatched_hvac'
+MODEL_TESTSET_PREDICTIONS_TABLE = f'ml.surrogate_model.{MODEL_NAME}_predictions'
+MODEL_VERSION_NUMBER = spark.sql(f"SELECT userMetadata FROM (DESCRIBE HISTORY {MODEL_TESTSET_PREDICTIONS_TABLE }) ORDER BY version DESC LIMIT 1").rdd.map(lambda x: x['userMetadata']).collect()[0]
+MODEL_VERSION_NAME = f'ml.surrogate_model.{MODEL_NAME}@v{MODEL_VERSION_NUMBER}'
+
+# COMMAND ----------
+
+targets = ['heating', 'cooling'] #in theory could prob pull this from model artifacts..
+pred_df = spark.table(MODEL_TESTSET_PREDICTIONS_TABLE)
 
 # COMMAND ----------
 
 @udf("array<double>")
-def APE(prediction, actual):
-    return [abs(float(x - y))/y if y != 0 else None for x, y in zip(prediction, actual) ]
+def APE(prediction, actual, eps = 1E3):
+    return [abs(float(x - y))/y*100 if y > eps else None for x, y in zip(prediction, actual) ]
 
 # COMMAND ----------
 
@@ -28,11 +43,15 @@ def element_wise_subtract(a, b):
 
 pred_df_hvac_process =  (
     pred_df
+        .replace("None", 'No Heating', subset = 'heating_fuel')
+        .replace("None", 'No Cooling', subset = 'ac_type')
+        .withColumn('heating_fuel', 
+            F.when(F.col('ac_type') == 'Heat Pump', F.lit("Heat Pump"))
+            .otherwise(F.col('heating_fuel')))
         .withColumn('hvac', F.col('heating') + F.col('cooling'))
         .withColumn("actual", F.array(targets + ['hvac']))
         .withColumn('prediction', F.array_insert("prediction", 3, F.col('prediction')[0] + F.col('prediction')[1]))
 )
-
 
 pred_df_savings = (
     pred_df_hvac_process
@@ -50,32 +69,212 @@ pred_df_savings = (
         .withColumn('absolute_error_savings', element_wise_subtract('prediction_savings', 'actual_savings'))
         .withColumn('absolute_percentage_error_savings', APE(F.col('prediction_savings'), F.col('actual_savings')))
 )
+# df.selectExpr('Name[0] as Name','Age[0] as Age','inline(arrays_zip(Subjects,Grades))').show()
+
+
+# COMMAND ----------
+
+def aggregate_metrics(pred_df_savings, groupby_cols, target_idx):
+    
+    aggregation_expression = [
+        f(F.col(c)[target_idx]).alias(f"{f.__name__}_{c}")
+        for f in [F.median, F.mean] 
+        for c in ['absolute_percentage_error_savings', 'absolute_error_savings', 'absolute_percentage_error','absolute_error']
+    ]
+
+    return (
+        pred_df_savings
+            .groupby(*groupby_cols)
+            .agg(*aggregation_expression)
+        )
 
 # COMMAND ----------
 
 
-pred_df_savings.groupby('baseline_heating_fuel', 'baseline_ac_type', 'upgrade_id').agg(
-    F.mean(F.col('absolute_percentage_error')[2]).alias('mean_absolute_percentage_error'),
-    F.median(F.col('absolute_percentage_error')[2]).alias('median_absolute_percentage_error'),
-    F.mean(F.col('absolute_error')[2]).alias('mean_absolute_error'),
-    F.median(F.col('absolute_error')[2]).alias('median_absolute_error'),
-    F.mean(F.col('absolute_percentage_error_savings')[2]).alias('mean_absolute_percentage_error_savings'),
-    F.median(F.col('absolute_percentage_error_savings')[2]).alias('median_absolute_percentage_error_savings'),
-    F.mean(F.col('absolute_error_savings')[2]).alias('mean_absolute_error_savings'),
-    F.median(F.col('absolute_error_savings')[2]).alias('median_absolute_error_savings'),
-    ).display()
+heating_metrics_by_type_upgrade = (aggregate_metrics(
+    pred_df_savings = pred_df_savings,
+        groupby_cols=['baseline_heating_fuel', 'upgrade_id'],
+        target_idx=2)
+        #target_idx=0)
+    .withColumnRenamed('baseline_heating_fuel', 'type')
+)
+
+cooling_metrics_by_type_upgrade = (
+    aggregate_metrics(
+        pred_df_savings = pred_df_savings.where(F.col('baseline_ac_type') != 'Heat Pump'),
+        groupby_cols=['baseline_ac_type', 'upgrade_id'],
+        target_idx=2)
+         #target_idx=1)
+    .withColumnRenamed('baseline_ac_type', 'type')
+)
+
+total_metrics_by_upgrade = (
+    aggregate_metrics(
+        pred_df_savings = pred_df_savings,
+        groupby_cols=['upgrade_id'],
+        target_idx=2)
+    .withColumn('type', F.lit('Total'))
+)
+
+cnn_evaluation_metrics = heating_metrics_by_type_upgrade.unionByName(cooling_metrics_by_type_upgrade).unionByName(total_metrics_by_upgrade)
 
 # COMMAND ----------
 
-pred_df_savings.groupby('heating_fuel').agg(
-    F.mean(F.col('absolute_percentage_error')[0]).alias('mean_absolute_percentage_error'),
-    F.median(F.col('absolute_percentage_error')[0]).alias('median_absolute_percentage_error'),
-    ).display()
+# save the metrics table tagged with the model name and version number
+(cnn_evaluation_metrics
+    .write
+    .format("delta")
+    .mode("overwrite")
+    .option("overwriteSchema", "true")
+    .option("userMetadata", MODEL_VERSION_NAME)
+    .saveAsTable('ml.surrogate_model.evaluation_metrics')
+)
 
 # COMMAND ----------
 
-# MAGIC %md ## Format for comparing to other models
+# MAGIC %md ## Compare against Bucketed Model
 
 # COMMAND ----------
 
+#bring in bucketed metrics and compare against that. 
 
+bucket_metrics = pd.read_csv(
+    'gs://the-cube/export/surrogate_model_metrics/bucketed_hvac.csv',
+    keep_default_na=False,
+    dtype = {'upgrade_id' : 'str'})
+cnn_metrics = cnn_evaluation_metrics.toPandas()
+
+# COMMAND ----------
+
+bucket_metrics['Model'] = 'Bucketed'
+cnn_metrics['Model'] = 'CNN'
+
+# COMMAND ----------
+
+metric_rename_dict = {
+    'median_absolute_percentage_error_savings' : 'Median APE - Savings', 
+    'mean_absolute_percentage_error_savings': 'Mean APE - Savings', 
+    'median_absolute_error_savings': 'Median Abs Error - Savings', 
+    'mean_absolute_error_savings' : 'Mean Abs Error - Savings', 
+    'median_absolute_percentage_error' : 'Median APE', 
+    'mean_absolute_percentage_error' : 'Mean APE',
+    'median_absolute_error' : 'Median Abs Error',
+    'mean_absolute_error' : 'Mean Abs Error',
+}
+
+# COMMAND ----------
+
+metrics_combined = (
+    pd.concat([bucket_metrics, cnn_metrics])
+        .rename(columns={**metric_rename_dict, **{'upgrade_id' : 'Upgrade ID', 'type': 'Type'}})
+        .melt(
+            id_vars = ['Type',  'Method', 'Upgrade ID'], 
+            value_vars=list(metric_rename_dict.values()),
+            var_name='Metric'
+    )
+)
+
+metrics_combined = metrics_combined.pivot(
+    index = ['Upgrade ID', 'Type'],
+    columns = ['Metric',  'Method'], 
+    values = 'value')
+
+# COMMAND ----------
+
+metrics_combined.sort_values(['Upgrade ID', 'Type']).to_csv(f'gs://the-cube/export/surrogate_model_metrics/comparison/{MODEL_VERSION_NAME}_by_method_upgrade_type.csv', float_format = '%.2f')
+
+# COMMAND ----------
+
+# MAGIC %md ## Visualize Comparison between Model Metrics
+
+# COMMAND ----------
+
+pred_df_savings_hvac = (
+    pred_df_savings
+        .withColumn('absolute_percentage_error',
+            F.when(F.col('upgrade_id') == 0, F.col('absolute_percentage_error')[2])
+            .otherwise( F.col('absolute_percentage_error_savings')[2])
+        )
+        .select('upgrade_id', 'baseline_heating_fuel', 'absolute_percentage_error')
+) 
+
+# COMMAND ----------
+
+bucketed_pred  = (
+    spark.table('ml.surrogate_model.bucketed_hvac_predictions')
+        .withColumn('absolute_percentage_error',
+            F.when(F.col('upgrade_id') == 0, F.col('absolute_percentage_error'))
+            .otherwise( F.col('absolute_percentage_error_savings')))
+        .select('upgrade_id', F.col('baseline_appliance_fuel').alias('baseline_heating_fuel'), 'absolute_percentage_error')
+)
+
+# COMMAND ----------
+
+pred_df_savings_pd = (
+    pred_df_savings_hvac
+        .withColumn('Model', F.lit('CNN'))
+        .unionByName(bucketed_pred.withColumn('Model', F.lit('Bucketed')))
+        .withColumnsRenamed(
+            {'baseline_heating_fuel' : 'Baseline Heating Fuel', 
+             "absolute_percentage_error" : "Absolute Percentage Error", 
+             'upgrade_id' : 'Upgrade ID'})
+    ).toPandas()
+
+# COMMAND ----------
+
+pred_df_savings_pd_clip = pred_df_savings_pd.copy()
+pred_df_savings_pd_clip['Absolute Percentage Error'] =pred_df_savings_pd_clip['Absolute Percentage Error'].clip(upper = 70)
+
+with sns.axes_style("whitegrid"):
+
+    g = sns.catplot(
+        data = pred_df_savings_pd_clip, x='Baseline Heating Fuel', y="Absolute Percentage Error",
+        order = ['Fuel Oil', 'Propane', 'Natural Gas', 'Electricity',  'Heat Pump', 'No Heating'],
+        hue = 'Model', palette = 'viridis',  fill=False,  linewidth=1.25,
+        kind = 'box',  row="Upgrade ID", row_order = ['0', '1', '3', '4'], height=3, aspect= 2.5, sharey=True, sharex=True,
+        showfliers=False, showmeans=True, meanprops={'marker':'o','markerfacecolor':'white','markeredgecolor':'k','markersize':'4'}, 
+    )
+g.fig.subplots_adjust(top=.93)
+g.fig.suptitle('Prediction Metric Comparison for HVAC Savings')
+
+
+# COMMAND ----------
+
+#TODO: move to a utils file once code is reorged 
+import io
+from google.cloud import storage
+from cloudpathlib import CloudPath
+
+def save_figure_to_gcfs(fig, gcspath, figure_format ='png', dpi = 200, transparent=False):
+    """ 
+    Write out a figure to google cloud storage
+
+    Args:
+        fig (matplotlib.figure.Figure): figure object to write out
+        gcspath (cloudpathlib.gs.gspath.GSPath): filepath to write to in GCFS
+        figure_format (str): file format in ['pdf', 'svg', 'png', 'jpg']. Defaults to 'png'.
+        dpi (int): resolution in dots per inch. Only relevant if format non-vector ('png', 'jpg'). Defaults to 200. 
+
+    Returns:
+        pyspark.sql.dataframe.DataFrame
+    
+    Modified from source: 
+    https://stackoverflow.com/questions/54223769/writing-figure-to-google-cloud-storage-instead-of-local-drive
+    """
+    supported_formats = ['pdf', 'svg', 'png', 'jpg']
+    if figure_format not in supported_formats:
+        raise ValueError(f"Please pass supported format in {supported_formats}")
+
+    # Save figure image to a bytes buffer
+    buf = io.BytesIO()
+    fig.savefig(buf, format=figure_format, dpi = dpi, transparent=transparent)
+
+    # init GCS client and upload buffer contents
+    client = storage.Client()
+    bucket = client.get_bucket(gcspath.bucket)
+    blob = bucket.blob(gcspath.blob)  
+    blob.upload_from_file(buf, content_type=figure_format, rewind=True)
+
+# COMMAND ----------
+
+save_figure_to_gcfs(g.fig, CloudPath('gs://the-cube') / 'export'/ 'surrogate_model_metrics' / 'comparison'/f'{MODEL_VERSION_NAME}_vs_bucketed.png')

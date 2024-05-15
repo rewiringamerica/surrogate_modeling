@@ -341,245 +341,38 @@ if DEBUG: # evaluate the unregistered model we just logged and make sure everyth
 
 # COMMAND ----------
 
-pred_df.drop(*train_gen.weather_features).write.mode('overwrite').saveAsTable('ml.surrogate_model.test_predictions')
-
-# COMMAND ----------
-
 # MAGIC %md #### Production Mode
-
-# COMMAND ----------
-
-# DBTITLE 1,Evaluation functions
-@udf(returnType=DoubleType())
-def APE(pred:float, true:float) -> float:
-    if true == 0:
-        return None
-    return abs(pred - true)/true
-
-def evalute_metrics(df, groupby_cols = []):
-    metrics = (
-        df
-            .groupby(*groupby_cols)
-            .agg(
-                F.mean('absolute_error').alias('Mean Abs Error'),
-                F.median('absolute_error').alias('Median Abs Error'),
-                (F.median('absolute_percentage_error')*100).alias('Median APE'), 
-                (F.mean('absolute_percentage_error')*100).alias('MAPE'), 
-            )
-    )
-    return metrics
 
 # COMMAND ----------
 
 # DBTITLE 1,Run inference on test set
 if not DEBUG:
+    #for right now have to limit the test set since driver seems to be running out of mem
+    target_test_size = 75000
+    target_n_building_frac = target_test_size / test_data.count()
+    test_building_id_subset = test_data.select('building_id').distinct().sample(target_n_building_frac)
+    test_data_sub = test_data.join(test_building_id_subset , on = 'building_id')
+    print(test_data_sub.count())
     # score using  latest registered model
     mlflow.pyfunc.get_model_dependencies(model.get_model_uri())
-    pred_df = model.score_batch(test_data = test_data.sample(fraction=.5), targets = train_gen.targets) 
+    pred_df = model.score_batch(test_data = test_data_sub)
 
 # COMMAND ----------
 
-pred_df.drop(*train_gen.weather_features).write.mode('overwrite').saveAsTable('ml.surrogate_model.test_predictions')
+# MAGIC %sql DROP TABLE 
 
 # COMMAND ----------
 
-@udf("array<double>")
-def APE(prediction, actual):
-    return [abs(float(x - y))/y if y != 0 else None for x, y in zip(prediction, actual) ]
-
-# COMMAND ----------
-
-pred_df_long = (
-    pred_df
-        .drop(*train_gen.weather_features)
-        .withColumn('hvac', F.col('heating') + F.col('cooling'))
-        .withColumn("actual", F.array(train_gen.targets + ['hvac']))
-        .withColumn('prediction', F.array_insert("prediction", 3, F.col('prediction')[0] + F.col('prediction')[1]))
-        # .withColumn('type', 
-        #         F.when(F.col('end_use') == 'cooling', F.col('ac_type'))
-        #         .otherwise(F.col('heating_fuel'))
-        # )
-)
-
-# COMMAND ----------
-
-
-
-# COMMAND ----------
-
-pred_df_long.write.mode('overwrite').saveAsTable('ml.surrogate_model.sf_detatched_hvac_predictions')
-
-# COMMAND ----------
-
-pred_df_in = spark.table('ml.surrogate_model.sf_detatched_hvac_predictions')
-
-# COMMAND ----------
-
-# .withColumn('absolute_error', F.expr("transform(arrays_zip(prediction, actual), x -> abs(x.prediction - x.actual))"))
-# .withColumn('absolute_percentage_error', APE(F.col('prediction'), F.col('actual')))
-
-# COMMAND ----------
-
-from pyspark.sql.window import Window
-
-w = Window().partitionBy('building_id').orderBy(F.asc('upgrade_id'))
-(pred_df_long
-    .withColumn('prediction_baseline', F.first(F.col('prediction')).over(w))
-    .withColumn('prediction_savings', F.expr("transform(arrays_zip(prediction, prediction_baseline), x -> abs(x.prediction - x.prediction_baseline))"))
-).display()
-
-# COMMAND ----------
-
-pred_df_in.groupby('heating_fuel').agg(
-    F.mean(F.col('absolute_percentage_error')[0]).alias('mean_absolute_percentage_error'),
-    F.median(F.col('absolute_percentage_error')[0]).alias('median_absolute_percentage_error'),
-    ).display()
-
-pred_df_in.groupby('ac_type').agg(
-    F.mean(F.col('absolute_percentage_error')[1]).alias('mean_absolute_percentage_error'),
-    F.median(F.col('absolute_percentage_error')[1]).alias('median_absolute_percentage_error'),
-    ).display()
-
-# COMMAND ----------
-
-pred_df_in.groupby('heating_fuel').agg(
-    F.mean(F.col('absolute_percentage_error')[2]).alias('mean_absolute_percentage_error'),
-    F.median(F.col('absolute_percentage_error')[2]).alias('median_absolute_percentage_error'),
-    ).display()
-
-pred_df_in.groupby('ac_type').agg(
-    F.mean(F.col('absolute_percentage_error')[2]).alias('mean_absolute_percentage_error'),
-    F.median(F.col('absolute_percentage_error')[2]).alias('median_absolute_percentage_error'),
-    ).display()
-
-# COMMAND ----------
-
-pred_df_in.groupby('ac_type', 'heating_fuel').agg(
-    F.mean(F.col('absolute_percentage_error')[2]).alias('mean_absolute_percentage_error'),
-    F.median(F.col('absolute_percentage_error')[2]).alias('median_absolute_percentage_error'),
-    ).display()
-
-# COMMAND ----------
-
-pred_df_long.display()
-
-# COMMAND ----------
-
-509/4467
-
-# COMMAND ----------
-
-# pred_df_long = (
-#     pred_df
-#     .withColumn('hvac', F.col('heating') + F.col('cooling'))
-#             .melt(
-#                 ids = ['heating_fuel', 'ac_type', 'prediction', 'upgrade_id'], 
-#                 values = ['heating', 'cooling', 'hvac'],
-#                 valueColumnName='true', 
-#                 variableColumnName='end_use'
-#             )
-#         .withColumn('pred',
-#             F.when(F.col('end_use') == 'heating', F.col('prediction')[0])
-#             .when(F.col('end_use') == 'cooling',F.col('prediction')[1])
-#             .otherwise(F.col('prediction')[1] + F.col('prediction')[0])
-#         )
-#         .withColumn('absolute_error', F.abs(F.col('pred') -  F.col('true')))
-#         .withColumn('absolute_percentage_error', APE(F.col('pred'), F.col('true')))
-# )
-
-# evalute_metrics(
-#     df = pred_df_long, 
-#     groupby_cols = ['end_use']
-# ).display()
-
-# COMMAND ----------
-
-# DBTITLE 1,Create aggregated prediction metric table
+# DBTITLE 1,Write out predictions for evaluation
+# save the predictions to a delta table-- aggregating in eval without first writing to delta seems to often kill the driver
 if not DEBUG:
-    pred_df_long = (
-        pred_df
-            # .replace({'AC' : 'Central AC'}, subset = 'ac_type')
-            # .withColumn('heating_fuel', 
-            #             F.when(F.col('ac_type') == 'Heat Pump', F.lit('Heat Pump'))
-            #             .otherwise(F.col('heating_fuel')))
-            .withColumn('hvac', F.col('heating') + F.col('cooling'))
-            .melt(
-                ids = ['heating_fuel', 'ac_type', 'prediction'], 
-                values = ['heating', 'cooling', 'hvac'],
-                valueColumnName='true', 
-                variableColumnName='end_use'
-            )
-            .withColumn('type', 
-                    F.when(F.col('end_use') == 'cooling', F.col('ac_type'))
-                    .otherwise(F.col('heating_fuel'))
-            )
-            .withColumn('pred',
-                    F.when(F.col('end_use') == 'heating', F.col('prediction')[0])
-                    .when(F.col('end_use') == 'cooling',F.col('prediction')[1])
-                    .otherwise(F.col('prediction')[1] + F.col('prediction')[0])
-            )
-            .withColumn('absolute_error', F.abs(F.col('pred') -  F.col('true')))
-            .withColumn('absolute_percentage_error', APE(F.col('pred'), F.col('true')))
+    (pred_df
+        .select('building_id', 'upgrade_id', 'prediction', 'heating_fuel', 'ac_type', *train_gen.targets)
+        .write.saveAsTable(
+            f'{str(model)}_predictions', 
+            format='delta',
+            mode='overwrite',
+            overwriteSchema=True,
+            userMetadata=model.get_latest_model_version()
+        )
     )
-
-    metrics_by_enduse_type = evalute_metrics(
-        df = pred_df_long.where(F.col('end_use') != 'hvac'), 
-        groupby_cols = ['end_use' ,'type']
-    )
-
-    metrics_by_enduse = evalute_metrics(
-        df = pred_df_long, 
-        groupby_cols = ['end_use']
-    ).withColumn('type', F.lit('Total'))
-
-    df_metrics_combined = metrics_by_enduse_type.unionByName(metrics_by_enduse).toPandas()
-
-    # df_metrics_combined.to_csv(f'gs://the-cube/export/surrogate_model_metrics/cnn/{str(model)}_v{model.get_latest_model_version()}.csv', index=False)
-
-# COMMAND ----------
-
-df_metrics_combined
-
-# COMMAND ----------
-
-pred_df_long = (
-    pred_df
-        .replace({'AC' : 'Central AC'}, subset = 'ac_type')
-        .withColumn('heating_fuel', 
-                    F.when(F.col('ac_type') == 'Heat Pump', F.lit('Heat Pump'))
-                    .otherwise(F.col('heating_fuel')))
-        .withColumn('hvac', F.col('heating') + F.col('cooling'))
-        # .melt(
-        #     ids = ['heating_fuel', 'ac_type', 'prediction'], 
-        #     values = ['heating', 'cooling', 'hvac'],
-        #     valueColumnName='true', 
-        #     variableColumnName='end_use'
-        # )
-        # .withColumn('type', 
-        #         F.when(F.col('end_use') == 'cooling', F.col('ac_type'))
-        #         .otherwise(F.col('heating_fuel'))
-        # )
-        # .withColumn('pred',
-        #         F.when(F.col('end_use') == 'heating', F.col('prediction')[0])
-        #         .when(F.col('end_use') == 'cooling',F.col('prediction')[1])
-        #         .otherwise(F.col('prediction')[1] + F.col('prediction')[0])
-        # )
-        # .withColumn('absolute_error', F.abs(F.col('pred') -  F.col('true')))
-        # .withColumn('absolute_percentage_error', APE(F.col('pred'), F.col('true')))
-)
-
-# metrics_by_enduse_type = evalute_metrics(
-#     df = pred_df_long.where(F.col('end_use') != 'hvac'), 
-#     groupby_cols = ['end_use' ,'type']
-# )
-
-# metrics_by_enduse = evalute_metrics(
-#     df = pred_df_long, 
-#     groupby_cols = ['end_use']
-# ).withColumn('type', F.lit('Total'))
-
-# df_metrics_combined = metrics_by_enduse_type.unionByName(metrics_by_enduse).toPandas()
-
-# df_metrics_combined.display()
-
-# df_metrics_combined.to_csv(f'gs://the-cube/export/surrogate_model_metrics/cnn/{str(model)}_v{model.get_latest_model_version()}.csv', index=False)

@@ -405,7 +405,7 @@ BASIC_ENCLOSURE_INSULATION = spark.createDataFrame([
 
 
 # Define a function to apply upgrades based on upgrade_id
-def apply_upgrades(building_features: DataFrame, upgrade_id: int) -> DataFrame:
+def apply_upgrades(baseline_building_features: DataFrame, upgrade_id: int) -> DataFrame:
     """
     Augment building features to reflect the upgrade. Source:
     https://oedi-data-lake.s3.amazonaws.com/nrel-pds-building-stock/end-use-load-profiles-for-us-building-stock/2022/EUSS_ResRound1_Technical_Documentation.pdf
@@ -419,15 +419,14 @@ def apply_upgrades(building_features: DataFrame, upgrade_id: int) -> DataFrame:
           DataFrame: building_features, augmented to reflect the upgrade.
     """
     # TODO: implement upgrades 2, 5, 6, 7, 8
-
-    building_features = building_features.withColumn('upgrade_id', F.lit(upgrade_id))
+    baseline_building_features = baseline_building_features = baseline_building_features.withColumn('upgrade_id', F.lit(upgrade_id))
     
     if upgrade_id == '0': #baseline: return as is
-        return building_features
+        return baseline_building_features
 
     if upgrade_id == '1': # basic enclosure
         return (
-            building_features
+            baseline_building_features
                 # Upgrade insulation of ceiling/roof
                 # Map the climate zone number to the insulation params for the upgrade
                 .join(BASIC_ENCLOSURE_INSULATION, on = 'climate_zone_temp')
@@ -437,7 +436,7 @@ def apply_upgrades(building_features: DataFrame, upgrade_id: int) -> DataFrame:
                         (F.col('attic_type') == 'Vented Attic') & (F.col('insulation_ceiling_roof') <= F.col('existing_insulation_max_threshold')),
                         F.col('insulation_upgrade'))
                     .otherwise(F.col('insulation_ceiling_roof')))
-                .drop('climate_zone_temp', 'existing_insulation_max_threshold')
+                .drop('insulation_upgrade', 'existing_insulation_max_threshold')
                 
                 # Air leakage reduction if high levels of infiltration
                 .withColumn('infiltration_ach50', 
@@ -457,11 +456,12 @@ def apply_upgrades(building_features: DataFrame, upgrade_id: int) -> DataFrame:
                     F.when(F.col('wall_type') == 'Wood Stud, Uninsulated', extract_r_value(F.lit('Wood Stud, R-13')))
                     .otherwise(F.col('insulation_wall')))
             )
+        #.drop('climate_zone_temp', 'existing_insulation_max_threshold')
     
-    def upgrade_to_hp(building_features: DataFrame, ducted_efficiency:str, non_ducted_efficiency:str) -> DataFrame:
+    def upgrade_to_hp(baseline_building_features: DataFrame, ducted_efficiency:str, non_ducted_efficiency:str) -> DataFrame:
         # Note that all baseline hps are lower efficiency than specified upgrade thresholds (<=SEER 15; <=HSPF 8.5)
         return ( 
-                building_features
+                baseline_building_features
                     .withColumn('heating_appliance_type',  F.lit('ASHP'))
                     .withColumn('heating_fuel',  F.lit('Electricity'))
                     .withColumn('cooling_efficiency_eer',
@@ -479,13 +479,13 @@ def apply_upgrades(building_features: DataFrame, upgrade_id: int) -> DataFrame:
 
     if upgrade_id == '3': # heat pump: min efficiency, electric backup
         return (
-            building_features
+            baseline_building_features
                 .transform(upgrade_to_hp, 'Heat Pump, SEER 15, 9 HSPF', 'Heat Pump, SEER 15, 9 HSPF')
         )
 
     if upgrade_id == '4': # heat pump: high efficiency, electric backup
         return (
-            building_features
+            baseline_building_features
                 .transform(upgrade_to_hp, 'Heat Pump, SEER 24, 13 HSPF', 'Heat Pump, SEER 29.3, 14 HSPF')
         )
 
@@ -518,20 +518,15 @@ building_metadata_transformed = transform_building_features()
 
 # COMMAND ----------
 
-
+# DBTITLE 1,Apply upgrade logic to metadata
 #create a metadata df for baseline and each HVAC upgrade
 upgrade_ids = ['0', '1', '3', '4']
 building_metadata_hvac_upgrades = reduce (
-    DataFrame.unionAll,
-    [apply_upgrades(building_features=building_metadata_transformed, upgrade_id=upgrade) for upgrade in upgrade_ids]
+    DataFrame.unionByName,
+    [apply_upgrades(baseline_building_features=building_metadata_transformed, upgrade_id=upgrade) for upgrade in upgrade_ids]
 )
 
 # building_metadata_hvac_upgrades.dropDuplicates(subset=building_metadata_transformed.drop('upgrade_id').columns).groupby('upgrade_id').count().display()
-   
-
-# COMMAND ----------
-
-building_metadata_hvac_upgrades.groupby('upgrade_id').count().display()
 
 # COMMAND ----------
 
@@ -611,3 +606,7 @@ else:
         schema=df.schema,
         description="hourly weather timeseries array features",
     )
+
+# COMMAND ----------
+
+
