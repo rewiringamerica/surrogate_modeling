@@ -48,27 +48,37 @@ class DataGenerator(tf.keras.utils.Sequence):
     weather_feature_table_name = "ml.surrogate_model.weather_features_hourly"
 
     building_features = [
+        # heating
         "heating_fuel",
         "heating_appliance_type",
         "heating_efficiency",
+        "has_ductless_heating",
         "heating_setpoint",
         "heating_setpoint_offset_magnitude",
+        # cooling
         "ac_type",
         "has_ac",
         "cooled_space_proportion",
         "cooling_efficiency_eer",
         "cooling_setpoint",
         "cooling_setpoint_offset_magnitude",
+        # ducts
         "has_ducts",
         "ducts_insulation",
         "ducts_leakage",
         "infiltration_ach50",
+        # insulalation
         "wall_material",
         "insulation_wall",
         "insulation_slab",
         "insulation_rim_joist",
         "insulation_floor",
         "insulation_ceiling_roof",
+        # attached home
+        "is_attached",
+        "num_building_units",
+        "is_middle_unit",
+        # misc
         "bedrooms",
         "stories",
         "foundation_type",
@@ -77,7 +87,7 @@ class DataGenerator(tf.keras.utils.Sequence):
         "climate_zone_moisture",
         "sqft",
         "vintage",
-        "occupants",
+        "num_occupants",
         "orientation",
         "window_area",
     ]

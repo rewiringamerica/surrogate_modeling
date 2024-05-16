@@ -72,7 +72,12 @@ HOURLY_WEATHER_CSVS_PATH = RESSTOCK_PATH + "weather/state=*/*_TMY3.csv"
 # COMMAND ----------
 
 # DBTITLE 1,Functions for loading and preprocessing raw data
-SHARED_COLUMN_RENAME_DICT = {"bldg_id": "building_id", "upgrade": "upgrade_id"}
+def transform_pkeys(df):
+    return (
+        df.withColumn("building_id", F.col("bldg_id").cast("int"))
+        .withColumn("upgrade_id", F.col("upgrade").cast("double"))
+        .drop("bldg_id", "upgrade")
+    )
 
 
 def clean_resstock_columns(
@@ -118,9 +123,9 @@ def extract_building_metadata() -> DataFrame:
     TODO: Maybe add type conversions?.
     """
     # Read in data and do some standard renames
-    building_metadata = spark.read.parquet(
-        BUILDING_METADATA_PARQUET_PATH
-    ).withColumnsRenamed(SHARED_COLUMN_RENAME_DICT)
+    building_metadata = spark.read.parquet(BUILDING_METADATA_PARQUET_PATH).transform(
+        transform_pkeys
+    )
 
     # rename and remove columns
     building_metadata_cleaned = clean_resstock_columns(
@@ -146,7 +151,7 @@ def extract_annual_outputs() -> DataFrame:
     # Read all scenarios at once by reading baseline and all 9 upgrade files in the directory
     annual_energy_consumption_with_metadata = spark.read.parquet(
         ANNUAL_OUTPUT_PARQUET_PATH
-    ).withColumnsRenamed(SHARED_COLUMN_RENAME_DICT)
+    ).transform(transform_pkeys)
 
     # rename and remove columns
     annual_energy_consumption_cleaned = clean_resstock_columns(
@@ -235,10 +240,7 @@ hourly_weather_data = extract_hourly_weather_data()
 
 # DBTITLE 1,Write out building metadata
 table_name = "ml.surrogate_model.building_metadata"
-building_metadata.write.saveAsTable(
-    table_name, 
-    mode="overwrite",
-    overwriteSchema=True)
+building_metadata.write.saveAsTable(table_name, mode="overwrite", overwriteSchema=True)
 spark.sql(f"OPTIMIZE {table_name}")
 
 # COMMAND ----------
@@ -246,10 +248,7 @@ spark.sql(f"OPTIMIZE {table_name}")
 # DBTITLE 1,Write out annual outputs
 table_name = "ml.surrogate_model.building_upgrade_simulation_outputs_annual"
 annual_outputs.write.saveAsTable(
-    table_name,
-    mode="overwrite",
-    overwriteSchema=True,
-    partitionBy=["upgrade_id"]
+    table_name, mode="overwrite", overwriteSchema=True, partitionBy=["upgrade_id"]
 )
 spark.sql(f"OPTIMIZE {table_name}")
 

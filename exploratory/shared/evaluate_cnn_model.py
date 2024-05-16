@@ -17,7 +17,7 @@ from pyspark.sql.window import Window
 # COMMAND ----------
 
 
-MODEL_NAME = 'sf_detatched_hvac'
+MODEL_NAME = 'sf_hvac'
 MODEL_TESTSET_PREDICTIONS_TABLE = f'ml.surrogate_model.{MODEL_NAME}_predictions'
 MODEL_VERSION_NUMBER = spark.sql(f"SELECT userMetadata FROM (DESCRIBE HISTORY {MODEL_TESTSET_PREDICTIONS_TABLE }) ORDER BY version DESC LIMIT 1").rdd.map(lambda x: x['userMetadata']).collect()[0]
 MODEL_VERSION_NAME = f'ml.surrogate_model.{MODEL_NAME}@v{MODEL_VERSION_NUMBER}'
@@ -26,6 +26,9 @@ MODEL_VERSION_NAME = f'ml.surrogate_model.{MODEL_NAME}@v{MODEL_VERSION_NUMBER}'
 
 targets = ['heating', 'cooling'] #in theory could prob pull this from model artifacts..
 pred_df = spark.table(MODEL_TESTSET_PREDICTIONS_TABLE)
+building_features = spark.table('ml.surrogate_model.building_features')
+
+pred_df = pred_df.join(building_features, on = ['building_id', 'upgrade_id'])
 
 # COMMAND ----------
 
@@ -47,7 +50,14 @@ pred_df_hvac_process =  (
         .replace("None", 'No Cooling', subset = 'ac_type')
         .withColumn('heating_fuel', 
             F.when(F.col('ac_type') == 'Heat Pump', F.lit("Heat Pump"))
+            .when(F.col("heating_fuel") == 'Electricity', F.lit("Electric Resistance"))
+            .when(F.col("heating_appliance_type") == 'Shared', F.lit("Shared Heating"))
+            .when(F.col("heating_fuel") == 'None', F.lit("No Heating"))
             .otherwise(F.col('heating_fuel')))
+        .withColumn('ac_type',
+            F.when(F.col("ac_type") == "Shared", F.lit("Shared Cooling"))
+            .when(F.col('ac_type') == 'None', F.lit("No Cooling"))
+            .otherwise(F.col('ac_type')))
         .withColumn('hvac', F.col('heating') + F.col('cooling'))
         .withColumn("actual", F.array(targets + ['hvac']))
         .withColumn('prediction', F.array_insert("prediction", 3, F.col('prediction')[0] + F.col('prediction')[1]))
@@ -69,7 +79,6 @@ pred_df_savings = (
         .withColumn('absolute_error_savings', element_wise_subtract('prediction_savings', 'actual_savings'))
         .withColumn('absolute_percentage_error_savings', APE(F.col('prediction_savings'), F.col('actual_savings')))
 )
-# df.selectExpr('Name[0] as Name','Age[0] as Age','inline(arrays_zip(Subjects,Grades))').show()
 
 
 # COMMAND ----------
@@ -97,6 +106,7 @@ heating_metrics_by_type_upgrade = (aggregate_metrics(
         target_idx=2)
         #target_idx=0)
     .withColumnRenamed('baseline_heating_fuel', 'type')
+    .withColumn('category', F.lit('heating'))
 )
 
 cooling_metrics_by_type_upgrade = (
@@ -106,6 +116,7 @@ cooling_metrics_by_type_upgrade = (
         target_idx=2)
          #target_idx=1)
     .withColumnRenamed('baseline_ac_type', 'type')
+    .withColumn('category', F.lit('cooling'))
 )
 
 total_metrics_by_upgrade = (
@@ -114,9 +125,14 @@ total_metrics_by_upgrade = (
         groupby_cols=['upgrade_id'],
         target_idx=2)
     .withColumn('type', F.lit('Total'))
+    .withColumn('category', F.lit('total'))
 )
 
 cnn_evaluation_metrics = heating_metrics_by_type_upgrade.unionByName(cooling_metrics_by_type_upgrade).unionByName(total_metrics_by_upgrade)
+
+# COMMAND ----------
+
+cnn_evaluation_metrics .display()
 
 # COMMAND ----------
 
@@ -139,7 +155,7 @@ cnn_evaluation_metrics = heating_metrics_by_type_upgrade.unionByName(cooling_met
 #bring in bucketed metrics and compare against that. 
 
 bucket_metrics = pd.read_csv(
-    'gs://the-cube/export/surrogate_model_metrics/bucketed_hvac.csv',
+    'gs://the-cube/export/surrogate_model_metrics/bucketed_sf_hvac.csv',
     keep_default_na=False,
     dtype = {'upgrade_id' : 'str'})
 cnn_metrics = cnn_evaluation_metrics.toPandas()
@@ -168,20 +184,38 @@ metrics_combined = (
     pd.concat([bucket_metrics, cnn_metrics])
         .rename(columns={**metric_rename_dict, **{'upgrade_id' : 'Upgrade ID', 'type': 'Type'}})
         .melt(
-            id_vars = ['Type',  'Method', 'Upgrade ID'], 
+            id_vars = ['Type',  'Model', 'Upgrade ID', 'category'], 
             value_vars=list(metric_rename_dict.values()),
             var_name='Metric'
     )
 )
 
-metrics_combined = metrics_combined.pivot(
-    index = ['Upgrade ID', 'Type'],
-    columns = ['Metric',  'Method'], 
-    values = 'value')
+metrics_combined['Type'] = pd.Categorical(
+    metrics_combined['Type'], 
+    categories=[
+        'Electric Resistance', 'Natural Gas','Propane', 'Fuel Oil','Shared Heating','No Heating',
+        'Heat Pump','AC', 'Room AC',  'Shared Cooling','No Cooling', 
+        'Total'],
+    ordered=True
+)
+
+metrics_combined = (
+        metrics_combined
+            .pivot(
+                index = ['Upgrade ID', 'category', 'Type',],
+                columns = ['Metric',  'Model'], 
+                values = 'value')
+            .droplevel('category')
+)
+
 
 # COMMAND ----------
 
-metrics_combined.sort_values(['Upgrade ID', 'Type']).to_csv(f'gs://the-cube/export/surrogate_model_metrics/comparison/{MODEL_VERSION_NAME}_by_method_upgrade_type.csv', float_format = '%.2f')
+metrics_combined
+
+# COMMAND ----------
+
+metrics_combined.to_csv(f'gs://the-cube/export/surrogate_model_metrics/comparison/{MODEL_VERSION_NAME}_by_method_upgrade_type.csv', float_format = '%.2f')
 
 # COMMAND ----------
 
@@ -201,7 +235,7 @@ pred_df_savings_hvac = (
 # COMMAND ----------
 
 bucketed_pred  = (
-    spark.table('ml.surrogate_model.bucketed_hvac_predictions')
+    spark.table('ml.surrogate_model.bucketed_sf_hvac_predictions')
         .withColumn('absolute_percentage_error',
             F.when(F.col('upgrade_id') == 0, F.col('absolute_percentage_error'))
             .otherwise( F.col('absolute_percentage_error_savings')))
@@ -229,9 +263,9 @@ with sns.axes_style("whitegrid"):
 
     g = sns.catplot(
         data = pred_df_savings_pd_clip, x='Baseline Heating Fuel', y="Absolute Percentage Error",
-        order = ['Fuel Oil', 'Propane', 'Natural Gas', 'Electricity',  'Heat Pump', 'No Heating'],
+        order = ['Fuel Oil', 'Propane', 'Natural Gas', 'Electric Resistance',  'Heat Pump', 'Shared Heating', 'No Heating'],
         hue = 'Model', palette = 'viridis',  fill=False,  linewidth=1.25,
-        kind = 'box',  row="Upgrade ID", row_order = ['0', '1', '3', '4'], height=3, aspect= 2.5, sharey=True, sharex=True,
+        kind = 'box',  row="Upgrade ID", row_order = ['0', '1', '3', '4'], height=3, aspect= 3, sharey=True, sharex=True,
         showfliers=False, showmeans=True, meanprops={'marker':'o','markerfacecolor':'white','markeredgecolor':'k','markersize':'4'}, 
     )
 g.fig.subplots_adjust(top=.93)
