@@ -277,7 +277,7 @@ class SurrogateModelingWrapper(mlflow.pyfunc.PythonModel):
 # COMMAND ----------
 
 # DBTITLE 1,Initialize model
-model = Model(name="test" if DEBUG else "sf_hvac")
+model = Model(name="test" if DEBUG else "sf_hvac_by_fuel")
 
 # COMMAND ----------
 
@@ -391,3 +391,7 @@ if not DEBUG:
             userMetadata=model.get_latest_model_version(),
         )
     )
+
+# COMMAND ----------
+
+

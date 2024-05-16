@@ -103,20 +103,27 @@ class DataGenerator(tf.keras.utils.Sequence):
         "weekend",
     ]
 
-    # just hvac for now
+    # HVAC consumption by fuel
     consumption_group_dict = {
-        "heating": [
+        'electricity': [
             "electricity__heating_fans_pumps",
             "electricity__heating_hp_bkup",
             "electricity__heating",
-            "fuel_oil__heating_hp_bkup",
-            "fuel_oil__heating",
-            "natural_gas__heating_hp_bkup",
-            "natural_gas__heating",
-            "propane__heating_hp_bkup",
-            "propane__heating",
+            "electricity__cooling_fans_pumps",
+            "electricity__cooling"
         ],
-        "cooling": ["electricity__cooling_fans_pumps", "electricity__cooling"],
+        'fuel_oil': [
+            "fuel_oil__heating_hp_bkup",
+            "fuel_oil__heating"
+        ],
+        'natural_gas' : [
+            "natural_gas__heating_hp_bkup",
+            "natural_gas__heating"
+        ],
+        'propane' : [
+            "propane__heating_hp_bkup",
+            "propane__heating"
+        ]
     }
 
     # baseline and HVAC upgrades

@@ -140,16 +140,17 @@ class Model:
         )
 
         # Combined model and separate towers for output groups
-        cm = layers.Concatenate(name="combine_features")([bmo.output, wmo.output])
-        cm = layers.Dense(16, **layer_params)(cm)
-        cm = layers.Dense(16, **layer_params)(cm)
+        cm = layers.Concatenate(name="combine")([bmo.output, wmo.output])
+        cm = layers.Dense(32,name="combine_first_dense",  **layer_params)(cm)
+        cm = layers.Dense(16, name="combine_second_dense", **layer_params)(cm)
+        cm = layers.Dense(8, name="combine_third_dense", **layer_params)(cm)
 
         # building a separate tower for each output group
         final_outputs = {}
         for consumption_group in train_gen.targets:
-            io = layers.Dense(8, name=consumption_group + "_entry", **layer_params)(cm)
-            io = layers.Dense(8, name=consumption_group + "_mid", **layer_params)(io)
-            io = layers.Dense(1, name=consumption_group, **layer_params)(io)
+            # io = layers.Dense(8, name=consumption_group + "_entry", **layer_params)(cm)
+            # io = layers.Dense(8, name=consumption_group + "_mid", **layer_params)(io)
+            io = layers.Dense(1, name=consumption_group, **layer_params)(cm)
             final_outputs[consumption_group] = io
 
         final_model = models.Model(
