@@ -312,3 +312,7 @@ def save_figure_to_gcfs(fig, gcspath, figure_format ='png', dpi = 200, transpare
 # COMMAND ----------
 
 save_figure_to_gcfs(g.fig, CloudPath('gs://the-cube') / 'export'/ 'surrogate_model_metrics' / 'comparison'/f'{MODEL_VERSION_NAME}_vs_bucketed.png')
+
+# COMMAND ----------
+
+
