@@ -14,17 +14,18 @@ import pyspark.sql.functions as F
 import seaborn as sns
 from pyspark.sql.window import Window
 
+from src.databricks.datagen import DataGenerator
+
 # COMMAND ----------
 
-
-MODEL_NAME = 'sf_hvac'
+MODEL_NAME = 'sf_hvac_by_fuel'
 MODEL_TESTSET_PREDICTIONS_TABLE = f'ml.surrogate_model.{MODEL_NAME}_predictions'
 MODEL_VERSION_NUMBER = spark.sql(f"SELECT userMetadata FROM (DESCRIBE HISTORY {MODEL_TESTSET_PREDICTIONS_TABLE }) ORDER BY version DESC LIMIT 1").rdd.map(lambda x: x['userMetadata']).collect()[0]
 MODEL_VERSION_NAME = f'ml.surrogate_model.{MODEL_NAME}@v{MODEL_VERSION_NUMBER}'
 
 # COMMAND ----------
 
-targets = ['heating', 'cooling'] #in theory could prob pull this from model artifacts..
+targets = ['electricity', 'fuel_oil', 'natural_gas', 'propane'] #in theory could prob pull this from model artifacts..
 pred_df = spark.table(MODEL_TESTSET_PREDICTIONS_TABLE)
 building_features = spark.table('ml.surrogate_model.building_features')
 
@@ -58,9 +59,9 @@ pred_df_hvac_process =  (
             F.when(F.col("ac_type") == "Shared", F.lit("Shared Cooling"))
             .when(F.col('ac_type') == 'None', F.lit("No Cooling"))
             .otherwise(F.col('ac_type')))
-        .withColumn('hvac', F.col('heating') + F.col('cooling'))
-        .withColumn("actual", F.array(targets + ['hvac']))
-        .withColumn('prediction', F.array_insert("prediction", 3, F.col('prediction')[0] + F.col('prediction')[1]))
+        .withColumn('total', F.expr('+'.join(targets)))
+        .withColumn("actual", F.array(targets + ['total']))
+        .withColumn('prediction', F.array_insert("prediction", F.size(F.col('prediction'))+1, F.aggregate("prediction", F.lit(0.0), lambda acc, x: acc + x)))
 )
 
 pred_df_savings = (
@@ -80,6 +81,10 @@ pred_df_savings = (
         .withColumn('absolute_percentage_error_savings', APE(F.col('prediction_savings'), F.col('actual_savings')))
 )
 
+
+# COMMAND ----------
+
+pred_df_savings.display()
 
 # COMMAND ----------
 
@@ -103,7 +108,7 @@ def aggregate_metrics(pred_df_savings, groupby_cols, target_idx):
 heating_metrics_by_type_upgrade = (aggregate_metrics(
     pred_df_savings = pred_df_savings,
         groupby_cols=['baseline_heating_fuel', 'upgrade_id'],
-        target_idx=2)
+        target_idx=4)
         #target_idx=0)
     .withColumnRenamed('baseline_heating_fuel', 'type')
     .withColumn('category', F.lit('heating'))
@@ -113,7 +118,7 @@ cooling_metrics_by_type_upgrade = (
     aggregate_metrics(
         pred_df_savings = pred_df_savings.where(F.col('baseline_ac_type') != 'Heat Pump'),
         groupby_cols=['baseline_ac_type', 'upgrade_id'],
-        target_idx=2)
+        target_idx=4)
          #target_idx=1)
     .withColumnRenamed('baseline_ac_type', 'type')
     .withColumn('category', F.lit('cooling'))
@@ -123,7 +128,7 @@ total_metrics_by_upgrade = (
     aggregate_metrics(
         pred_df_savings = pred_df_savings,
         groupby_cols=['upgrade_id'],
-        target_idx=2)
+        target_idx=4)
     .withColumn('type', F.lit('Total'))
     .withColumn('category', F.lit('total'))
 )
@@ -132,7 +137,7 @@ cnn_evaluation_metrics = heating_metrics_by_type_upgrade.unionByName(cooling_met
 
 # COMMAND ----------
 
-cnn_evaluation_metrics .display()
+cnn_evaluation_metrics.display()
 
 # COMMAND ----------
 
@@ -226,8 +231,8 @@ metrics_combined.to_csv(f'gs://the-cube/export/surrogate_model_metrics/compariso
 pred_df_savings_hvac = (
     pred_df_savings
         .withColumn('absolute_percentage_error',
-            F.when(F.col('upgrade_id') == 0, F.col('absolute_percentage_error')[2])
-            .otherwise( F.col('absolute_percentage_error_savings')[2])
+            F.when(F.col('upgrade_id') == 0, F.col('absolute_percentage_error')[4])
+            .otherwise( F.col('absolute_percentage_error_savings')[4])
         )
         .select('upgrade_id', 'baseline_heating_fuel', 'absolute_percentage_error')
 ) 
@@ -312,3 +317,7 @@ def save_figure_to_gcfs(fig, gcspath, figure_format ='png', dpi = 200, transpare
 # COMMAND ----------
 
 save_figure_to_gcfs(g.fig, CloudPath('gs://the-cube') / 'export'/ 'surrogate_model_metrics' / 'comparison'/f'{MODEL_VERSION_NAME}_vs_bucketed.png')
+
+# COMMAND ----------
+
+

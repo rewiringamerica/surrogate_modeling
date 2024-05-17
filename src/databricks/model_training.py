@@ -40,7 +40,7 @@
 # COMMAND ----------
 
 # install required packages: note that tensorflow must be installed at the notebook-level
-%pip install gcsfs==2023.5.0 tensorflow==2.15.0.post1
+%pip install tensorflow==2.15.0.post1
 
 # COMMAND ----------
 
@@ -63,8 +63,6 @@ print(DEBUG)
 # MAGIC
 # MAGIC os.environ["TF_FORCE_GPU_ALLOW_GROWTH"] = "true"
 # MAGIC
-# MAGIC from typing import Tuple, Dict
-# MAGIC
 # MAGIC import mlflow
 # MAGIC import numpy as np
 # MAGIC import pandas as pd
@@ -73,6 +71,7 @@ print(DEBUG)
 # MAGIC from pyspark.sql import DataFrame
 # MAGIC from pyspark.sql.types import DoubleType
 # MAGIC from tensorflow import keras
+# MAGIC from typing import Tuple, Dict
 # MAGIC
 # MAGIC from datagen import DataGenerator
 # MAGIC from model import Model
@@ -167,8 +166,8 @@ train_data, val_data, test_data = load_data(n_subset=100 if DEBUG else None)
 # COMMAND ----------
 
 # DBTITLE 1,Initialize train/val data generators
-train_gen = DataGenerator(train_data=train_data)
-val_gen = DataGenerator(train_data=val_data)
+train_gen = DataGenerator(train_data=train_data, batch_size = 256)
+val_gen = DataGenerator(train_data=val_data, batch_size = 256)
 
 # COMMAND ----------
 
@@ -391,7 +390,3 @@ if not DEBUG:
             userMetadata=model.get_latest_model_version(),
         )
     )
-
-# COMMAND ----------
-
-
