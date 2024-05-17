@@ -123,8 +123,6 @@ def load_data(
         FROM ml.surrogate_model.building_upgrade_simulation_outputs_annual O
         LEFT JOIN {building_feature_table_name} B 
             ON B.upgrade_id = O.upgrade_id AND B.building_id == O.building_id
-        WHERE sqft < 8000
-            AND occupants <= 10
         """
     )
 
