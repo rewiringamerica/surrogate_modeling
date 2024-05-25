@@ -39,15 +39,15 @@
 
 # COMMAND ----------
 
-# install required packages: note that tensorflow must be installed at the notebook-level
-%pip install tensorflow==2.15.0.post1
+# # install required packages: note that tensorflow must be installed at the notebook-level
+# %pip install tensorflow==2.15.0.post1
 
 # COMMAND ----------
 
 # this controls the training parameters, with test mode on a much smaller training set for fewer epochs
-dbutils.widgets.dropdown("Mode", "Test", ["Test", "Production"])
+dbutils.widgets.dropdown("mode", "test", ["test", "production"])
 
-if dbutils.widgets.get("Mode") == "Test":
+if dbutils.widgets.get("mode") == "test":
     DEBUG = True
 else:
     DEBUG = False
@@ -73,7 +73,7 @@ print(DEBUG)
 # MAGIC from tensorflow import keras
 # MAGIC from typing import Tuple, Dict
 # MAGIC
-# MAGIC from datagen import DataGenerator
+# MAGIC from datagen import DataGenerator, load_data
 # MAGIC from model import Model
 # MAGIC
 # MAGIC # list available GPUs
@@ -82,79 +82,6 @@ print(DEBUG)
 # COMMAND ----------
 
 # MAGIC %md ## Load Data
-
-# COMMAND ----------
-
-# DBTITLE 1,Data loading function
-def load_data(
-    consumption_group_dict=DataGenerator.consumption_group_dict,
-    building_feature_table_name=DataGenerator.building_feature_table_name,
-    n_subset=None,
-    p_val=0.2,
-    p_test=0.1,
-    seed=42,
-) -> Tuple[DataFrame, DataFrame, DataFrame]:
-    """
-    Load the data for model training prediction containing the targets and the keys needed to join to feature tables
-
-    Parameters:
-        consumption_group_dict (dict): Dictionary mapping consumption categories (e.g., 'heating') to columns.
-            Default is DataGenerator.consumption_group_dict.
-        building_feature_table_name (str): Name of the building feature table.
-            Default is DataGenerator.building_feature_table_name
-        n_subset (int): Number of subset records to select. Default is None (select all records).
-        p_val (float): Proportion of data to use for validation. Default is 0.2.
-        p_test (float): Proportion of data to use for testing. Default is 0.1.
-        seed (int): Seed for random sampling. Default is 42.
-
-    Returns:
-        train data (DataFrame)
-        val_data (DataFrame)
-        test_data (DataFrame)
-    """
-    # Read outputs table and sum over consumption columns within each consumption group
-    # join to the bm table to get required keys to join on and filter the building models based on charactaristics
-    sum_str = ", ".join(
-        [f"{'+'.join(v)} AS {k}" for k, v in consumption_group_dict.items()]
-    )
-    inference_data = spark.sql(
-        f"""
-        SELECT B.building_id, B.upgrade_id, B.weather_file_city, {sum_str}
-        FROM ml.surrogate_model.building_upgrade_simulation_outputs_annual O
-        LEFT JOIN {building_feature_table_name} B 
-            ON B.upgrade_id = O.upgrade_id AND B.building_id == O.building_id
-        """
-    )
-
-    # get list of unique building ids, which will be the basis for the dataset split
-    unique_building_ids = inference_data.where(F.col("upgrade_id") == 0).select(
-        "building_id"
-    )
-
-    # Subset the data if n_subset is specified
-    if n_subset is not None:
-        n_total = unique_building_ids.count()
-        if n_subset > n_total:
-            print(
-                "'n_subset' is more than the total number of records, returning all records..."
-            )
-        else:
-            unique_building_ids = unique_building_ids.sample(
-                fraction=1.0, seed=seed
-            ).limit(n_subset)
-
-    # Split the building_ids into train, validation, and test sets (may not exactly match passed proportions)
-    p_train = 1 - p_val - p_test
-    train_ids, val_ids, test_ids = unique_building_ids.randomSplit(
-        weights=[p_train, p_val, p_test], seed=seed
-    )
-
-    # select train, val and test set based on building ids
-    train_df = train_ids.join(inference_data, on="building_id")
-    val_df = val_ids.join(inference_data, on="building_id")
-    test_df = test_ids.join(inference_data, on="building_id")
-
-    return train_df, val_df, test_df
 
 # COMMAND ----------
 
@@ -357,34 +284,5 @@ if DEBUG:
 
 # DBTITLE 1,Run inference on test set
 if not DEBUG:
-    # for right now have to limit the test set since driver seems to be running out of mem
-    target_test_size = 75000
-    target_n_building_frac = target_test_size / test_data.count()
-    test_building_id_subset = (
-        test_data.select("building_id").distinct().sample(target_n_building_frac)
-    )
-    test_data_sub = test_data.join(test_building_id_subset, on="building_id")
-    print(test_data_sub.count())
-    # score using  latest registered model
     mlflow.pyfunc.get_model_dependencies(model.get_model_uri())
-    pred_df = model.score_batch(test_data=test_data_sub)
-
-# COMMAND ----------
-
-# DBTITLE 1,Write out predictions for evaluation
-# save the predictions to a delta table-- aggregating in eval without first writing to delta seems to often kill the driver
-if not DEBUG:
-    (
-        pred_df.select(
-            "building_id",
-            "upgrade_id",
-            "prediction",
-            *train_gen.targets,
-        ).write.saveAsTable(
-            f"{str(model)}_predictions",
-            format="delta",
-            mode="overwrite",
-            overwriteSchema=True,
-            userMetadata=model.get_latest_model_version(),
-        )
-    )
+    pred_df = model.score_batch(test_data=test_data)

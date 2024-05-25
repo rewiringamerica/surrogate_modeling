@@ -4,8 +4,8 @@
 
 # COMMAND ----------
 
-!pip install seaborn==v0.13.0
-dbutils.library.restartPython()
+# !pip install seaborn==v0.13.0
+# dbutils.library.restartPython()
 
 # COMMAND ----------
 
@@ -13,23 +13,74 @@ import pandas as pd
 import pyspark.sql.functions as F
 import seaborn as sns
 from pyspark.sql.window import Window
+from pyspark.sql.types import ArrayType, IntegerType
 
-from src.databricks.datagen import DataGenerator
-
-# COMMAND ----------
-
-MODEL_NAME = 'sf_hvac_by_fuel'
-MODEL_TESTSET_PREDICTIONS_TABLE = f'ml.surrogate_model.{MODEL_NAME}_predictions'
-MODEL_VERSION_NUMBER = spark.sql(f"SELECT userMetadata FROM (DESCRIBE HISTORY {MODEL_TESTSET_PREDICTIONS_TABLE }) ORDER BY version DESC LIMIT 1").rdd.map(lambda x: x['userMetadata']).collect()[0]
-MODEL_VERSION_NAME = f'ml.surrogate_model.{MODEL_NAME}@v{MODEL_VERSION_NUMBER}'
+from src.databricks.datagen import DataGenerator, load_data
+from src.databricks.model import Model
 
 # COMMAND ----------
 
-targets = ['electricity', 'fuel_oil', 'natural_gas', 'propane'] #in theory could prob pull this from model artifacts..
-pred_df = spark.table(MODEL_TESTSET_PREDICTIONS_TABLE)
-building_features = spark.table('ml.surrogate_model.building_features')
+import mlflow
 
-pred_df = pred_df.join(building_features, on = ['building_id', 'upgrade_id'])
+# COMMAND ----------
+
+_, _, test_data = load_data(n_subset=500)
+model = Model(name="test")
+
+# # for right now have to limit the test set since driver seems to be running out of mem
+# target_test_size = 75000
+# target_n_building_frac = target_test_size / test_data.count()
+# test_building_id_subset = (
+#     test_data.select("building_id").distinct().sample(target_n_building_frac)
+# )
+# test_data_sub = test_data.join(test_building_id_subset, on="building_id")
+# print(test_data_sub.count())
+# # score using  latest registered model
+mlflow.pyfunc.get_model_dependencies(model.get_model_uri())
+# pred_df = model.score_batch(test_data=test_data, run_id = '0260c2961eed47baa6a8d2919e986ba8')
+pred_df = model.score_batch(test_data=test_data)
+pred_df.display()
+
+
+# COMMAND ----------
+
+
+
+# COMMAND ----------
+
+# MODEL_NAME = 'sf_hvac_by_fuel'
+# MODEL_TESTSET_PREDICTIONS_TABLE = f'ml.surrogate_model.{MODEL_NAME}_predictions'
+# MODEL_VERSION_NUMBER = spark.sql(f"SELECT userMetadata FROM (DESCRIBE HISTORY {MODEL_TESTSET_PREDICTIONS_TABLE }) ORDER BY version DESC LIMIT 1").rdd.map(lambda x: x['userMetadata']).collect()[0]
+# MODEL_VERSION_NAME = f'ml.surrogate_model.{MODEL_NAME}@v{MODEL_VERSION_NUMBER}'
+
+# COMMAND ----------
+
+# targets = ['electricity', 'fuel_oil', 'natural_gas', 'propane'] #in theory could prob pull this from model artifacts..
+# pred_df = spark.table(MODEL_TESTSET_PREDICTIONS_TABLE)
+# building_features = spark.table('ml.surrogate_model.building_features')
+
+# pred_df = pred_df.join(building_features, on = ['building_id', 'upgrade_id'])
+
+# COMMAND ----------
+
+targets = DataGenerator.targets
+
+# COMMAND ----------
+
+# Define the UDF function
+@udf(ArrayType(IntegerType()))
+def update_array(values, cond1, cond2):
+    # Initialize result array with current values
+    result = values[:]
+    # Check conditions and update specific array positions
+    if cond1 == 'A':
+        result[0] = 0  # Set first element to 0 if condition1 is 'A'
+    if cond2 == 'B':
+        result[1] = 0  # Set second element to 0 if condition2 is 'B'
+    # Add more conditions as needed
+    return result
+
+pred_df.where(F.c)
 
 # COMMAND ----------
 

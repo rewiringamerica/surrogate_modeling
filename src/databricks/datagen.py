@@ -4,12 +4,13 @@ from typing import Any, Dict, List, Tuple
 import mlflow
 import numpy as np
 import pandas as pd
+import pyspark.sql.functions as F
 import tensorflow as tf
 from databricks.feature_engineering import FeatureEngineeringClient, FeatureLookup
 from databricks.ml_features.training_set import TrainingSet
 from databricks.ml_features.entities.feature_lookup import FeatureLookup
+from databricks.sdk.runtime import *
 from pyspark.sql import DataFrame
-
 
 class DataGenerator(tf.keras.utils.Sequence):
     """
@@ -112,13 +113,13 @@ class DataGenerator(tf.keras.utils.Sequence):
             "electricity__cooling_fans_pumps",
             "electricity__cooling"
         ],
-        'fuel_oil': [
-            "fuel_oil__heating_hp_bkup",
-            "fuel_oil__heating"
-        ],
         'natural_gas' : [
             "natural_gas__heating_hp_bkup",
             "natural_gas__heating"
+        ],
+        'fuel_oil': [
+            "fuel_oil__heating_hp_bkup",
+            "fuel_oil__heating"
         ],
         'propane' : [
             "propane__heating_hp_bkup",
@@ -368,3 +369,74 @@ class DataGenerator(tf.keras.utils.Sequence):
         Shuffles training set after each epoch.
         """
         self.training_df = self.training_df.sample(frac=1.0)
+
+
+def load_data(
+    consumption_group_dict=DataGenerator.consumption_group_dict,
+    building_feature_table_name=DataGenerator.building_feature_table_name,
+    n_subset=None,
+    p_val=0.2,
+    p_test=0.1,
+    seed=42,
+) -> Tuple[DataFrame, DataFrame, DataFrame]:
+    """
+    Load the data for model training prediction containing the targets and the keys needed to join to feature tables
+
+    Parameters:
+        consumption_group_dict (dict): Dictionary mapping consumption categories (e.g., 'heating') to columns.
+            Default is DataGenerator.consumption_group_dict.
+        building_feature_table_name (str): Name of the building feature table.
+            Default is DataGenerator.building_feature_table_name
+        n_subset (int): Number of subset records to select. Default is None (select all records).
+        p_val (float): Proportion of data to use for validation. Default is 0.2.
+        p_test (float): Proportion of data to use for testing. Default is 0.1.
+        seed (int): Seed for random sampling. Default is 42.
+
+    Returns:
+        train data (DataFrame)
+        val_data (DataFrame)
+        test_data (DataFrame)
+    """
+    # Read outputs table and sum over consumption columns within each consumption group
+    # join to the bm table to get required keys to join on and filter the building models based on charactaristics
+    sum_str = ", ".join(
+        [f"{'+'.join(v)} AS {k}" for k, v in consumption_group_dict.items()]
+    )
+    inference_data = spark.sql(
+        f"""
+        SELECT B.building_id, B.upgrade_id, B.weather_file_city, {sum_str}
+        FROM ml.surrogate_model.building_upgrade_simulation_outputs_annual O
+        LEFT JOIN {building_feature_table_name} B 
+            ON B.upgrade_id = O.upgrade_id AND B.building_id == O.building_id
+        """
+    )
+
+    # get list of unique building ids, which will be the basis for the dataset split
+    unique_building_ids = inference_data.where(F.col("upgrade_id") == 0).select(
+        "building_id"
+    )
+
+    # Subset the data if n_subset is specified
+    if n_subset is not None:
+        n_total = unique_building_ids.count()
+        if n_subset > n_total:
+            print(
+                "'n_subset' is more than the total number of records, returning all records..."
+            )
+        else:
+            unique_building_ids = unique_building_ids.sample(
+                fraction=1.0, seed=seed
+            ).limit(n_subset)
+
+    # Split the building_ids into train, validation, and test sets (may not exactly match passed proportions)
+    p_train = 1 - p_val - p_test
+    train_ids, val_ids, test_ids = unique_building_ids.randomSplit(
+        weights=[p_train, p_val, p_test], seed=seed
+    )
+
+    # select train, val and test set based on building ids
+    train_df = train_ids.join(inference_data, on="building_id")
+    val_df = val_ids.join(inference_data, on="building_id")
+    test_df = test_ids.join(inference_data, on="building_id")
+
+    return train_df, val_df, test_df

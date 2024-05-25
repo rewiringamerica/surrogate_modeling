@@ -14,7 +14,7 @@
 # MAGIC Let `RESSTOCK_PATH = gs://the-cube/data/raw/nrel/end_use_load_profiles/2022/`
 # MAGIC - `RESSTOCK_PATH/metadata_and_annual_results/national/parquet/baseline_metadata_only.parquet` : Parquet file of building metadata (building id [550K] x building metadata variable)
 # MAGIC - `RESSTOCK_PATH/metadata_and_annual_results/national/parquet/*_metadata_and_annual_results.parquet`: Parquet file of annual building model simulation outputs (building id [~550K], upgrade_id [11] x output variable)
-# MAGIC - `RESSTOCK_PATH/weather/state=*/*_TMY3.csvs`: 3107 weather csvs for each county (hour [8760] x weather variable). 
+# MAGIC - `RESSTOCK_PATH/weather/state=*/*_TMY3.csv`: 3107 weather csvs for each county (hour [8760] x weather variable). 
 # MAGIC                                                Note that counties corresponding to the same weather station have identical data. 
 # MAGIC
 # MAGIC ##### Outputs: 
