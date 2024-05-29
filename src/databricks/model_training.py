@@ -209,7 +209,21 @@ model = Model(name="test" if DEBUG else "sf_hvac_by_fuel")
 # Train keras model and log the model with the Feature Engineering in UC.
 
 # Set the activation function and numeric data type for the model's layers
-layer_params = {"activation": "leaky_relu", "dtype": np.float32}
+layer_params = {"activation": "leaky_relu", "dtype": np.float32, "kernel_initializer" : "he_normal"}
+
+
+def masked_mae(self, y_true, y_pred):
+    # # Create a mask where targets are not zero
+    mask = tf.cast(tf.not_equal(y_true, 0), tf.float32)
+
+    # # Apply the mask to remove zero-target influence
+    y_true_masked = y_true * mask
+    y_pred_masked = y_pred * mask
+
+    # Calculate the mean abs error
+    return tf.reduce_mean(tf.math.abs(y_true_masked - y_pred_masked))
+    
+
 
 # Disable MLflow autologging and instead log the model using Feature Engineering in UC using `fe.log_model
 mlflow.tensorflow.autolog(log_models=False)
@@ -273,6 +287,7 @@ if DEBUG:
 # evaluate the unregistered model we just logged and make sure everything runs
 if DEBUG: 
     print(run_id)
+    mlflow.pyfunc.get_model_dependencies(model.get_model_uri(run_id = run_id))
     pred_df = model.score_batch(test_data=test_data, run_id=run_id)
     pred_df.display()
 

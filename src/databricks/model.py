@@ -12,6 +12,7 @@ from tensorflow.keras import layers, models
 
 from src.databricks.datagen import DataGenerator
 
+@tf.keras.utils.register_keras_serializable()
 class Model:
     """
     A Deep Learning model for surrogate modeling energy consumption prediction.
@@ -49,7 +50,7 @@ class Model:
     def __str__(self):
         return f"{self.catalog}.{self.schema}.{self.name}"
     
-    def create_model(self, train_gen:DataGenerator, layer_params:Dict[str, Any]=None):
+    def create_model(self, loss, train_gen:DataGenerator, layer_params:Dict[str, Any]=None):
         """
         Create a keras model based on the given data generator and layer parameters.
 
@@ -156,8 +157,20 @@ class Model:
             inputs={**bmo.input, **wmo.input}, outputs=final_outputs
         )
 
+        # def masked_mae(self, y_true, y_pred):
+        #     # # Create a mask where targets are not zero
+        #     mask = tf.cast(tf.not_equal(y_true, 0), tf.float32)
+
+        #     # # Apply the mask to remove zero-target influence
+        #     y_true_masked = y_true * mask
+        #     y_pred_masked = y_pred * mask
+
+        #     # Calculate the mean abs error
+        #     return tf.reduce_mean(tf.math.abs(y_true_masked - y_pred_masked))
+    
+
         final_model.compile(
-            loss=keras.losses.MeanAbsoluteError(),
+            loss=loss,
             optimizer="adam",
             metrics=[self.mape],
         )
@@ -248,7 +261,9 @@ class Model:
         )
         return batch_pred
     
-    
+    # def get_config(self):
+    #     return {'masked_mae' : self.masked_mae}
+        
     @staticmethod
     def mape(y_true, y_pred):
         """
