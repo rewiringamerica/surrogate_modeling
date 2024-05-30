@@ -22,10 +22,10 @@ from src.databricks.model import Model
 
 # COMMAND ----------
 
-_, _, test_data = load_data(n_subset=100)
+_, _, test_data = load_data(n_subset=50000)
 model = Model(name="test")
 
-run_id = 'aa98ff31a7e143a6ad28da6e812f923f'
+run_id = '52928e6661b3482da2dadbc9a8f9971b'
 
 model_uri = f"runs:/{run_id}/model_path"  # Replace <run_id> with the actual run ID
 #mlflow.pyfunc.get_model_dependencies(model.get_model_uri())
@@ -81,23 +81,6 @@ pred_df.display()
 # COMMAND ----------
 
 targets = DataGenerator.targets
-
-# COMMAND ----------
-
-# Define the UDF function
-@udf(ArrayType(IntegerType()))
-def update_array(values, cond1, cond2):
-    # Initialize result array with current values
-    result = values[:]
-    # Check conditions and update specific array positions
-    if cond1 == 'A':
-        result[0] = 0  # Set first element to 0 if condition1 is 'A'
-    if cond2 == 'B':
-        result[1] = 0  # Set second element to 0 if condition2 is 'B'
-    # Add more conditions as needed
-    return result
-
-pred_df.where(F.c)
 
 # COMMAND ----------
 

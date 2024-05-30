@@ -210,42 +210,19 @@ model = Model(name="test" if DEBUG else "sf_hvac_by_fuel")
 
 # COMMAND ----------
 
-# @keras.saving.register_keras_serializable(package="my_package", name="custom_loss")
-# def masked_mae(y_true, y_pred):
-#     # # Create a mask where targets are not zero
-#     mask = tf.cast(tf.not_equal(y_true, 0), tf.float32)
-
-#     # # Apply the mask to remove zero-target influence
-#     y_true_masked = y_true * mask
-#     y_pred_masked = y_pred * mask
-
-#     # Calculate the mean abs error
-#     return tf.reduce_mean(tf.math.abs(y_true_masked - y_pred_masked))
-    
-
-# COMMAND ----------
-
-from mlflow.models import infer_signature
-
-# COMMAND ----------
-
-df = train_gen.training_set.load_df().select(train_gen.building_features + train_gen.weather_features).limit(1).toPandas()
-
-# COMMAND ----------
-
-infer_signature(df)
-
-# COMMAND ----------
-
 # DBTITLE 1,Fit model
 # Train keras model and log the model with the Feature Engineering in UC.
 
 # Set the activation function and numeric data type for the model's layers
 layer_params = {"activation": "leaky_relu", "dtype": np.float32, "kernel_initializer" : "he_normal"}
 
-# Disable MLflow autologging and instead log the model using Feature Engineering in UC using `fe.log_model
-# mlflow.tensorflow.autolog(log_models=False)
-# mlflow.sklearn.autolog(log_models=False)
+# signature_df = train_gen.training_set.load_df().select(train_gen.building_features + train_gen.weather_features).limit(1).toPandas()
+
+mlflow.tensorflow.autolog(
+    log_every_epoch=True,
+    log_models=False,
+    log_datasets=False, 
+    checkpoint=False)
 
 # Starts an MLflow experiment to track training parameters and results.
 with mlflow.start_run() as run:
@@ -266,11 +243,6 @@ with mlflow.start_run() as run:
         callbacks=[keras.callbacks.EarlyStopping(monitor="val_loss", patience=5)],
     )
 
-    # mlflow.tensorflow.log_model(
-    #     model=keras_model,
-    #     artifact_path="model_path")
-        #custom_objects={'custom_loss': masked_mae})
-
     #wrap in custom class that defines pre and post processing steps to be applied when called at inference time
     pyfunc_model = SurrogateModelingWrapper(
         trained_model=keras_model,
@@ -281,12 +253,11 @@ with mlflow.start_run() as run:
 
     mlflow.pyfunc.log_model(
         python_model=pyfunc_model,
-        # artifacts = {'masked_mae': 'test_path'},
         artifact_path="model_path", 
         code_paths = ['model.py'], 
-        signature=infer_signature(df)
+        #signature=mlflow.models.infer_signature(df)
     )
-    #mlflow.register_model("runs:/{run_id}/{model-path}", "{registered-model-name}").
+    #mlflow.register_model(f"runs:/{run_id}/model_path", str(model))
 
     # # If in test mode, don't register the model, just pull it based on run_id in evaluation testing
     # model.fe.log_model(
@@ -296,47 +267,6 @@ with mlflow.start_run() as run:
     #     training_set=train_gen.training_set,
     #     registered_model_name= None if DEBUG else str(model),  # registered the model name if in DEBUG mode
     # )
-
-# COMMAND ----------
-
-run_id
-
-# COMMAND ----------
-
-model_uri = f"runs:/{run_id}/model_path"  # Replace <run_id> with the actual run ID
-# Load the model using its registered name and version/stage from the MLflow model registry
-model_loaded = mlflow.pyfunc.load_model(model_uri=model_uri)
-
-# COMMAND ----------
-
-test_gen = DataGenerator(train_data=test_data)
-# load input data table as a Spark DataFrame
-input_data = test_gen.training_set.load_df().toPandas()
-
-# COMMAND ----------
-
-model_loaded.predict(input_data)
-
-# COMMAND ----------
-
-# from pyspark.sql.types import ArrayType, DoubleType
-# mlflow.pyfunc.get_model_dependencies(model_uri)
-# # model_loaded = mlflow.pyfunc.load_model(model_uri=model_uri)
-# # load input data table as a Spark DataFrame
-# input_data = test_gen.training_set.load_df()
-# model_udf = mlflow.pyfunc.spark_udf(spark, model_uri, result_type=ArrayType(DoubleType()))
-# columns = F.struct(input_data.columns) # use struct
-# df = input_data.withColumn("prediction", model_udf(columns))
-# df.display()
-
-# COMMAND ----------
-
-df.display()
-
-# COMMAND ----------
-
-model_loaded.predict(test_gen.training_set.load_df().toPandas())
-
 
 # COMMAND ----------
 
@@ -360,17 +290,23 @@ if DEBUG:
 # evaluate the unregistered model we just logged and make sure everything runs
 if DEBUG: 
     print(run_id)
-    mlflow.pyfunc.get_model_dependencies(model.get_model_uri(run_id = run_id))
-    pred_df = model.score_batch(test_data=test_data, run_id=run_id)
-    pred_df.display()
+    model_uri = f"runs:/{run_id}/model_path"
+    mlflow.pyfunc.get_model_dependencies(model_uri = model_uri)
+    # Load the model using its registered name and version/stage from the MLflow model registry
+    model_loaded = mlflow.pyfunc.load_model(model_uri = model_uri)
+    test_gen = DataGenerator(train_data=test_data)
+    # load input data table as a Spark DataFrame
+    input_data = test_gen.training_set.load_df().toPandas()
+    print(model_loaded.predict(input_data))
 
 # COMMAND ----------
 
-# MAGIC %md #### Production Mode
-
-# COMMAND ----------
-
-# DBTITLE 1,Run inference on test set
-if not DEBUG:
-    mlflow.pyfunc.get_model_dependencies(model.get_model_uri())
-    pred_df = model.score_batch(test_data=test_data)
+# from pyspark.sql.types import ArrayType, DoubleType
+# mlflow.pyfunc.get_model_dependencies(model_uri)
+# # model_loaded = mlflow.pyfunc.load_model(model_uri=model_uri)
+# # load input data table as a Spark DataFrame
+# input_data = test_gen.training_set.load_df()
+# model_udf = mlflow.pyfunc.spark_udf(spark, model_uri, result_type=ArrayType(DoubleType()))
+# columns = F.struct(input_data.columns) # use struct
+# df = input_data.withColumn("prediction", model_udf(columns))
+# df.display()

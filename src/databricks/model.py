@@ -134,8 +134,8 @@ class Model:
         # sum the time dimension
         wm = layers.Lambda(
             lambda x: tf.keras.backend.sum(x, axis=1),
-            dtype=layer_params["dtype"], 
-            output_shape = (8,)
+            dtype=layer_params["dtype"],
+            #output_shape = (8,) -- needed for tf v2.16.1
         )(wm)
 
         wmo = models.Model(
@@ -159,22 +159,10 @@ class Model:
             inputs={**bmo.input, **wmo.input}, outputs=final_outputs
         )
 
-        # def masked_mae(y_true, y_pred):
-        #     # # Create a mask where targets are not zero
-        #     mask = tf.cast(tf.not_equal(y_true, 0), tf.float32)
-
-        #     # # Apply the mask to remove zero-target influence
-        #     y_true_masked = y_true * mask
-        #     y_pred_masked = y_pred * mask
-
-        #     # Calculate the mean abs error
-        #     return tf.reduce_mean(tf.math.abs(y_true_masked - y_pred_masked))
-    
-
         final_model.compile(
             loss=masked_mae,
-            optimizer="adam"
-            #metrics=[self.mape],
+            optimizer="adam",
+            metrics=[mape],
         )
         return final_model
     
@@ -263,22 +251,21 @@ class Model:
         )
         return batch_pred
         
-    @staticmethod
-    def mape(y_true, y_pred):
-        """
-        Computes the Mean Absolute Percentage Error between the true and predicted values, 
-        ignoring elements where the true value is 0. 
+def mape(y_true, y_pred):
+    """
+    Computes the Mean Absolute Percentage Error between the true and predicted values, 
+    ignoring elements where the true value is 0. 
 
-        Parameters:
-        - y_true (array): the true values
-        - y_pred (array): the predicted values
+    Parameters:
+    - y_true (array): the true values
+    - y_pred (array): the predicted values
 
-        Returns:
-        - float: the Mean Absolute Percentage Error
+    Returns:
+    - float: the Mean Absolute Percentage Error
 
-        """
-        diff = tf.keras.backend.abs((y_true - y_pred) / y_true)
-        return 100.0 * tf.keras.backend.mean(diff[y_true != 0], axis=-1)
+    """
+    diff = tf.keras.backend.abs((y_true - y_pred) / y_true)
+    return 100.0 * tf.keras.backend.mean(diff[y_true != 0], axis=-1)
     
 @keras.saving.register_keras_serializable(package="my_package", name="masked_mae")
 def masked_mae(y_true, y_pred):
