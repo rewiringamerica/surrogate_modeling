@@ -5,10 +5,12 @@
 # COMMAND ----------
 
 # !pip install seaborn==v0.13.0
-# dbutils.library.restartPython()
+%pip install mlflow==2.13.0
+dbutils.library.restartPython()
 
 # COMMAND ----------
 
+import mlflow
 import pandas as pd
 import pyspark.sql.functions as F
 import seaborn as sns
@@ -20,7 +22,22 @@ from src.databricks.model import Model
 
 # COMMAND ----------
 
-import mlflow
+_, _, test_data = load_data(n_subset=100)
+model = Model(name="test")
+
+run_id = 'aa98ff31a7e143a6ad28da6e812f923f'
+
+model_uri = f"runs:/{run_id}/model_path"  # Replace <run_id> with the actual run ID
+#mlflow.pyfunc.get_model_dependencies(model.get_model_uri())
+# Load the model using its registered name and version/stage from the MLflow model registry
+model_loaded = mlflow.pyfunc.load_model(model_uri=model_uri)
+test_gen = DataGenerator(train_data=test_data)
+# load input data table as a Spark DataFrame
+input_data = test_gen.training_set.load_df().toPandas()
+
+# COMMAND ----------
+
+model_loaded.predict(input_data)
 
 # COMMAND ----------
 

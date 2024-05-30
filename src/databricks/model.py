@@ -12,7 +12,7 @@ from tensorflow.keras import layers, models
 
 from src.databricks.datagen import DataGenerator
 
-@tf.keras.utils.register_keras_serializable()
+#@tf.keras.utils.register_keras_serializable()
 class Model:
     """
     A Deep Learning model for surrogate modeling energy consumption prediction.
@@ -50,7 +50,7 @@ class Model:
     def __str__(self):
         return f"{self.catalog}.{self.schema}.{self.name}"
     
-    def create_model(self, loss, train_gen:DataGenerator, layer_params:Dict[str, Any]=None):
+    def create_model(self,train_gen:DataGenerator, layer_params:Dict[str, Any]=None):
         """
         Create a keras model based on the given data generator and layer parameters.
 
@@ -133,7 +133,9 @@ class Model:
 
         # sum the time dimension
         wm = layers.Lambda(
-            lambda x: tf.keras.backend.sum(x, axis=1), dtype=layer_params["dtype"]
+            lambda x: tf.keras.backend.sum(x, axis=1),
+            dtype=layer_params["dtype"], 
+            output_shape = (8,)
         )(wm)
 
         wmo = models.Model(
@@ -148,8 +150,8 @@ class Model:
         # building a separate tower for each output group
         final_outputs = {}
         for consumption_group in train_gen.targets:
-            io = layers.Dense(8, name=consumption_group + "_entry", **layer_params)(cm)
-            io = layers.Dense(8, name=consumption_group + "_mid", **layer_params)(io)
+            io = layers.Dense(4, name=consumption_group + "_entry", **layer_params)(cm)
+            io = layers.Dense(2, name=consumption_group + "_mid", **layer_params)(io)
             io = layers.Dense(1, name=consumption_group, **layer_params)(cm)
             final_outputs[consumption_group] = io
 
@@ -157,7 +159,7 @@ class Model:
             inputs={**bmo.input, **wmo.input}, outputs=final_outputs
         )
 
-        # def masked_mae(self, y_true, y_pred):
+        # def masked_mae(y_true, y_pred):
         #     # # Create a mask where targets are not zero
         #     mask = tf.cast(tf.not_equal(y_true, 0), tf.float32)
 
@@ -170,9 +172,9 @@ class Model:
     
 
         final_model.compile(
-            loss=loss,
-            optimizer="adam",
-            metrics=[self.mape],
+            loss=masked_mae,
+            optimizer="adam"
+            #metrics=[self.mape],
         )
         return final_model
     
@@ -260,9 +262,6 @@ class Model:
             result_type=ArrayType(DoubleType())
         )
         return batch_pred
-    
-    # def get_config(self):
-    #     return {'masked_mae' : self.masked_mae}
         
     @staticmethod
     def mape(y_true, y_pred):
@@ -280,3 +279,15 @@ class Model:
         """
         diff = tf.keras.backend.abs((y_true - y_pred) / y_true)
         return 100.0 * tf.keras.backend.mean(diff[y_true != 0], axis=-1)
+    
+@keras.saving.register_keras_serializable(package="my_package", name="masked_mae")
+def masked_mae(y_true, y_pred):
+    # # Create a mask where targets are not zero
+    mask = tf.cast(tf.not_equal(y_true, 0), tf.float32)
+
+    # # Apply the mask to remove zero-target influence
+    y_true_masked = y_true * mask
+    y_pred_masked = y_pred * mask
+
+    # Calculate the mean abs error
+    return tf.reduce_mean(tf.math.abs(y_true_masked - y_pred_masked))
