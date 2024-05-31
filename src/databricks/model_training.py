@@ -271,6 +271,9 @@ model = SurrogateModel(name='test' if DEBUG else 'sf_detatched_hvac_baseline')
 # DBTITLE 1,Fit model
 # Train keras model and log the model with the Feature Engineering in UC. 
 
+#Init FeatureEngineering client
+fe = FeatureEngineeringClient()
+
 # Set the activation function and numeric data type for the model's layers
 layer_params = {
     "activation": "leaky_relu", 
@@ -304,7 +307,7 @@ with mlflow.start_run() as run:
     pyfunc_model = SurrogateModelingWrapper(keras_model, train_gen.building_features, train_gen.weather_features, train_gen.targets) 
 
     # If in test mode, don't register the model, just pull it based on run_id in evaluation testing
-    model.fe.log_model(
+    fe.log_model(
         model=pyfunc_model,
         artifact_path=model.artifact_path,
         flavor=mlflow.pyfunc,  # since using custom pyfunc wrapper 
