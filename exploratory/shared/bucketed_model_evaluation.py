@@ -102,7 +102,6 @@ def absolute_error(pred, true, eps=1e3):
     else:
         return None
 
-
 # join buildings to bucket prediction (baseline)
 prediction_actual_by_building_bucket_baseline = (
     actual_baseline_consumption_by_building_bucket.join(

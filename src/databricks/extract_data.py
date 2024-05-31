@@ -43,11 +43,7 @@ import pyspark.sql.functions as F
 # COMMAND ----------
 
 # DBTITLE 1,Data Paths
-RESSTOCK_PATH = os.environ.get(
-    "SURROGATE_MODELING_RESSTOCK_PATH",
-    "gs://the-cube/data/raw/nrel/end_use_load_profiles/2022/"
-    "resstock_tmy3_release_1/",
-)
+RESSTOCK_PATH = "gs://the-cube/data/raw/nrel/end_use_load_profiles/2022/resstock_tmy3_release_1/"
 
 BUILDING_METADATA_PARQUET_PATH = (
     RESSTOCK_PATH
@@ -79,20 +75,19 @@ def transform_pkeys(df):
         .drop("bldg_id", "upgrade")
     )
 
-
 def clean_resstock_columns(
     df: DataFrame,
-    remove_strings_from_columns: List[str],
-    remove_columns_with_strings: List[str] = [],
+    remove_substrings_from_columns: List[str] = [],
+    remove_columns_with_substrings: List[str] = [],
 ) -> DataFrame:
     """
     Clean ResStock columns by replacing '.' with an empty string in column names.
-    Also remove specified strings from column names and drop columns that contain specified strings.
+    Also remove specified substrings from column names and drop columns that contain specified substrings.
 
     Args:
       df (DataFrame): Input DataFrame
-      remove_strings_from_columns (list of str, optional): List of strings to remove from column names. Defaults to [].
-      remove_columns_with_strings (list of str, , optional): Remove columns that contain any of the strings in this list. Defaults to [].
+      remove_substrings_from_columns (list of str, optional): List of substrings to remove from column names. Defaults to [].
+      remove_columns_with_substrings (list of str, , optional): Remove columns that contain any of the substrings in this list. Defaults to [].
 
     Returns:
       DataFrame: Cleaned DataFrame
@@ -104,9 +99,9 @@ def clean_resstock_columns(
 
     df = df.selectExpr(
         *[
-            f"{col} as {re.sub('|'.join(remove_strings_from_columns), '', col)}"
+            f"{col} as {re.sub('|'.join(remove_substrings_from_columns), '', col)}"
             for col in df.columns
-            if not re.search("|".join(remove_columns_with_strings), col)
+            if len(remove_columns_with_substrings) == 0 or not re.search("|".join(remove_columns_with_substrings), col)
         ]
     )
     return df
@@ -130,8 +125,8 @@ def extract_building_metadata() -> DataFrame:
     # rename and remove columns
     building_metadata_cleaned = clean_resstock_columns(
         df=building_metadata,
-        remove_strings_from_columns=["in__"],
-        remove_columns_with_strings=[
+        remove_substrings_from_columns=["in__"],
+        remove_columns_with_substrings=[
             "simulation_control_run",
             "emissions",
             "weight",
@@ -156,8 +151,9 @@ def extract_annual_outputs() -> DataFrame:
     # rename and remove columns
     annual_energy_consumption_cleaned = clean_resstock_columns(
         df=annual_energy_consumption_with_metadata,
-        remove_strings_from_columns=["in__", "out__", "__energy_consumption__kwh"],
-        remove_columns_with_strings=[
+        remove_substrings_from_columns=["in__", "out__", "__energy_consumption__kwh"],
+        remove_columns_with_substrings=[
+            #remove all "in__*" columns except for "in__weather_file_city"
             r"in__(?!weather_file_city)",
             "emissions",
             "weight",
@@ -240,7 +236,10 @@ hourly_weather_data = extract_hourly_weather_data()
 
 # DBTITLE 1,Write out building metadata
 table_name = "ml.surrogate_model.building_metadata"
-building_metadata.write.saveAsTable(table_name, mode="overwrite", overwriteSchema=True)
+building_metadata.write.saveAsTable(
+    table_name, 
+    mode="overwrite",
+    overwriteSchema=True)
 spark.sql(f"OPTIMIZE {table_name}")
 
 # COMMAND ----------
@@ -248,7 +247,10 @@ spark.sql(f"OPTIMIZE {table_name}")
 # DBTITLE 1,Write out annual outputs
 table_name = "ml.surrogate_model.building_upgrade_simulation_outputs_annual"
 annual_outputs.write.saveAsTable(
-    table_name, mode="overwrite", overwriteSchema=True, partitionBy=["upgrade_id"]
+    table_name,
+    mode="overwrite",
+    overwriteSchema=True,
+    partitionBy=["upgrade_id"]
 )
 spark.sql(f"OPTIMIZE {table_name}")
 

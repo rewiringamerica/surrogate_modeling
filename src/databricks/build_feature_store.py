@@ -37,8 +37,7 @@
 # COMMAND ----------
 
 # DBTITLE 1,Imports
-from functools import reduce
-from itertools import chain
+from functools import chain, reduce
 import re
 from typing import Dict
 
@@ -224,9 +223,9 @@ def extract_heating_efficiency(heating_efficiency: str) -> int:
 def temp_from(temperature_string, base_temp=0) -> float:
     """Convert string Fahrenheit degrees to float F - base_temp deg
 
-    >>> temp70('70F', base_temp = 70)
+    >>> temp_from('70F', base_temp = 70)
     0.0
-    >>> temp70('-3F')
+    >>> temp_from('-3F')
     -3.0
     """
     if not re.match(r"\d+F", temperature_string):
@@ -650,6 +649,7 @@ def transform_weather_features() -> DataFrame:
     )
     return weather_data_arrays
 
+
 # COMMAND ----------
 
 # DBTITLE 1,Transform building metadata
@@ -776,5 +776,3 @@ else:
     )
 
 # COMMAND ----------
-
-
