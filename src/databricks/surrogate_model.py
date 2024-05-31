@@ -12,8 +12,7 @@ from tensorflow.keras import layers, models
 
 from src.databricks.datagen import DataGenerator
 
-#@tf.keras.utils.register_keras_serializable()
-class Model:
+class SurrogateModel:
     """
     A Deep Learning model for surrogate modeling energy consumption prediction.
 

@@ -92,8 +92,8 @@ train_data, val_data, test_data = load_data(n_subset=100 if DEBUG else None)
 # COMMAND ----------
 
 # DBTITLE 1,Initialize train/val data generators
-train_gen = DataGenerator(train_data=train_data, batch_size = 256)
-val_gen = DataGenerator(train_data=val_data, batch_size = 256)
+train_gen = DataGenerator(train_data=train_data, batch_size=256)
+val_gen = DataGenerator(train_data=val_data, batch_size=256)
 
 # COMMAND ----------
 
@@ -177,7 +177,7 @@ class SurrogateModelingWrapper(mlflow.pyfunc.PythonModel):
         Returns:
         - The model predictions floored at 0: np.ndarray of shape [N, M]
         """
-        from model import masked_mae
+        # from model import masked_mae
         
         processed_df = self.preprocess_input(model_input)
         predictions_df = self.model.predict(processed_df)
@@ -215,15 +215,17 @@ sm = Model(name="test" if DEBUG else "sf_hvac_by_fuel")
 # Train keras model and log the model with the Feature Engineering in UC.
 
 # Set the activation function and numeric data type for the model's layers
-layer_params = {"activation": "leaky_relu", "dtype": np.float32, "kernel_initializer" : "he_normal"}
+layer_params = {
+    "activation": "leaky_relu",
+    "dtype": np.float32,
+    "kernel_initializer": "he_normal",
+}
 
 # signature_df = train_gen.training_set.load_df().select(train_gen.building_features + train_gen.weather_features).limit(1).toPandas()
 
 mlflow.tensorflow.autolog(
-    log_every_epoch=True,
-    log_models=False,
-    log_datasets=False, 
-    checkpoint=False)
+    log_every_epoch=True, log_models=False, log_datasets=False, checkpoint=False
+)
 
 # Starts an MLflow experiment to track training parameters and results.
 with mlflow.start_run() as run:
@@ -244,21 +246,21 @@ with mlflow.start_run() as run:
         callbacks=[keras.callbacks.EarlyStopping(monitor="val_loss", patience=5)],
     )
 
-    #wrap in custom class that defines pre and post processing steps to be applied when called at inference time
+    # wrap in custom class that defines pre and post processing steps to be applied when called at inference time
     pyfunc_model = SurrogateModelingWrapper(
         trained_model=keras_model,
         building_features=train_gen.building_features,
         weather_features=train_gen.weather_features,
-        targets=train_gen.targets
+        targets=train_gen.targets,
     )
 
     mlflow.pyfunc.log_model(
         python_model=pyfunc_model,
-        artifact_path=sm.artifact_path, 
-        code_paths = ['model.py'], 
-        #signature=mlflow.models.infer_signature(df)
+        artifact_path=sm.artifact_path,
+        code_paths=["model.py"],
+        # signature=mlflow.models.infer_signature(df)
     )
-    #mlflow.register_model(f"runs:/{run_id}/model_path", str(model))
+    # mlflow.register_model(f"runs:/{run_id}/model_path", str(model))
 
 # COMMAND ----------
 
@@ -280,11 +282,11 @@ if DEBUG:
 
 # DBTITLE 1,Inspect predictions using logged model
 # evaluate the unregistered model we just logged and make sure everything runs
-if DEBUG: 
+if DEBUG:
     print(run_id)
-    mlflow.pyfunc.get_model_dependencies(model_uri = sm.get_model_uri(run_id=run_id))
+    mlflow.pyfunc.get_model_dependencies(model_uri=sm.get_model_uri(run_id=run_id))
     # Load the model using its registered name and version/stage from the MLflow model registry
-    model_loaded = mlflow.pyfunc.load_model(model_uri = sm.get_model_uri(run_id=run_id))
+    model_loaded = mlflow.pyfunc.load_model(model_uri=sm.get_model_uri(run_id=run_id))
     test_gen = DataGenerator(train_data=test_data)
     # load input data table as a Spark DataFrame
     input_data = test_gen.training_set.load_df().toPandas()
@@ -292,7 +294,7 @@ if DEBUG:
 
 # COMMAND ----------
 
-# This doesn't work. Throws same fit about not knowing where the custom loss fn is. 
+# This doesn't work. Throws same fit about not knowing where the custom loss fn is.
 # from pyspark.sql.types import ArrayType, DoubleType
 # mlflow.pyfunc.get_model_dependencies(model_uri)
 # # model_loaded = mlflow.pyfunc.load_model(model_uri=model_uri)

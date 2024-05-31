@@ -8,8 +8,7 @@ import pyspark.sql.functions as F
 import tensorflow as tf
 from databricks.feature_engineering import FeatureEngineeringClient, FeatureLookup
 from databricks.ml_features.training_set import TrainingSet
-from databricks.ml_features.entities.feature_lookup import FeatureLookup
-from databricks.sdk.runtime import *
+# from databricks.sdk.runtime import *
 from pyspark.sql import DataFrame
 
 class DataGenerator(tf.keras.utils.Sequence):
@@ -384,9 +383,9 @@ def load_data(
 
     Parameters:
         consumption_group_dict (dict): Dictionary mapping consumption categories (e.g., 'heating') to columns.
-            Default is DataGenerator.consumption_group_dict.
+            Default is DataGenerator.consumption_group_dict (too long to write out)
         building_feature_table_name (str): Name of the building feature table.
-            Default is DataGenerator.building_feature_table_name
+            Default is "ml.surrogate_model.building_features"
         n_subset (int): Number of subset records to select. Default is None (select all records).
         p_val (float): Proportion of data to use for validation. Default is 0.2.
         p_test (float): Proportion of data to use for testing. Default is 0.1.
