@@ -99,7 +99,6 @@ def absolute_percentage_error(pred, true, eps=1e-3):
 def absolute_error(pred, true):
     return abs(true - pred)
 
-
 # join buildings to bucket prediction (baseline)
 prediction_actual_by_building_bucket_baseline = (
     actual_baseline_consumption_by_building_bucket.join(

@@ -37,9 +37,9 @@
 # COMMAND ----------
 
 # DBTITLE 1,Imports
+import re
 from functools import reduce
 from itertools import chain
-import re
 from typing import Dict
 
 from pyspark.sql import DataFrame
@@ -47,7 +47,6 @@ from pyspark.sql.column import Column
 import pyspark.sql.functions as F
 from pyspark.sql.types import IntegerType, DoubleType
 from pyspark.sql.window import Window
-
 from databricks.feature_engineering import FeatureEngineeringClient
 
 # COMMAND ----------
@@ -224,9 +223,9 @@ def extract_heating_efficiency(heating_efficiency: str) -> int:
 def temp_from(temperature_string, base_temp=0) -> float:
     """Convert string Fahrenheit degrees to float F - base_temp deg
 
-    >>> temp70('70F', base_temp = 70)
+    >>> temp_from('70F', base_temp = 70)
     0.0
-    >>> temp70('-3F')
+    >>> temp_from('-3F')
     -3.0
     """
     if not re.match(r"\d+F", temperature_string):
@@ -736,11 +735,6 @@ fe = FeatureEngineeringClient()
 
 # COMMAND ----------
 
-# %sql
-# DROP TABLE ml.surrogate_model.building_features
-
-# COMMAND ----------
-
 # DBTITLE 1,Write out building metadata feature store
 table_name = "ml.surrogate_model.building_features"
 df = building_metadata_hvac_upgrades_dedup
@@ -774,7 +768,3 @@ else:
         schema=df.schema,
         description="hourly weather timeseries array features",
     )
-
-# COMMAND ----------
-
-

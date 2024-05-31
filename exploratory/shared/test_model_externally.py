@@ -35,3 +35,8 @@ pred_df = model.score_batch(test_data=test_data)  # score using  latest register
 # pred_df = model.score_batch(test_data = test_data, run_id = '6deab2c9e96a402ab0bf2c6d1108f53e') # score unregistered model
 
 pred_df.display()
+#pred_df = model.score_batch(test_data = test_data, run_id = '6deab2c9e96a402ab0bf2c6d1108f53e', targets = ['heating', 'cooling']) # score unregistered model
+
+pred_df.display()
+
+# COMMAND ---------

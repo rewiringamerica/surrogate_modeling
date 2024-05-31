@@ -5,30 +5,27 @@
 # MAGIC Train deep learning model to predict energy a building's HVAC energy consumption
 # MAGIC
 # MAGIC ### Process
-# MAGIC * Transform building metadata into features and subset to features of interest
-# MAGIC * Pivot weather data into wide vector format with pkey `weather_file_city` and a 8670-length timeseries vector for each weather feature column
-# MAGIC * Write building metadata features and weather features to feature store tables
+# MAGIC * Load in train/val/test sets containing targets and feature keys
+# MAGIC * Initialize data generators on train/val sets which pulls in weather and building model features
+# MAGIC * Train model
+# MAGIC * Evaluate model and write out metrics
 # MAGIC
 # MAGIC ### I/Os
 # MAGIC
 # MAGIC ##### Inputs: 
-# MAGIC - `ml.surrogate_model.building_metadata`: Building metadata indexed by (building_id)
-# MAGIC - `ml.surrogate_model.weather_data_hourly`: Hourly weather data indexed by (weather_file_city, hour datetime)
+# MAGIC - `ml.surrogate_model.building_metadata`: Building metadata features indexed by (building_id)
+# MAGIC - `ml.surrogate_model.weather_data_hourly`: Weather data indexed by (weather_file_city) with a 8670-length timeseries vector
+# MAGIC - `ml.surrogate_model.building_upgrade_simulation_outputs_annual`: Annual building model simulation outputs indexed by (building_id, upgrade_id)
 # MAGIC
 # MAGIC ##### Outputs: 
-# MAGIC - `ml.surrogate_model.building_metadata`: Building metadata features indexed by (building_id)
-# MAGIC - `ml.surrogate_model.weather_data_hourly`: Weather data indexed by (weather_file_city) with a 8670-length timeseries vector for each weather feature column
+# MAGIC - `gs://the-cube/export/surrogate_model_metrics/cnn/{model_name}_v{model_version_num}.csv'`: Aggregated evaluation metrics
+# MAGIC
 # MAGIC
 # MAGIC ### TODOs:
 # MAGIC
 # MAGIC #### Outstanding
-# MAGIC - Figure out issues with training on GPU: When using the existing default tf version on a GPU cluster, the code errors out at eval time with various inscritible errors. By downgrading to required tensorflow version in `requirements.txt`, it then shows no GPUs avaialble, and during training it seems to show 0% GPU utilization, which makes me assume that it is not actually using the GPU. However, it seems to train faster on a GPU cluster than on a CPU cluster with even more memory. Further, when the downgraded tf version is installed at the cluster level, it also doesn't work. 
-# MAGIC - Troubleshoot `env_manager` issues with loading env that model was trained in
 # MAGIC
 # MAGIC #### Future Work
-# MAGIC - Once upgrades to the building metadata table, remove subset to upgrade_id = 0
-# MAGIC - Support more granular temporal output reslution using dynamic aggregation of hourly outputs table
-# MAGIC - Maybe figure out how to define the `load_context()` method of the `SurrogateModelingWrapper` class in such a way that we can define it in a different file (currently spark pickling issues prevent this)
 # MAGIC
 # MAGIC ---
 # MAGIC #### Cluster/ User Requirements
@@ -56,6 +53,11 @@ print(DEBUG)
 
 # COMMAND ----------
 
+import os
+os.environ['TF_FORCE_GPU_ALLOW_GROWTH'] = 'true'
+
+# COMMAND ----------
+
 # DBTITLE 1,Import
 # MAGIC %load_ext autoreload
 # MAGIC %autoreload 2
@@ -69,13 +71,14 @@ print(DEBUG)
 # MAGIC import pandas as pd
 # MAGIC import pyspark.sql.functions as F
 # MAGIC import tensorflow as tf
+# MAGIC from databricks.feature_engineering import FeatureEngineeringClient
 # MAGIC from pyspark.sql import DataFrame
 # MAGIC from pyspark.sql.types import DoubleType
 # MAGIC from tensorflow import keras
 # MAGIC from typing import Tuple, Dict
 # MAGIC
 # MAGIC from datagen import DataGenerator, load_data
-# MAGIC from model import Model
+# MAGIC from surrogate_model import SurrogateModel
 # MAGIC
 # MAGIC # list available GPUs
 # MAGIC tf.config.list_physical_devices("GPU")
@@ -213,6 +216,9 @@ sm = Model(name="test" if DEBUG else "sf_hvac_by_fuel")
 
 # DBTITLE 1,Fit model
 # Train keras model and log the model with the Feature Engineering in UC.
+
+#Init FeatureEngineering client
+fe = FeatureEngineeringClient()
 
 # Set the activation function and numeric data type for the model's layers
 layer_params = {
