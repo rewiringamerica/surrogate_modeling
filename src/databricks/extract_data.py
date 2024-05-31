@@ -43,7 +43,9 @@ import pyspark.sql.functions as F
 # COMMAND ----------
 
 # DBTITLE 1,Data Paths
-RESSTOCK_PATH = "gs://the-cube/data/raw/nrel/end_use_load_profiles/2022/resstock_tmy3_release_1/"
+RESSTOCK_PATH = (
+    "gs://the-cube/data/raw/nrel/end_use_load_profiles/2022/resstock_tmy3_release_1/"
+)
 
 BUILDING_METADATA_PARQUET_PATH = (
     RESSTOCK_PATH
@@ -75,6 +77,7 @@ def transform_pkeys(df):
         .drop("bldg_id", "upgrade")
     )
 
+
 def clean_resstock_columns(
     df: DataFrame,
     remove_substrings_from_columns: List[str] = [],
@@ -101,7 +104,8 @@ def clean_resstock_columns(
         *[
             f"{col} as {re.sub('|'.join(remove_substrings_from_columns), '', col)}"
             for col in df.columns
-            if len(remove_columns_with_substrings) == 0 or not re.search("|".join(remove_columns_with_substrings), col)
+            if len(remove_columns_with_substrings) == 0
+            or not re.search("|".join(remove_columns_with_substrings), col)
         ]
     )
     return df
@@ -153,7 +157,7 @@ def extract_annual_outputs() -> DataFrame:
         df=annual_energy_consumption_with_metadata,
         remove_substrings_from_columns=["in__", "out__", "__energy_consumption__kwh"],
         remove_columns_with_substrings=[
-            #remove all "in__*" columns except for "in__weather_file_city"
+            # remove all "in__*" columns except for "in__weather_file_city"
             r"in__(?!weather_file_city)",
             "emissions",
             "weight",
@@ -236,10 +240,7 @@ hourly_weather_data = extract_hourly_weather_data()
 
 # DBTITLE 1,Write out building metadata
 table_name = "ml.surrogate_model.building_metadata"
-building_metadata.write.saveAsTable(
-    table_name, 
-    mode="overwrite",
-    overwriteSchema=True)
+building_metadata.write.saveAsTable(table_name, mode="overwrite", overwriteSchema=True)
 spark.sql(f"OPTIMIZE {table_name}")
 
 # COMMAND ----------
@@ -247,10 +248,7 @@ spark.sql(f"OPTIMIZE {table_name}")
 # DBTITLE 1,Write out annual outputs
 table_name = "ml.surrogate_model.building_upgrade_simulation_outputs_annual"
 annual_outputs.write.saveAsTable(
-    table_name,
-    mode="overwrite",
-    overwriteSchema=True,
-    partitionBy=["upgrade_id"]
+    table_name, mode="overwrite", overwriteSchema=True, partitionBy=["upgrade_id"]
 )
 spark.sql(f"OPTIMIZE {table_name}")
 

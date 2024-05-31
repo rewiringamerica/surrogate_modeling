@@ -37,8 +37,9 @@
 # COMMAND ----------
 
 # DBTITLE 1,Imports
-from functools import chain, reduce
 import re
+from functools import reduce
+from itertools import chain
 from typing import Dict
 
 from pyspark.sql import DataFrame
@@ -46,7 +47,6 @@ from pyspark.sql.column import Column
 import pyspark.sql.functions as F
 from pyspark.sql.types import IntegerType, DoubleType
 from pyspark.sql.window import Window
-
 from databricks.feature_engineering import FeatureEngineeringClient
 
 # COMMAND ----------
@@ -649,7 +649,6 @@ def transform_weather_features() -> DataFrame:
     )
     return weather_data_arrays
 
-
 # COMMAND ----------
 
 # DBTITLE 1,Transform building metadata
@@ -736,11 +735,6 @@ fe = FeatureEngineeringClient()
 
 # COMMAND ----------
 
-# %sql
-# DROP TABLE ml.surrogate_model.building_features
-
-# COMMAND ----------
-
 # DBTITLE 1,Write out building metadata feature store
 table_name = "ml.surrogate_model.building_features"
 df = building_metadata_hvac_upgrades_dedup
@@ -774,5 +768,3 @@ else:
         schema=df.schema,
         description="hourly weather timeseries array features",
     )
-
-# COMMAND ----------
