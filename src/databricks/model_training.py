@@ -260,15 +260,6 @@ with mlflow.start_run() as run:
     )
     #mlflow.register_model(f"runs:/{run_id}/model_path", str(model))
 
-    # # If in test mode, don't register the model, just pull it based on run_id in evaluation testing
-    # model.fe.log_model(
-    #     model=pyfunc_model,
-    #     artifact_path=model.artifact_path,
-    #     flavor=mlflow.pyfunc,  # since using custom pyfunc wrapper
-    #     training_set=train_gen.training_set,
-    #     registered_model_name= None if DEBUG else str(model),  # registered the model name if in DEBUG mode
-    # )
-
 # COMMAND ----------
 
 # MAGIC %md ## Evaluate Model
@@ -301,6 +292,7 @@ if DEBUG:
 
 # COMMAND ----------
 
+# This doesn't work. Throws same fit about not knowing where the custom loss fn is. 
 # from pyspark.sql.types import ArrayType, DoubleType
 # mlflow.pyfunc.get_model_dependencies(model_uri)
 # # model_loaded = mlflow.pyfunc.load_model(model_uri=model_uri)

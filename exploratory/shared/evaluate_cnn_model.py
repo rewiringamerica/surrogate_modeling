@@ -14,6 +14,8 @@ import numpy as np
 import pandas as pd
 import pyspark.sql.functions as F
 import seaborn as sns
+from functools import reduce
+from pyspark.sql import DataFrame
 from pyspark.sql.window import Window
 from pyspark.sql.types import ArrayType, IntegerType
 
@@ -22,9 +24,14 @@ from src.databricks.model import Model
 
 # COMMAND ----------
 
-_, _, test_data = load_data(n_subset=50000)
-sm = Model(name="test")
-test_gen = DataGenerator(train_data=test_data)
+MODEL_NAME = "sf_hvac_by_fuel"
+RUN_ID= '21170c4978fd4efc9d90e25d70880d76'
+
+# COMMAND ----------
+
+sm = Model(name=MODEL_NAME)
+_, _, test_data = load_data(n_subset=100000)
+test_gen = DataGenerator(test_data)
 
 # COMMAND ----------
 
@@ -53,10 +60,9 @@ test_set = init_training_set(test_gen, test_data, exclude_columns=["weather_file
 
 # COMMAND ----------
 
-run_id = '21170c4978fd4efc9d90e25d70880d76'
-mlflow.pyfunc.get_model_dependencies(model_uri = sm.get_model_uri(run_id=run_id))
+mlflow.pyfunc.get_model_dependencies(model_uri = sm.get_model_uri(run_id=RUN_ID))
 # Load the model using its registered name and version/stage from the MLflow model registry
-model_loaded = mlflow.pyfunc.load_model(model_uri = sm.get_model_uri(run_id=run_id))
+model_loaded = mlflow.pyfunc.load_model(model_uri = sm.get_model_uri(run_id=RUN_ID))
 # load input data table as a Spark DataFrame
 input_data = test_set.toPandas()
 
@@ -87,10 +93,6 @@ predictions_with_nulled_out_fuels_and_building_ids = np.hstack(
      np.expand_dims(np.nansum(predictions_with_nulled_out_fuels,1),1) #add column for totals summed over all fuels
      ])
 
-
-# COMMAND ----------
-
-predictions_with_nulled_out_fuels_and_building_ids
 
 # COMMAND ----------
 
@@ -131,16 +133,8 @@ pred_by_building_upgrade_fuel = test_set.select(*sample_pkeys,*keep_features).jo
 
 # COMMAND ----------
 
-# @udf("array<double>")
-# def APE(prediction, actual, eps = 1E3):
-#     return [abs(float(x - y))/y*100 if y > eps else None for x, y in zip(prediction, actual) ]
-
-# COMMAND ----------
-
 w = Window().partitionBy('building_id', 'fuel').orderBy(F.asc('upgrade_id'))
 
-# def element_wise_subtract(a, b):
-#     return F.expr(f"transform(arrays_zip({a}, {b}), x -> abs(x.{a} - x.{b}))")
 
 @udf("double")
 def APE(prediction, actual, eps = 1E-3):
@@ -160,9 +154,6 @@ pred_df_hvac_process =  (
             F.when(F.col("ac_type") == "Shared", F.lit("Shared Cooling"))
             .when(F.col('ac_type') == 'None', F.lit("No Cooling"))
             .otherwise(F.col('ac_type')))
-        # .withColumn('total', F.expr('+'.join(targets)))
-        # .withColumn("actual", F.array(targets + ['total']))
-        # .withColumn('prediction', F.array_insert("prediction", F.size(F.col('prediction'))+1, F.aggregate("prediction", F.lit(0.0), lambda acc, x: acc + x)))
 )
 
 pred_df_savings = (
@@ -236,30 +227,24 @@ total_metrics_by_upgrade_fuel = (
             .where(F.col('prediction').isNotNull())
             .where(F.col('fuel')!='total'),
         groupby_cols=['fuel', 'upgrade_id'])
-    .withColumn('type', F.concat_ws(':', F.lit('Total'), F.col('fuel')))
+    .withColumn('type', F.concat_ws(' : ', F.lit('Total'), F.col('fuel')))
     .withColumn('category', F.lit('total'))
     .drop('fuel')
 )
-    
-from functools import reduce
-from pyspark.sql import DataFrame
 
 dfs = [heating_metrics_by_type_upgrade, cooling_metrics_by_type_upgrade, total_metrics_by_upgrade, total_metrics_by_upgrade_fuel]
-cnn_evaluation_metrics = reduce(DataFrame.unionAll, dfs)
-
-# COMMAND ----------
-
-cnn_evaluation_metrics.display()
+cnn_evaluation_metrics = reduce(DataFrame.unionByName, dfs[:-1])
+cnn_evaluation_metrics_with_fuel = reduce(DataFrame.unionByName, dfs)
 
 # COMMAND ----------
 
 # save the metrics table tagged with the model name and version number
-(cnn_evaluation_metrics
+(cnn_evaluation_metrics_with_fuel
     .write
     .format("delta")
     .mode("overwrite")
     .option("overwriteSchema", "true")
-    .option("userMetadata", MODEL_VERSION_NAME)
+    .option("userMetadata", {'run_id': RUN_ID, 'model_name': MODEL_NAME})
     .saveAsTable('ml.surrogate_model.evaluation_metrics')
 )
 
@@ -307,12 +292,27 @@ metrics_combined = (
     )
 )
 
+types = [
+    'Electric Resistance', 
+    'Natural Gas',
+    'Propane',
+    'Fuel Oil',
+    'Shared Heating',  
+    'No Heating', 
+    'Heat Pump', 
+    'AC',
+    'Room AC', 
+    'Shared Cooling', 
+    'No Cooling', 
+    'Total',
+    'Total : natural_gas',
+    'Total : fuel_oil', 
+    'Total : propane',
+    'Total : electricity']
+
 metrics_combined['Type'] = pd.Categorical(
     metrics_combined['Type'], 
-    categories=[
-        'Electric Resistance', 'Natural Gas','Propane', 'Fuel Oil','Shared Heating','No Heating',
-        'Heat Pump','AC', 'Room AC',  'Shared Cooling','No Cooling', 
-        'Total'],
+    categories=types,
     ordered=True
 )
 
@@ -328,11 +328,7 @@ metrics_combined = (
 
 # COMMAND ----------
 
-metrics_combined
-
-# COMMAND ----------
-
-metrics_combined.to_csv(f'gs://the-cube/export/surrogate_model_metrics/comparison/{MODEL_VERSION_NAME}_by_method_upgrade_type.csv', float_format = '%.2f')
+metrics_combined.to_csv(f'gs://the-cube/export/surrogate_model_metrics/comparison/{MODEL_NAME}_by_method_upgrade_type.csv', float_format = '%.2f')
 
 # COMMAND ----------
 
