@@ -68,12 +68,13 @@ os.environ['TF_FORCE_GPU_ALLOW_GROWTH'] = 'true'
 # MAGIC import pandas as pd
 # MAGIC import pyspark.sql.functions as F
 # MAGIC import tensorflow as tf
+# MAGIC from databricks.feature_engineering import FeatureEngineeringClient
 # MAGIC from pyspark.sql import DataFrame
 # MAGIC from pyspark.sql.types import DoubleType
 # MAGIC from tensorflow import keras
 # MAGIC
 # MAGIC from datagen import DataGenerator
-# MAGIC from model import Model
+# MAGIC from surrogate_model import SurrogateModel
 # MAGIC
 # MAGIC # list available GPUs
 # MAGIC tf.config.list_physical_devices("GPU")
@@ -273,7 +274,7 @@ class SurrogateModelingWrapper(mlflow.pyfunc.PythonModel):
 # COMMAND ----------
 
 # DBTITLE 1,Initialize model
-model = Model(name="test" if DEBUG else "sf_hvac")
+model = SurrogateModel(name="test" if DEBUG else "sf_hvac")
 
 # COMMAND ----------
 
@@ -317,7 +318,7 @@ with mlflow.start_run() as run:
     )
 
     # If in test mode, don't register the model, just pull it based on run_id in evaluation testing
-    model.fe.log_model(
+    fe.log_model(
         model=pyfunc_model,
         artifact_path=model.artifact_path,
         flavor=mlflow.pyfunc,  # since using custom pyfunc wrapper
