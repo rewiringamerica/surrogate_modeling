@@ -4,13 +4,13 @@
 
 # COMMAND ----------
 
-# !pip install seaborn==v0.13.0
-%pip install mlflow==2.13.0
-dbutils.library.restartPython()
+# MAGIC %pip install mlflow==2.13.0 seaborn==v0.13.0
+# MAGIC dbutils.library.restartPython()
 
 # COMMAND ----------
 
 import mlflow
+import numpy as np
 import pandas as pd
 import pyspark.sql.functions as F
 import seaborn as sns
@@ -23,81 +23,131 @@ from src.databricks.model import Model
 # COMMAND ----------
 
 _, _, test_data = load_data(n_subset=50000)
-model = Model(name="test")
-
-run_id = '52928e6661b3482da2dadbc9a8f9971b'
-
-model_uri = f"runs:/{run_id}/model_path"  # Replace <run_id> with the actual run ID
-#mlflow.pyfunc.get_model_dependencies(model.get_model_uri())
-# Load the model using its registered name and version/stage from the MLflow model registry
-model_loaded = mlflow.pyfunc.load_model(model_uri=model_uri)
+sm = Model(name="test")
 test_gen = DataGenerator(train_data=test_data)
+
+# COMMAND ----------
+
+#TODO: move to datagen class
+def init_training_set(dg, train_data, exclude_columns = ["building_id", "upgrade_id", "weather_file_city"]):
+    """
+    Initializes the Databricks TrainingSet object contaning targets, building feautres and weather features.
+
+    Parameters:
+        - train_data (DataFrame): the training data containing the targets and keys to join to the feature tables.
+
+    Returns:
+    - TrainingSet
+    """
+    # Join to feature tables and drop join keys since these aren't features we wanna train on
+    training_set = dg.fe.create_training_set(
+        df=train_data,
+        feature_lookups=dg.get_building_feature_lookups()
+        + dg.get_weather_feature_lookups(),
+        label=dg.targets,
+        exclude_columns=exclude_columns,
+    )
+    return training_set
+
+test_set = init_training_set(test_gen, test_data, exclude_columns=["weather_file_city"]).load_df()
+
+# COMMAND ----------
+
+run_id = '21170c4978fd4efc9d90e25d70880d76'
+mlflow.pyfunc.get_model_dependencies(model_uri = sm.get_model_uri(run_id=run_id))
+# Load the model using its registered name and version/stage from the MLflow model registry
+model_loaded = mlflow.pyfunc.load_model(model_uri = sm.get_model_uri(run_id=run_id))
 # load input data table as a Spark DataFrame
-input_data = test_gen.training_set.load_df().toPandas()
+input_data = test_set.toPandas()
 
 # COMMAND ----------
 
-model_loaded.predict(input_data)
+prediction_arr = model_loaded.predict(input_data)
 
 # COMMAND ----------
 
-_, _, test_data = load_data(n_subset=500)
-model = Model(name="test")
+targets_formatted = np.array([item.replace('_', ' ').title() for item in test_gen.targets])
 
-# # for right now have to limit the test set since driver seems to be running out of mem
-# target_test_size = 75000
-# target_n_building_frac = target_test_size / test_data.count()
-# test_building_id_subset = (
-#     test_data.select("building_id").distinct().sample(target_n_building_frac)
-# )
-# test_data_sub = test_data.join(test_building_id_subset, on="building_id")
-# print(test_data_sub.count())
-# # score using  latest registered model
-mlflow.pyfunc.get_model_dependencies(model.get_model_uri())
-# pred_df = model.score_batch(test_data=test_data, run_id = '0260c2961eed47baa6a8d2919e986ba8')
-pred_df = model.score_batch(test_data=test_data)
-pred_df.display()
+fuel_present_by_sample_appliance_fuel = np.expand_dims(targets_formatted, axis = [0, 1]) == np.expand_dims(input_data[['heating_fuel', 'heating_appliance_type']], 2)
+fuel_present_by_sample_fuel_mask = fuel_present_by_sample_appliance_fuel.sum(1).astype(bool)
+fuel_present_by_sample_fuel_mask[:,targets_formatted  == 'Electricity'] = True #all(ish) homes have electricity so set this to always be 1
+#null out the predictions if there are no appliances with that fuel type
+predictions_with_nulled_out_fuels = np.where(~fuel_present_by_sample_fuel_mask, np.nan, prediction_arr)
 
 
 # COMMAND ----------
 
+targets = test_gen.targets + ['total']
+
+sample_pkeys = ['building_id', 'upgrade_id']
+sample_pkey_arr = input_data[sample_pkeys].values
+predictions_with_nulled_out_fuels_and_building_ids = np.hstack(
+    [sample_pkey_arr, #columns of pkeys
+     predictions_with_nulled_out_fuels, #columns for each fuel
+     np.expand_dims(np.nansum(predictions_with_nulled_out_fuels,1),1) #add column for totals summed over all fuels
+     ])
 
 
 # COMMAND ----------
 
-# MODEL_NAME = 'sf_hvac_by_fuel'
-# MODEL_TESTSET_PREDICTIONS_TABLE = f'ml.surrogate_model.{MODEL_NAME}_predictions'
-# MODEL_VERSION_NUMBER = spark.sql(f"SELECT userMetadata FROM (DESCRIBE HISTORY {MODEL_TESTSET_PREDICTIONS_TABLE }) ORDER BY version DESC LIMIT 1").rdd.map(lambda x: x['userMetadata']).collect()[0]
-# MODEL_VERSION_NAME = f'ml.surrogate_model.{MODEL_NAME}@v{MODEL_VERSION_NUMBER}'
+predictions_with_nulled_out_fuels_and_building_ids
 
 # COMMAND ----------
 
-# targets = ['electricity', 'fuel_oil', 'natural_gas', 'propane'] #in theory could prob pull this from model artifacts..
-# pred_df = spark.table(MODEL_TESTSET_PREDICTIONS_TABLE)
-# building_features = spark.table('ml.surrogate_model.building_features')
+# Create a N x M DataFrame where N is the nummber of test samples and M is the number of targets
+target_pred_labels = [f"{y}-pred" for y in targets]
+pred_only = spark.createDataFrame(predictions_with_nulled_out_fuels_and_building_ids.tolist(),sample_pkeys + target_pred_labels)
+#.replace(float('nan'), None)
 
-# pred_df = pred_df.join(building_features, on = ['building_id', 'upgrade_id'])
+# Create dataframe with columns for actual and predicted values for each fuel
+# and add a total columns to the actual 
+pred_wide = (
+    pred_only
+        .join(
+            test_data.withColumn('total', F.expr('+'.join(test_gen.targets))),
+            on = sample_pkeys)
+)
+
+# Melt to long format by fuel with columns: building, upgrade, fuel, true, pred
+pred_by_building_upgrade_fuel = (
+    pred_wide
+        .melt(ids = sample_pkeys, 
+            values = targets + target_pred_labels,
+            valueColumnName="value", 
+            variableColumnName="fuel")
+        .withColumn('target_type', 
+                    F.when(F.split(F.col('fuel'), '-')[1] == 'pred', F.lit('prediction'))
+                    .otherwise(F.lit('actual'))
+                    )
+        .withColumn('fuel', F.split(F.col('fuel'), '-')[0])
+        .groupBy(*sample_pkeys, 'fuel')
+        .pivot(pivot_col = 'target_type', values = ['actual', 'prediction'])
+        .agg(F.first('value')) #vacuous agg
+)
+
+#add metadata 
+keep_features = ['heating_fuel', 'heating_appliance_type', 'ac_type']
+pred_by_building_upgrade_fuel = test_set.select(*sample_pkeys,*keep_features).join(pred_by_building_upgrade_fuel, on = sample_pkeys)
 
 # COMMAND ----------
 
-targets = DataGenerator.targets
+# @udf("array<double>")
+# def APE(prediction, actual, eps = 1E3):
+#     return [abs(float(x - y))/y*100 if y > eps else None for x, y in zip(prediction, actual) ]
 
 # COMMAND ----------
 
-@udf("array<double>")
-def APE(prediction, actual, eps = 1E3):
-    return [abs(float(x - y))/y*100 if y > eps else None for x, y in zip(prediction, actual) ]
+w = Window().partitionBy('building_id', 'fuel').orderBy(F.asc('upgrade_id'))
 
-# COMMAND ----------
+# def element_wise_subtract(a, b):
+#     return F.expr(f"transform(arrays_zip({a}, {b}), x -> abs(x.{a} - x.{b}))")
 
-w = Window().partitionBy('building_id').orderBy(F.asc('upgrade_id'))
-
-def element_wise_subtract(a, b):
-    return F.expr(f"transform(arrays_zip({a}, {b}), x -> abs(x.{a} - x.{b}))")
-
+@udf("double")
+def APE(prediction, actual, eps = 1E-3):
+    return abs(float(prediction - actual)/actual)*100 if abs(actual) > eps else None
 
 pred_df_hvac_process =  (
-    pred_df
+    pred_by_building_upgrade_fuel
         .replace("None", 'No Heating', subset = 'heating_fuel')
         .replace("None", 'No Cooling', subset = 'ac_type')
         .withColumn('heating_fuel', 
@@ -110,9 +160,9 @@ pred_df_hvac_process =  (
             F.when(F.col("ac_type") == "Shared", F.lit("Shared Cooling"))
             .when(F.col('ac_type') == 'None', F.lit("No Cooling"))
             .otherwise(F.col('ac_type')))
-        .withColumn('total', F.expr('+'.join(targets)))
-        .withColumn("actual", F.array(targets + ['total']))
-        .withColumn('prediction', F.array_insert("prediction", F.size(F.col('prediction'))+1, F.aggregate("prediction", F.lit(0.0), lambda acc, x: acc + x)))
+        # .withColumn('total', F.expr('+'.join(targets)))
+        # .withColumn("actual", F.array(targets + ['total']))
+        # .withColumn('prediction', F.array_insert("prediction", F.size(F.col('prediction'))+1, F.aggregate("prediction", F.lit(0.0), lambda acc, x: acc + x)))
 )
 
 pred_df_savings = (
@@ -123,28 +173,27 @@ pred_df_savings = (
         .withColumn('prediction_baseline', F.first(F.col('prediction')).over(w))
         .withColumn('actual_baseline', F.first(F.col('actual')).over(w))
 
-        .withColumn('prediction_savings', element_wise_subtract('prediction', 'prediction_baseline'))
-        .withColumn('actual_savings', element_wise_subtract('actual', 'actual_baseline'))
-
-        .withColumn('absolute_error', element_wise_subtract('prediction', 'actual'))
+        .withColumn('prediction_savings', F.col('prediction_baseline') - F.col('prediction'))
+        .withColumn('actual_savings', F.col('actual_baseline')- F.col('actual'))
+        .withColumn('absolute_error', 
+            F.when(F.col('upgrade_id') == '0', F.lit(None))
+            .otherwise( F.abs(F.col('prediction') - F.col('actual'))))
         .withColumn('absolute_percentage_error', APE(F.col('prediction'), F.col('actual')))
-        .withColumn('absolute_error_savings', element_wise_subtract('prediction_savings', 'actual_savings'))
+        .withColumn('absolute_error_savings', 
+            F.when(F.col('upgrade_id') == '0', F.lit(None))
+            .otherwise( F.abs(F.col('prediction_savings') - F.col('actual_savings'))))
         .withColumn('absolute_percentage_error_savings', APE(F.col('prediction_savings'), F.col('actual_savings')))
-)
+).replace(float('nan'), None)
 
 
 # COMMAND ----------
 
-pred_df_savings.display()
-
-# COMMAND ----------
-
-def aggregate_metrics(pred_df_savings, groupby_cols, target_idx):
+def aggregate_metrics(pred_df_savings, groupby_cols):
     
     aggregation_expression = [
-        f(F.col(c)[target_idx]).alias(f"{f.__name__}_{c}")
+        f(F.col(c)).alias(f"{f.__name__}_{c}")
         for f in [F.median, F.mean] 
-        for c in ['absolute_percentage_error_savings', 'absolute_error_savings', 'absolute_percentage_error','absolute_error']
+        for c in ['absolute_percentage_error','absolute_error', 'absolute_percentage_error_savings', 'absolute_error_savings']
     ]
 
     return (
@@ -155,36 +204,48 @@ def aggregate_metrics(pred_df_savings, groupby_cols, target_idx):
 
 # COMMAND ----------
 
-
-heating_metrics_by_type_upgrade = (aggregate_metrics(
-    pred_df_savings = pred_df_savings,
-        groupby_cols=['baseline_heating_fuel', 'upgrade_id'],
-        target_idx=4)
-        #target_idx=0)
-    .withColumnRenamed('baseline_heating_fuel', 'type')
-    .withColumn('category', F.lit('heating'))
-)
-
 cooling_metrics_by_type_upgrade = (
     aggregate_metrics(
-        pred_df_savings = pred_df_savings.where(F.col('baseline_ac_type') != 'Heat Pump'),
-        groupby_cols=['baseline_ac_type', 'upgrade_id'],
-        target_idx=4)
-         #target_idx=1)
+        pred_df_savings = pred_df_savings
+            .where(F.col('baseline_ac_type') != 'Heat Pump')
+            .where(F.col('fuel') == 'total')
+            .where(F.col('upgrade_id') == 0),
+        groupby_cols=['baseline_ac_type', 'upgrade_id'])
     .withColumnRenamed('baseline_ac_type', 'type')
     .withColumn('category', F.lit('cooling'))
 )
 
+heating_metrics_by_type_upgrade = (aggregate_metrics(
+    pred_df_savings = pred_df_savings.where(F.col('fuel') == 'total'),
+        groupby_cols=['baseline_heating_fuel', 'upgrade_id'])
+    .withColumnRenamed('baseline_heating_fuel', 'type')
+    .withColumn('category', F.lit('heating'))
+)
+
 total_metrics_by_upgrade = (
     aggregate_metrics(
-        pred_df_savings = pred_df_savings,
-        groupby_cols=['upgrade_id'],
-        target_idx=4)
+        pred_df_savings = pred_df_savings.where(F.col('fuel') == 'total'),
+        groupby_cols=['upgrade_id'])
     .withColumn('type', F.lit('Total'))
     .withColumn('category', F.lit('total'))
 )
 
-cnn_evaluation_metrics = heating_metrics_by_type_upgrade.unionByName(cooling_metrics_by_type_upgrade).unionByName(total_metrics_by_upgrade)
+total_metrics_by_upgrade_fuel = (
+    aggregate_metrics(
+        pred_df_savings = pred_df_savings
+            .where(F.col('prediction').isNotNull())
+            .where(F.col('fuel')!='total'),
+        groupby_cols=['fuel', 'upgrade_id'])
+    .withColumn('type', F.concat_ws(':', F.lit('Total'), F.col('fuel')))
+    .withColumn('category', F.lit('total'))
+    .drop('fuel')
+)
+    
+from functools import reduce
+from pyspark.sql import DataFrame
+
+dfs = [heating_metrics_by_type_upgrade, cooling_metrics_by_type_upgrade, total_metrics_by_upgrade, total_metrics_by_upgrade_fuel]
+cnn_evaluation_metrics = reduce(DataFrame.unionAll, dfs)
 
 # COMMAND ----------
 

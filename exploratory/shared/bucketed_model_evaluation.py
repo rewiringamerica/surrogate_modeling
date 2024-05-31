@@ -88,19 +88,16 @@ pep_projects = spark.sql(
 # COMMAND ----------
 
 @F.udf(FloatType())
-def absolute_percentage_error(pred, true, eps=1e3):
-    if true > eps:
+def absolute_percentage_error(pred, true, eps=1e-3):
+    if abs(true) > eps:
         return abs((true - pred) / true) * 100
     else:
         return None
 
 
 @F.udf(FloatType())
-def absolute_error(pred, true, eps=1e3):
-    if true > eps:
-        return abs(true - pred)
-    else:
-        return None
+def absolute_error(pred, true):
+    return abs(true - pred)
 
 
 # join buildings to bucket prediction (baseline)
@@ -245,6 +242,10 @@ metrics_by_upgrade = (
 metrics_buckets = metrics_by_heating_fuel_upgrade.unionByName(
     metrics_by_cooling_type_upgrade
 ).unionByName(metrics_by_upgrade)
+
+# COMMAND ----------
+
+
 
 # COMMAND ----------
 

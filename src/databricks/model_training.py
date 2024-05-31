@@ -41,6 +41,7 @@
 
 # # install required packages: note that tensorflow must be installed at the notebook-level
 %pip install mlflow==2.13.0
+dbutils.library.restartPython()
 
 # COMMAND ----------
 
@@ -206,7 +207,7 @@ class SurrogateModelingWrapper(mlflow.pyfunc.PythonModel):
 # COMMAND ----------
 
 # DBTITLE 1,Initialize model
-model = Model(name="test" if DEBUG else "sf_hvac_by_fuel")
+sm = Model(name="test" if DEBUG else "sf_hvac_by_fuel")
 
 # COMMAND ----------
 
@@ -231,7 +232,7 @@ with mlflow.start_run() as run:
     run_id = mlflow.active_run().info.run_id
 
     # Create the keras model
-    keras_model = model.create_model(train_gen=train_gen, layer_params=layer_params)
+    keras_model = sm.create_model(train_gen=train_gen, layer_params=layer_params)
 
     # Fit the model
     history = keras_model.fit(
@@ -253,7 +254,7 @@ with mlflow.start_run() as run:
 
     mlflow.pyfunc.log_model(
         python_model=pyfunc_model,
-        artifact_path="model_path", 
+        artifact_path=sm.artifact_path, 
         code_paths = ['model.py'], 
         #signature=mlflow.models.infer_signature(df)
     )
@@ -290,10 +291,9 @@ if DEBUG:
 # evaluate the unregistered model we just logged and make sure everything runs
 if DEBUG: 
     print(run_id)
-    model_uri = f"runs:/{run_id}/model_path"
-    mlflow.pyfunc.get_model_dependencies(model_uri = model_uri)
+    mlflow.pyfunc.get_model_dependencies(model_uri = sm.get_model_uri(run_id=run_id))
     # Load the model using its registered name and version/stage from the MLflow model registry
-    model_loaded = mlflow.pyfunc.load_model(model_uri = model_uri)
+    model_loaded = mlflow.pyfunc.load_model(model_uri = sm.get_model_uri(run_id=run_id))
     test_gen = DataGenerator(train_data=test_data)
     # load input data table as a Spark DataFrame
     input_data = test_gen.training_set.load_df().toPandas()
@@ -310,3 +310,7 @@ if DEBUG:
 # columns = F.struct(input_data.columns) # use struct
 # df = input_data.withColumn("prediction", model_udf(columns))
 # df.display()
+
+# COMMAND ----------
+
+
