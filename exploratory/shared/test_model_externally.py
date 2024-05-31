@@ -9,7 +9,8 @@
 
 # COMMAND ----------
 
-from src.databricks.model import Model
+from src.databricks.surrogate_model import SurrogateModel
+
 
 # COMMAND ----------
 

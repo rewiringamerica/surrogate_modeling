@@ -5,19 +5,21 @@
 # MAGIC Train deep learning model to predict energy a building's HVAC energy consumption
 # MAGIC
 # MAGIC ### Process
-# MAGIC * Transform building metadata into features and subset to features of interest
-# MAGIC * Pivot weather data into wide vector format with pkey `weather_file_city` and a 8670-length timeseries vector for each weather feature column
-# MAGIC * Write building metadata features and weather features to feature store tables
+# MAGIC * Load in train/val/test sets containing targets and feature keys
+# MAGIC * Initialize data generators on train/val sets which pulls in weather and building model features
+# MAGIC * Train model
+# MAGIC * Evaluate model and write out metrics
 # MAGIC
 # MAGIC ### I/Os
 # MAGIC
 # MAGIC ##### Inputs: 
-# MAGIC - `ml.surrogate_model.building_metadata`: Building metadata indexed by (building_id)
-# MAGIC - `ml.surrogate_model.weather_data_hourly`: Hourly weather data indexed by (weather_file_city, hour datetime)
+# MAGIC - `ml.surrogate_model.building_metadata`: Building metadata features indexed by (building_id)
+# MAGIC - `ml.surrogate_model.weather_data_hourly`: Weather data indexed by (weather_file_city) with a 8670-length timeseries vector
+# MAGIC - `ml.surrogate_model.building_upgrade_simulation_outputs_annual`: Annual building model simulation outputs indexed by (building_id, upgrade_id)
 # MAGIC
 # MAGIC ##### Outputs: 
-# MAGIC - `ml.surrogate_model.building_metadata`: Building metadata features indexed by (building_id)
-# MAGIC - `ml.surrogate_model.weather_data_hourly`: Weather data indexed by (weather_file_city) with a 8670-length timeseries vector for each weather feature column
+# MAGIC - `gs://the-cube/export/surrogate_model_metrics/cnn/{model_name}_v{model_version_num}.csv'`: Aggregated evaluation metrics
+# MAGIC
 # MAGIC
 # MAGIC ### TODOs:
 # MAGIC
@@ -55,12 +57,14 @@ print(DEBUG)
 
 # COMMAND ----------
 
+import os
+os.environ['TF_FORCE_GPU_ALLOW_GROWTH'] = 'true'
+
+# COMMAND ----------
+
 # DBTITLE 1,Import
 # MAGIC %load_ext autoreload
 # MAGIC %autoreload 2
-# MAGIC
-# MAGIC import os
-# MAGIC os.environ['TF_FORCE_GPU_ALLOW_GROWTH'] = 'true'
 # MAGIC
 # MAGIC from typing import Tuple, Dict
 # MAGIC
@@ -74,7 +78,7 @@ print(DEBUG)
 # MAGIC from tensorflow import keras
 # MAGIC
 # MAGIC from datagen import DataGenerator
-# MAGIC from model import Model
+# MAGIC from surrogate_model import SurrogateModel
 # MAGIC
 # MAGIC # list available GPUs
 # MAGIC tf.config.list_physical_devices("GPU")
@@ -260,7 +264,7 @@ class SurrogateModelingWrapper(mlflow.pyfunc.PythonModel):
 # COMMAND ----------
 
 # DBTITLE 1,Initialize model
-model = Model(name='test' if DEBUG else 'sf_detatched_hvac_baseline')
+model = SurrogateModel(name='test' if DEBUG else 'sf_detatched_hvac_baseline')
 
 # COMMAND ----------
 

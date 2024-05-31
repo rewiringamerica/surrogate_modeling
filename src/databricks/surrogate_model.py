@@ -12,7 +12,7 @@ from tensorflow.keras import layers, models
 
 from src.databricks.datagen import DataGenerator
 
-class Model:
+class SurrogateModel:
     """
     A Deep Learning model for surrogate modeling energy consumption prediction.
 

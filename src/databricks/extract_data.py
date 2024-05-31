@@ -43,11 +43,7 @@ import pyspark.sql.functions as F
 # COMMAND ----------
 
 # DBTITLE 1,Data Paths
-RESSTOCK_PATH = os.environ.get(
-    "SURROGATE_MODELING_RESSTOCK_PATH",
-    "gs://the-cube/data/raw/nrel/end_use_load_profiles/2022/"
-    "resstock_tmy3_release_1/",
-)
+RESSTOCK_PATH = "gs://the-cube/data/raw/nrel/end_use_load_profiles/2022/resstock_tmy3_release_1/"
 
 BUILDING_METADATA_PARQUET_PATH = (
     RESSTOCK_PATH
@@ -77,7 +73,7 @@ SHARED_COLUMN_RENAME_DICT = {"bldg_id": "building_id", "upgrade": "upgrade_id"}
 
 def clean_resstock_columns(
     df: DataFrame,
-    remove_strings_from_columns: List[str],
+    remove_strings_from_columns: List[str] = [],
     remove_columns_with_strings: List[str] = [],
 ) -> DataFrame:
     """
@@ -101,7 +97,7 @@ def clean_resstock_columns(
         *[
             f"{col} as {re.sub('|'.join(remove_strings_from_columns), '', col)}"
             for col in df.columns
-            if not re.search("|".join(remove_columns_with_strings), col)
+            if len(remove_columns_with_strings) == 0 or not re.search("|".join(remove_columns_with_strings), col)
         ]
     )
     return df
@@ -153,6 +149,7 @@ def extract_annual_outputs() -> DataFrame:
         df=annual_energy_consumption_with_metadata,
         remove_strings_from_columns=["in__", "out__", "__energy_consumption__kwh"],
         remove_columns_with_strings=[
+            #remove all "in__*" columns except for "in__weather_file_city"
             r"in__(?!weather_file_city)",
             "emissions",
             "weight",
