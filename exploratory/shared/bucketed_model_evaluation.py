@@ -89,7 +89,7 @@ pep_projects = spark.sql(
 
 @F.udf(FloatType())
 def absolute_percentage_error(pred, true, eps=1e-3):
-    if true > eps:
+    if abs(true) > eps:
         return abs((true - pred) / true) * 100
     else:
         return None
@@ -234,7 +234,15 @@ metrics_buckets = metrics_by_heating_fuel_upgrade.unionByName(
 
 # COMMAND ----------
 
+metrics_buckets.display()
+
+# COMMAND ----------
+
 # write out aggegated metrics
 metrics_buckets.toPandas().to_csv(
     "gs://the-cube/export/surrogate_model_metrics/bucketed_sf_hvac.csv", index=None
 )
+
+# COMMAND ----------
+
+

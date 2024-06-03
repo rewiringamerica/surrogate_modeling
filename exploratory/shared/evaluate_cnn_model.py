@@ -34,7 +34,7 @@ pred_df = pred_df.drop('heating_fuel', 'ac_type').join(building_features, on = [
 
 @udf("array<double>")
 def APE(prediction, actual, eps = 1E-3):
-    return [abs(float(x - y))/y*100 if y > eps else None for x, y in zip(prediction, actual) ]
+    return [abs(float(x - y))/y*100 if abs(y) > eps else None for x, y in zip(prediction, actual) ]
 
 # COMMAND ----------
 
@@ -164,6 +164,10 @@ cnn_metrics = cnn_evaluation_metrics.toPandas()
 
 # COMMAND ----------
 
+bucket_metrics
+
+# COMMAND ----------
+
 bucket_metrics['Model'] = 'Bucketed'
 cnn_metrics['Model'] = 'CNN'
 
@@ -210,6 +214,10 @@ metrics_combined = (
             .sort_values(['Upgrade ID', 'Type'])
 )
 
+
+# COMMAND ----------
+
+metrics_combined 
 
 # COMMAND ----------
 
