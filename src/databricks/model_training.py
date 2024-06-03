@@ -121,7 +121,7 @@ def load_data(
         f"""
         SELECT B.building_id, B.upgrade_id, B.weather_file_city, {sum_str}
         FROM ml.surrogate_model.building_upgrade_simulation_outputs_annual O
-        LEFT JOIN {building_feature_table_name} B 
+        INNER JOIN {building_feature_table_name} B 
             ON B.upgrade_id = O.upgrade_id AND B.building_id == O.building_id
         """
     )
