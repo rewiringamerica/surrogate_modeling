@@ -28,12 +28,12 @@ targets = ['heating', 'cooling'] #in theory could prob pull this from model arti
 pred_df = spark.table(MODEL_TESTSET_PREDICTIONS_TABLE)
 building_features = spark.table('ml.surrogate_model.building_features')
 
-pred_df = pred_df.join(building_features, on = ['building_id', 'upgrade_id'])
+pred_df = pred_df.drop('heating_fuel', 'ac_type').join(building_features, on = ['building_id', 'upgrade_id'])
 
 # COMMAND ----------
 
 @udf("array<double>")
-def APE(prediction, actual, eps = 1E3):
+def APE(prediction, actual, eps = 1E-3):
     return [abs(float(x - y))/y*100 if y > eps else None for x, y in zip(prediction, actual) ]
 
 # COMMAND ----------
@@ -84,11 +84,16 @@ pred_df_savings = (
 # COMMAND ----------
 
 def aggregate_metrics(pred_df_savings, groupby_cols, target_idx):
-    
+ 
     aggregation_expression = [
-        f(F.col(c)[target_idx]).alias(f"{f.__name__}_{c}")
-        for f in [F.median, F.mean] 
-        for c in ['absolute_percentage_error_savings', 'absolute_error_savings', 'absolute_percentage_error','absolute_error']
+        F.round(f(F.col(colname)[target_idx]), round_precision).alias(f"{f.__name__}_{colname}")
+        for f in [F.median, F.mean]
+        for colname, round_precision in [
+            ("absolute_error", 0),
+            ("absolute_percentage_error", 1),
+            ("absolute_error_savings", 0),
+            ("absolute_percentage_error_savings", 1)
+        ]
     ]
 
     return (
@@ -99,24 +104,22 @@ def aggregate_metrics(pred_df_savings, groupby_cols, target_idx):
 
 # COMMAND ----------
 
-
 heating_metrics_by_type_upgrade = (aggregate_metrics(
     pred_df_savings = pred_df_savings,
         groupby_cols=['baseline_heating_fuel', 'upgrade_id'],
         target_idx=2)
         #target_idx=0)
     .withColumnRenamed('baseline_heating_fuel', 'type')
-    .withColumn('category', F.lit('heating'))
 )
 
+#only present by cooling type for baseline
 cooling_metrics_by_type_upgrade = (
     aggregate_metrics(
-        pred_df_savings = pred_df_savings.where(F.col('baseline_ac_type') != 'Heat Pump'),
+        pred_df_savings = pred_df_savings.where(F.col('baseline_ac_type') != 'Heat Pump').where(F.col('upgrade_id') == 0),
         groupby_cols=['baseline_ac_type', 'upgrade_id'],
         target_idx=2)
          #target_idx=1)
     .withColumnRenamed('baseline_ac_type', 'type')
-    .withColumn('category', F.lit('cooling'))
 )
 
 total_metrics_by_upgrade = (
@@ -125,7 +128,6 @@ total_metrics_by_upgrade = (
         groupby_cols=['upgrade_id'],
         target_idx=2)
     .withColumn('type', F.lit('Total'))
-    .withColumn('category', F.lit('total'))
 )
 
 cnn_evaluation_metrics = heating_metrics_by_type_upgrade.unionByName(cooling_metrics_by_type_upgrade).unionByName(total_metrics_by_upgrade)
@@ -184,7 +186,7 @@ metrics_combined = (
     pd.concat([bucket_metrics, cnn_metrics])
         .rename(columns={**metric_rename_dict, **{'upgrade_id' : 'Upgrade ID', 'type': 'Type'}})
         .melt(
-            id_vars = ['Type',  'Model', 'Upgrade ID', 'category'], 
+            id_vars = ['Type',  'Model', 'Upgrade ID'], 
             value_vars=list(metric_rename_dict.values()),
             var_name='Metric'
     )
@@ -202,20 +204,16 @@ metrics_combined['Type'] = pd.Categorical(
 metrics_combined = (
         metrics_combined
             .pivot(
-                index = ['Upgrade ID', 'category', 'Type',],
+                index = ['Upgrade ID', 'Type',],
                 columns = ['Metric',  'Model'], 
                 values = 'value')
-            .droplevel('category')
+            .sort_values(['Upgrade ID', 'Type'])
 )
 
 
 # COMMAND ----------
 
-metrics_combined
-
-# COMMAND ----------
-
-metrics_combined.to_csv(f'gs://the-cube/export/surrogate_model_metrics/comparison/{MODEL_VERSION_NAME}_by_method_upgrade_type.csv', float_format = '%.2f')
+metrics_combined.to_csv(f'gs://the-cube/export/surrogate_model_metrics/comparison/{MODEL_VERSION_NAME}_by_method_upgrade_type.csv')
 
 # COMMAND ----------
 
@@ -248,6 +246,8 @@ pred_df_savings_pd = (
     pred_df_savings_hvac
         .withColumn('Model', F.lit('CNN'))
         .unionByName(bucketed_pred.withColumn('Model', F.lit('Bucketed')))
+        .replace({'Shared Heating' : 'Shared', 'No Heating' : 'None'}, subset = 'baseline_heating_fuel')
+        .where(F.col('baseline_heating_fuel') != 'Heat Pump')
         .withColumnsRenamed(
             {'baseline_heating_fuel' : 'Baseline Heating Fuel', 
              "absolute_percentage_error" : "Absolute Percentage Error", 
@@ -263,9 +263,9 @@ with sns.axes_style("whitegrid"):
 
     g = sns.catplot(
         data = pred_df_savings_pd_clip, x='Baseline Heating Fuel', y="Absolute Percentage Error",
-        order = ['Fuel Oil', 'Propane', 'Natural Gas', 'Electric Resistance',  'Heat Pump', 'Shared Heating', 'No Heating'],
+        order = ['Fuel Oil', 'Propane', 'Natural Gas', 'Electric Resistance', 'Shared', 'None'],
         hue = 'Model', palette = 'viridis',  fill=False,  linewidth=1.25,
-        kind = 'box',  row="Upgrade ID", row_order = ['0', '1', '3', '4'], height=3, aspect= 3, sharey=True, sharex=True,
+        kind = 'box',  row="Upgrade ID", row_order = ['0', '1', '3', '4'], height=2.5, aspect= 3.25, sharey=True, sharex=True,
         showfliers=False, showmeans=True, meanprops={'marker':'o','markerfacecolor':'white','markeredgecolor':'k','markersize':'4'}, 
     )
 g.fig.subplots_adjust(top=.93)
@@ -312,7 +312,3 @@ def save_figure_to_gcfs(fig, gcspath, figure_format ='png', dpi = 200, transpare
 # COMMAND ----------
 
 save_figure_to_gcfs(g.fig, CloudPath('gs://the-cube') / 'export'/ 'surrogate_model_metrics' / 'comparison'/f'{MODEL_VERSION_NAME}_vs_bucketed.png')
-
-# COMMAND ----------
-
-
