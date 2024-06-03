@@ -130,71 +130,17 @@ pred_by_building_upgrade_fuel = test_set.select(*sample_pkeys, *keep_features).j
 
 # COMMAND ----------
 
-w = Window().partitionBy("building_id", "fuel").orderBy(F.asc("upgrade_id"))
-
-
-@udf("double")
-def APE(prediction, actual, eps=1e-3):
-    return abs(float(prediction - actual) / actual) * 100 if abs(actual) > eps else None
-
-
-pred_df_hvac_process = (
-    pred_by_building_upgrade_fuel.replace("None", "No Heating", subset="heating_fuel")
-    .replace("None", "No Cooling", subset="ac_type")
-    .withColumn(
-        "heating_fuel",
-        F.when(F.col("ac_type") == "Heat Pump", F.lit("Heat Pump"))
-        .when(F.col("heating_fuel") == "Electricity", F.lit("Electric Resistance"))
-        .when(F.col("heating_appliance_type") == "Shared", F.lit("Shared Heating"))
-        .when(F.col("heating_fuel") == "None", F.lit("No Heating"))
-        .otherwise(F.col("heating_fuel")),
-    )
-    .withColumn(
-        "ac_type",
-        F.when(F.col("ac_type") == "Shared", F.lit("Shared Cooling"))
-        .when(F.col("ac_type") == "None", F.lit("No Cooling"))
-        .otherwise(F.col("ac_type")),
-    )
-)
-
-pred_df_savings = (
-    pred_df_hvac_process.withColumn(
-        "baseline_heating_fuel", F.first(F.col("heating_fuel")).over(w)
-    )
-    .withColumn("baseline_ac_type", F.first(F.col("ac_type")).over(w))
-    .withColumn("prediction_baseline", F.first(F.col("prediction")).over(w))
-    .withColumn("actual_baseline", F.first(F.col("actual")).over(w))
-    .withColumn(
-        "prediction_savings", F.col("prediction_baseline") - F.col("prediction")
-    )
-    .withColumn("actual_savings", F.col("actual_baseline") - F.col("actual"))
-    .withColumn(
-        "absolute_error",
-        F.when(F.col("upgrade_id") == "0", F.lit(None)).otherwise(
-            F.abs(F.col("prediction") - F.col("actual"))
-        ),
-    )
-    .withColumn("absolute_percentage_error", APE(F.col("prediction"), F.col("actual")))
-    .withColumn(
-        "absolute_error_savings",
-        F.when(F.col("upgrade_id") == "0", F.lit(None)).otherwise(
-            F.abs(F.col("prediction_savings") - F.col("actual_savings"))
-        ),
-    )
-    .withColumn(
-        "absolute_percentage_error_savings",
-        APE(F.col("prediction_savings"), F.col("actual_savings")),
-    )
-).replace(float("nan"), None)
-
-# COMMAND ----------
-
-def aggregate_metrics(pred_df_savings, groupby_cols):
-    
+def aggregate_metrics(pred_df_savings, groupby_cols, target_idx):
+ 
     aggregation_expression = [
-        f(F.col(c)).alias(f"{f.__name__}_{c}")
-        for f in [F.median, F.mean] 
-        for c in ['absolute_percentage_error','absolute_error', 'absolute_percentage_error_savings', 'absolute_error_savings']
+        F.round(f(F.col(colname)[target_idx]), round_precision).alias(f"{f.__name__}_{colname}")
+        for f in [F.median, F.mean]
+        for colname, round_precision in [
+            ("absolute_error", 0),
+            ("absolute_percentage_error", 1),
+            ("absolute_error_savings", 0),
+            ("absolute_percentage_error_savings", 1)
+        ]
     ]
 
     return (
@@ -204,7 +150,6 @@ def aggregate_metrics(pred_df_savings, groupby_cols):
         )
 
 # COMMAND ----------
-
 cooling_metrics_by_type_upgrade = (
     aggregate_metrics(
         pred_df_savings=pred_df_savings.where(F.col("baseline_ac_type") != "Heat Pump")
@@ -212,7 +157,6 @@ cooling_metrics_by_type_upgrade = (
         .where(F.col("upgrade_id") == 0),
         groupby_cols=["baseline_ac_type", "upgrade_id"],
     ).withColumnRenamed("baseline_ac_type", "type")
-    # .withColumn('category', F.lit('cooling'))
 )
 
 heating_metrics_by_type_upgrade = (
@@ -220,7 +164,6 @@ heating_metrics_by_type_upgrade = (
         pred_df_savings=pred_df_savings.where(F.col("fuel") == "total"),
         groupby_cols=["baseline_heating_fuel", "upgrade_id"],
     ).withColumnRenamed("baseline_heating_fuel", "type")
-    # .withColumn('category', F.lit('heating'))
 )
 
 total_metrics_by_upgrade = (
@@ -229,8 +172,6 @@ total_metrics_by_upgrade = (
         groupby_cols=["upgrade_id"],
     )
     .withColumn('type', F.lit('Total'))
-    #.withColumn("category", F.lit("total"))
-)
 
 total_metrics_by_upgrade_fuel = (
     aggregate_metrics(
@@ -239,7 +180,6 @@ total_metrics_by_upgrade_fuel = (
         ),
         groupby_cols=["fuel", "upgrade_id"],
     ).withColumn("type", F.concat_ws(" : ", F.lit("Total"), F.col("fuel")))
-    # .withColumn('category', F.lit('total'))
     .drop("fuel")
 )
 
@@ -307,7 +247,6 @@ types = [
 
 
 # COMMAND ----------
-
 # MAGIC %md ## Compare against Bucketed Model
 
 # COMMAND ----------
@@ -354,7 +293,7 @@ metrics_combined = metrics_combined.pivot(
 
 # COMMAND ----------
 
-metrics_combined
+metrics_combined 
 
 # COMMAND ----------
 
@@ -396,16 +335,16 @@ bucketed_pred = (
 # COMMAND ----------
 
 pred_df_savings_pd = (
-    pred_df_savings_hvac.withColumn("Model", F.lit("CNN"))
-    .unionByName(bucketed_pred.withColumn("Model", F.lit("Bucketed")))
-    .withColumnsRenamed(
-        {
-            "baseline_heating_fuel": "Baseline Heating Fuel",
-            "absolute_percentage_error": "Absolute Percentage Error",
-            "upgrade_id": "Upgrade ID",
-        }
-    )
-).toPandas()
+    pred_df_savings_hvac
+        .withColumn('Model', F.lit('CNN'))
+        .unionByName(bucketed_pred.withColumn('Model', F.lit('Bucketed')))
+        .replace({'Shared Heating' : 'Shared', 'No Heating' : 'None'}, subset = 'baseline_heating_fuel')
+        .where(F.col('baseline_heating_fuel') != 'Heat Pump')
+        .withColumnsRenamed(
+            {'baseline_heating_fuel' : 'Baseline Heating Fuel', 
+             "absolute_percentage_error" : "Absolute Percentage Error", 
+             'upgrade_id' : 'Upgrade ID'})
+    ).toPandas()
 
 # COMMAND ----------
 
@@ -425,9 +364,8 @@ with sns.axes_style("whitegrid"):
             "Propane",
             "Natural Gas",
             "Electric Resistance",
-            "Heat Pump",
-            "Shared Heating",
-            "No Heating",
+            "Shared",
+            "None",
         ],
         hue="Model",
         palette="viridis",
@@ -502,5 +440,4 @@ save_figure_to_gcfs(
 )
 
 # COMMAND ----------
-
 

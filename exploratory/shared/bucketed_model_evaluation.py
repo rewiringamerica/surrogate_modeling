@@ -35,7 +35,7 @@ predicted_bucketed_baseline_consumption = (
 ).alias("pred")
 
 predicted_bucketed_upgrade_consumption = (
-    spark.table("housing_profile.project_savings_upfront_cost_bucketed@v70").select(
+    spark.table("housing_profile.all_project_savings_bucketed").select(
         "id",
         "bucket_id",
         "end_use",
@@ -65,7 +65,7 @@ actual_baseline_consumption_by_building_bucket = spark.sql(
 actual_consumption_savings_by_building_bucket = spark.sql(
     f"""
     SELECT building_id, bucket_id, SUM(kwh_upgrade) AS kwh_upgrade, SUM(kwh_delta) AS kwh_delta
-    FROM housing_profile.resstock_annual_project_savings_by_building_geography_enduse_fuel_bucket@v3
+    FROM housing_profile.all_resstock_annual_project_savings_by_building_geography_enduse_fuel_bucket
     WHERE acs_housing_type == 'Single-Family'
         AND upgrade_id IN (1, 3, 4)
     GROUP BY building_id, bucket_id
@@ -93,11 +93,6 @@ def absolute_percentage_error(pred, true, eps=1e-3):
         return abs((true - pred) / true) * 100
     else:
         return None
-
-
-@F.udf(FloatType())
-def absolute_error(pred, true):
-    return abs(true - pred)
 
 # join buildings to bucket prediction (baseline)
 prediction_actual_by_building_bucket_baseline = (
@@ -169,7 +164,7 @@ error_by_building_upgrade = (
     )
     .withColumn(
         "absolute_error",
-        absolute_error(F.col("kwh_upgrade_median"), F.col("kwh_upgrade")),
+        F.round(F.abs(F.col("kwh_upgrade_median") - F.col("kwh_upgrade")))
     )
     .withColumn(
         "absolute_percentage_error_savings",
@@ -177,7 +172,7 @@ error_by_building_upgrade = (
     )
     .withColumn(
         "absolute_error_savings",
-        absolute_error(F.col("kwh_delta_median"), F.col("kwh_delta")),
+        F.round(F.abs(F.col("kwh_delta_median") - F.col("kwh_delta")))
     )
 )
 
@@ -197,13 +192,13 @@ def aggregate_metrics(df, groupby_cols):
 
     # for computing various statistics of interest over all building ids within a bucket
     aggregation_expression = [
-        f(F.col(c)).alias(f"{f.__name__}_{c}")
+        F.round(f(F.col(colname)), round_precision).alias(f"{f.__name__}_{colname}")
         for f in [F.median, F.mean]
-        for c in [
-            "absolute_error",
-            "absolute_percentage_error",
-            "absolute_error_savings",
-            "absolute_percentage_error_savings",
+        for colname, round_precision in [
+            ("absolute_error", 0),
+            ("absolute_percentage_error", 1),
+            ("absolute_error_savings", 0),
+            ("absolute_percentage_error_savings", 1)
         ]
     ]
 
@@ -218,24 +213,19 @@ metrics_by_heating_fuel_upgrade = (
         groupby_cols=["baseline_appliance_fuel", "upgrade_id"],
     )
     .withColumnRenamed("baseline_appliance_fuel", "type")
-    .withColumn("category", F.lit("heating"))
 )
 # aggregate hvac prediction metrics by upgrade and ccooling type
 metrics_by_cooling_type_upgrade = (
     aggregate_metrics(
-        df=error_by_building_upgrade.where(
-            F.col("cooling_type") != "Heat Pump"
-        ),  # already accounted for in heating summary above
+        df=error_by_building_upgrade.where(F.col("cooling_type") != "Heat Pump").where(F.col('upgrade_id') == 0),  # already accounted for in heating summary above
         groupby_cols=["cooling_type", "upgrade_id"],
     )
     .withColumnRenamed("cooling_type", "type")
-    .withColumn("category", F.lit("cooling"))
 )
 # aggregate hvac prediction metrics by upgrade
 metrics_by_upgrade = (
     aggregate_metrics(df=error_by_building_upgrade, groupby_cols=["upgrade_id"])
     .withColumn("type", F.lit("Total"))
-    .withColumn("category", F.lit("total"))
 )
 # combine all the various aggregated metrics
 metrics_buckets = metrics_by_heating_fuel_upgrade.unionByName(
@@ -244,7 +234,7 @@ metrics_buckets = metrics_by_heating_fuel_upgrade.unionByName(
 
 # COMMAND ----------
 
-
+metrics_buckets.display()
 
 # COMMAND ----------
 
@@ -252,3 +242,7 @@ metrics_buckets = metrics_by_heating_fuel_upgrade.unionByName(
 metrics_buckets.toPandas().to_csv(
     "gs://the-cube/export/surrogate_model_metrics/bucketed_sf_hvac.csv", index=None
 )
+
+# COMMAND ----------
+
+
