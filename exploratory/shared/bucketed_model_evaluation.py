@@ -198,7 +198,7 @@ def aggregate_metrics(df, groupby_cols):
             ("absolute_error", 0),
             ("absolute_percentage_error", 1),
             ("absolute_error_savings", 0),
-            ("absolute_percentage_error_savings", 1)
+            ("absolute_percentage_error_savings", 1),
         ]
     ]
 
@@ -207,26 +207,25 @@ def aggregate_metrics(df, groupby_cols):
 # COMMAND ----------
 
 # aggregate hvac prediction metrics by upgrade and heating type
-metrics_by_heating_fuel_upgrade = (
-    aggregate_metrics(
-        df=error_by_building_upgrade,
-        groupby_cols=["baseline_appliance_fuel", "upgrade_id"],
-    )
-    .withColumnRenamed("baseline_appliance_fuel", "type")
-)
-# aggregate hvac prediction metrics by upgrade and ccooling type
-metrics_by_cooling_type_upgrade = (
-    aggregate_metrics(
-        df=error_by_building_upgrade.where(F.col("cooling_type") != "Heat Pump").where(F.col('upgrade_id') == 0),  # already accounted for in heating summary above
-        groupby_cols=["cooling_type", "upgrade_id"],
-    )
-    .withColumnRenamed("cooling_type", "type")
-)
+metrics_by_heating_fuel_upgrade = aggregate_metrics(
+    df=error_by_building_upgrade,
+    groupby_cols=["baseline_appliance_fuel", "upgrade_id"],
+).withColumnRenamed("baseline_appliance_fuel", "type")
+
+# aggregate hvac prediction metrics by upgrade and cooling type for baseline only
+# where heat pumps are already covered by the heating rows above
+metrics_by_cooling_type_upgrade = aggregate_metrics(
+    df=error_by_building_upgrade.where(F.col("cooling_type") != "Heat Pump").where(
+        F.col("upgrade_id") == 0
+    ),
+    groupby_cols=["cooling_type", "upgrade_id"],
+).withColumnRenamed("cooling_type", "type")
+
 # aggregate hvac prediction metrics by upgrade
-metrics_by_upgrade = (
-    aggregate_metrics(df=error_by_building_upgrade, groupby_cols=["upgrade_id"])
-    .withColumn("type", F.lit("Total"))
-)
+metrics_by_upgrade = aggregate_metrics(
+    df=error_by_building_upgrade, groupby_cols=["upgrade_id"]
+).withColumn("type", F.lit("Total"))
+
 # combine all the various aggregated metrics
 metrics_buckets = metrics_by_heating_fuel_upgrade.unionByName(
     metrics_by_cooling_type_upgrade
