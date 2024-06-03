@@ -12,23 +12,28 @@
 # MAGIC %load_ext autoreload
 # MAGIC %autoreload 2
 # MAGIC
+# MAGIC from functools import reduce
+# MAGIC
 # MAGIC import mlflow
 # MAGIC import numpy as np
 # MAGIC import pandas as pd
 # MAGIC import pyspark.sql.functions as F
 # MAGIC import seaborn as sns
-# MAGIC from functools import reduce
+# MAGIC from cloudpathlib import CloudPath
 # MAGIC from pyspark.sql import DataFrame
 # MAGIC from pyspark.sql.window import Window
 # MAGIC from pyspark.sql.types import ArrayType, IntegerType
+# MAGIC
 # MAGIC
 # MAGIC from src.databricks.datagen import DataGenerator, load_data
 # MAGIC from src.databricks.surrogate_model import SurrogateModel
 
 # COMMAND ----------
 
+EXPORT_FPATH = CloudPath("gs://the-cube") / "export"  #move to globals after reorg
 MODEL_NAME = "sf_hvac_by_fuel"
-RUN_ID = "21170c4978fd4efc9d90e25d70880d76"
+RUN_ID = "ce448363eedb411bacbc443db3f988f2"
+MODEL_RUN_NAME = f"{MODEL_NAME}@{RUN_ID}"
 
 # COMMAND ----------
 
@@ -130,10 +135,63 @@ pred_by_building_upgrade_fuel = test_set.select(*sample_pkeys, *keep_features).j
 
 # COMMAND ----------
 
-def aggregate_metrics(pred_df_savings, groupby_cols, target_idx):
+w = Window().partitionBy("building_id", "fuel").orderBy(F.asc("upgrade_id"))
+
+
+@udf("double")
+def APE(prediction, actual, eps=1e-3):
+    return abs(float(prediction - actual) / actual) * 100 if abs(actual) > eps else None
+
+
+pred_df_hvac_process = (
+    pred_by_building_upgrade_fuel.replace("None", "No Heating", subset="heating_fuel")
+    .replace("None", "No Cooling", subset="ac_type")
+    .withColumn(
+        "heating_fuel",
+        F.when(F.col("ac_type") == "Heat Pump", F.lit("Heat Pump"))
+        .when(F.col("heating_fuel") == "Electricity", F.lit("Electric Resistance"))
+        .when(F.col("heating_appliance_type") == "Shared", F.lit("Shared Heating"))
+        .when(F.col("heating_fuel") == "None", F.lit("No Heating"))
+        .otherwise(F.col("heating_fuel")),
+    )
+    .withColumn(
+        "ac_type",
+        F.when(F.col("ac_type") == "Shared", F.lit("Shared Cooling"))
+        .when(F.col("ac_type") == "None", F.lit("No Cooling"))
+        .otherwise(F.col("ac_type")),
+    )
+)
+
+pred_df_savings = (
+    pred_df_hvac_process.withColumn(
+        "baseline_heating_fuel", F.first(F.col("heating_fuel")).over(w)
+    )
+    .withColumn("baseline_ac_type", F.first(F.col("ac_type")).over(w))
+    .withColumn("prediction_baseline", F.first(F.col("prediction")).over(w))
+    .withColumn("actual_baseline", F.first(F.col("actual")).over(w))
+    .withColumn("prediction_savings", F.col("prediction_baseline") - F.col("prediction"))
+    .withColumn("actual_savings", F.col("actual_baseline") - F.col("actual"))
+    .withColumn("absolute_error",F.abs(F.col("prediction") - F.col("actual")))
+    .withColumn("absolute_percentage_error", APE(F.col("prediction"), F.col("actual")))
+    .withColumn(
+        "absolute_error_savings",
+        F.when(F.col("upgrade_id") == "0", F.lit(None)).otherwise(
+            F.abs(F.col("prediction_savings") - F.col("actual_savings"))
+        ),
+    )
+    .withColumn(
+        "absolute_percentage_error_savings",
+        APE(F.col("prediction_savings"), F.col("actual_savings")),
+    )
+).replace(float("nan"), None)
+
+
+# COMMAND ----------
+
+def aggregate_metrics(pred_df_savings, groupby_cols):
 
     aggregation_expression = [
-        F.round(f(F.col(colname)[target_idx]), round_precision).alias(
+        F.round(f(F.col(colname)), round_precision).alias(
             f"{f.__name__}_{colname}"
         )
         for f in [F.median, F.mean]
@@ -148,6 +206,7 @@ def aggregate_metrics(pred_df_savings, groupby_cols, target_idx):
     return pred_df_savings.groupby(*groupby_cols).agg(*aggregation_expression)
 
 # COMMAND ----------
+
 cooling_metrics_by_type_upgrade = (
     aggregate_metrics(
         pred_df_savings=pred_df_savings.where(F.col("baseline_ac_type") != "Heat Pump")
@@ -170,25 +229,29 @@ total_metrics_by_upgrade = (
         groupby_cols=["upgrade_id"],
     )
     .withColumn('type', F.lit('Total'))
+)
 
-total_metrics_by_upgrade_fuel = (
+
+total_metrics_by_fuel = (
     aggregate_metrics(
-        pred_df_savings=pred_df_savings.where(F.col("prediction").isNotNull()).where(
-            F.col("fuel") != "total"
-        ),
-        groupby_cols=["fuel", "upgrade_id"],
-    ).withColumn("type", F.concat_ws(" : ", F.lit("Total"), F.col("fuel")))
+        pred_df_savings=pred_df_savings.where(F.col("prediction").isNotNull()).where(F.col("fuel") != "total"),
+        groupby_cols=["fuel"])
+    .withColumn("type", F.initcap(F.regexp_replace("fuel", '_', ' ')))
     .drop("fuel")
+    .withColumn('upgrade_id', F.lit('Total By Fuel'))
 )
 
 dfs = [
     heating_metrics_by_type_upgrade,
     cooling_metrics_by_type_upgrade,
     total_metrics_by_upgrade,
-    total_metrics_by_upgrade_fuel,
+    total_metrics_by_fuel
 ]
 cnn_evaluation_metrics = reduce(DataFrame.unionByName, dfs)
-cnn_evaluation_metrics_without_fuel = reduce(DataFrame.unionByName, dfs[:-1])
+
+# COMMAND ----------
+
+cnn_evaluation_metrics.display()
 
 # COMMAND ----------
 
@@ -199,13 +262,13 @@ cnn_evaluation_metrics_without_fuel = reduce(DataFrame.unionByName, dfs[:-1])
         .format("delta")
         .mode("overwrite")
         .option("overwriteSchema", "true")
-        .option("userMetadata", {"run_id": RUN_ID, "model_name": MODEL_NAME})
+        .option("userMetadata", MODEL_RUN_NAME)
         .saveAsTable("ml.surrogate_model.evaluation_metrics")
 )
 
 # COMMAND ----------
 
-# MAGIC %md ## Export Metrics
+# MAGIC %md ## Compare against Bucketed Model
 
 # COMMAND ----------
 
@@ -222,6 +285,7 @@ metric_rename_dict = {
 }
 # set the order in which types will appear in the table
 types = [
+    "Electricity",
     "Electric Resistance",
     "Natural Gas",
     "Propane",
@@ -233,17 +297,8 @@ types = [
     "Room AC",
     "Shared Cooling",
     "No Cooling",
-    "Total",
-    "Total : natural_gas",
-    "Total : fuel_oil",
-    "Total : propane",
-    "Total : electricity",
+    "Total"
 ]
-
-# COMMAND ----------
-
-# COMMAND ----------
-# MAGIC %md ## Compare against Bucketed Model
 
 # COMMAND ----------
 
@@ -253,14 +308,13 @@ bucket_metrics = pd.read_csv(
     keep_default_na=False,
     dtype={"upgrade_id": "double"},
 )
-cnn_metrics = cnn_evaluation_metrics_without_fuel.toPandas()
+bucket_metrics["upgrade_id"] = bucket_metrics["upgrade_id"].astype('str')
+cnn_metrics = cnn_evaluation_metrics.toPandas()
 
 # COMMAND ----------
 
 bucket_metrics["Model"] = "Bucketed"
 cnn_metrics["Model"] = "CNN"
-
-# COMMAND ----------
 
 metrics_combined = (
     pd.concat([bucket_metrics, cnn_metrics])
@@ -285,15 +339,12 @@ metrics_combined = metrics_combined.pivot(
     ],
     columns=["Metric", "Model"],
     values="value",
-)
-# COMMAND ----------
-
-metrics_combined
+).sort_values(["Upgrade ID","Type"])
 
 # COMMAND ----------
 
 metrics_combined.to_csv(
-    f"gs://the-cube/export/surrogate_model_metrics/comparison/{MODEL_VERSION_NAME}_by_method_upgrade_type.csv"
+    f"gs://the-cube/export/surrogate_model_metrics/comparison/{MODEL_RUN_NAME}_by_method_upgrade_type.csv"
 )
 
 # COMMAND ----------
@@ -302,12 +353,18 @@ metrics_combined.to_csv(
 
 # COMMAND ----------
 
-pred_df_savings_hvac = pred_df_savings.withColumn(
-    "absolute_percentage_error",
-    F.when(F.col("upgrade_id") == 0, F.col("absolute_percentage_error")[4]).otherwise(
-        F.col("absolute_percentage_error_savings")[4]
-    ),
-).select("upgrade_id", "baseline_heating_fuel", "absolute_percentage_error")
+pred_df_savings
+
+# COMMAND ----------
+
+pred_df_savings_hvac = (
+    pred_df_savings
+        .where(F.col("fuel") == "total")
+        .withColumn("absolute_percentage_error",
+                    F.when(F.col("upgrade_id") == 0, F.col("absolute_percentage_error"))
+                    .otherwise(F.col("absolute_percentage_error_savings")))
+        .select("upgrade_id", "baseline_heating_fuel", "absolute_percentage_error")
+)
 
 # COMMAND ----------
 
@@ -372,7 +429,6 @@ with sns.axes_style("whitegrid"):
         linewidth=1.25,
         kind="box",
         row="Upgrade ID",
-        row_order=["0", "1", "3", "4"],
         height=2.5,
         aspect=3.25,
         sharey=True,
@@ -394,9 +450,6 @@ g.fig.suptitle("Prediction Metric Comparison for HVAC Savings")
 # TODO: move to a utils file once code is reorged
 import io
 from google.cloud import storage
-from cloudpathlib import CloudPath
-
-
 def save_figure_to_gcfs(fig, gcspath, figure_format="png", dpi=200, transparent=False):
     """
     Write out a figure to google cloud storage
@@ -429,13 +482,4 @@ def save_figure_to_gcfs(fig, gcspath, figure_format="png", dpi=200, transparent=
 
 # COMMAND ----------
 
-save_figure_to_gcfs(
-    g.fig,
-    CloudPath("gs://the-cube")
-    / "export"
-    / "surrogate_model_metrics"
-    / "comparison"
-    / f"{MODEL_VERSION_NAME}_vs_bucketed.png",
-)
-
-# COMMAND ----------
+save_figure_to_gcfs(g.fig, EXPORT_FPATH / "surrogate_model_metrics" / "comparison"/ f"{MODEL_RUN_NAME}_vs_bucketed.png")
