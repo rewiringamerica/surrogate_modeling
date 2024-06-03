@@ -131,23 +131,21 @@ pred_by_building_upgrade_fuel = test_set.select(*sample_pkeys, *keep_features).j
 # COMMAND ----------
 
 def aggregate_metrics(pred_df_savings, groupby_cols, target_idx):
- 
+
     aggregation_expression = [
-        F.round(f(F.col(colname)[target_idx]), round_precision).alias(f"{f.__name__}_{colname}")
+        F.round(f(F.col(colname)[target_idx]), round_precision).alias(
+            f"{f.__name__}_{colname}"
+        )
         for f in [F.median, F.mean]
         for colname, round_precision in [
             ("absolute_error", 0),
             ("absolute_percentage_error", 1),
             ("absolute_error_savings", 0),
-            ("absolute_percentage_error_savings", 1)
+            ("absolute_percentage_error_savings", 1),
         ]
     ]
 
-    return (
-        pred_df_savings
-            .groupby(*groupby_cols)
-            .agg(*aggregation_expression)
-        )
+    return pred_df_savings.groupby(*groupby_cols).agg(*aggregation_expression)
 
 # COMMAND ----------
 cooling_metrics_by_type_upgrade = (
@@ -244,8 +242,6 @@ types = [
 
 # COMMAND ----------
 
-
-
 # COMMAND ----------
 # MAGIC %md ## Compare against Bucketed Model
 
@@ -267,7 +263,7 @@ cnn_metrics["Model"] = "CNN"
 # COMMAND ----------
 
 metrics_combined = (
-    pd.concat([cnn_metrics, bucket_metrics])
+    pd.concat([bucket_metrics, cnn_metrics])
     .rename(
         columns={**metric_rename_dict, **{"upgrade_id": "Upgrade ID", "type": "Type"}}
     )
@@ -290,16 +286,14 @@ metrics_combined = metrics_combined.pivot(
     columns=["Metric", "Model"],
     values="value",
 )
-
 # COMMAND ----------
 
-metrics_combined 
+metrics_combined
 
 # COMMAND ----------
 
 metrics_combined.to_csv(
-    f"gs://the-cube/export/surrogate_model_metrics/comparison/{MODEL_NAME}_by_method_upgrade_type.csv",
-    float_format="%.2f",
+    f"gs://the-cube/export/surrogate_model_metrics/comparison/{MODEL_VERSION_NAME}_by_method_upgrade_type.csv"
 )
 
 # COMMAND ----------
@@ -335,16 +329,21 @@ bucketed_pred = (
 # COMMAND ----------
 
 pred_df_savings_pd = (
-    pred_df_savings_hvac
-        .withColumn('Model', F.lit('CNN'))
-        .unionByName(bucketed_pred.withColumn('Model', F.lit('Bucketed')))
-        .replace({'Shared Heating' : 'Shared', 'No Heating' : 'None'}, subset = 'baseline_heating_fuel')
-        .where(F.col('baseline_heating_fuel') != 'Heat Pump')
-        .withColumnsRenamed(
-            {'baseline_heating_fuel' : 'Baseline Heating Fuel', 
-             "absolute_percentage_error" : "Absolute Percentage Error", 
-             'upgrade_id' : 'Upgrade ID'})
-    ).toPandas()
+    pred_df_savings_hvac.withColumn("Model", F.lit("CNN"))
+    .unionByName(bucketed_pred.withColumn("Model", F.lit("Bucketed")))
+    .replace(
+        {"Shared Heating": "Shared", "No Heating": "None"},
+        subset="baseline_heating_fuel",
+    )
+    .where(F.col("baseline_heating_fuel") != "Heat Pump")
+    .withColumnsRenamed(
+        {
+            "baseline_heating_fuel": "Baseline Heating Fuel",
+            "absolute_percentage_error": "Absolute Percentage Error",
+            "upgrade_id": "Upgrade ID",
+        }
+    )
+).toPandas()
 
 # COMMAND ----------
 
@@ -374,8 +373,8 @@ with sns.axes_style("whitegrid"):
         kind="box",
         row="Upgrade ID",
         row_order=["0", "1", "3", "4"],
-        height=3,
-        aspect=3,
+        height=2.5,
+        aspect=3.25,
         sharey=True,
         sharex=True,
         showfliers=False,
@@ -440,4 +439,3 @@ save_figure_to_gcfs(
 )
 
 # COMMAND ----------
-
