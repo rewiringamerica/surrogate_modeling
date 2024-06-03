@@ -2,13 +2,13 @@
 # MAGIC %md # Model Training
 # MAGIC
 # MAGIC ### Goal
-# MAGIC Train deep learning model to predict energy a building's HVAC energy consumption
+# MAGIC Train deep learning model to predict a building's HVAC energy consumption
 # MAGIC
 # MAGIC ### Process
 # MAGIC * Load in train/val/test sets containing targets and feature keys
 # MAGIC * Initialize data generators on train/val sets which pulls in weather and building model features
-# MAGIC * Train model
-# MAGIC * Evaluate model and write out metrics
+# MAGIC * Train and log model
+# MAGIC * Test that the trained model works
 # MAGIC
 # MAGIC ### I/Os
 # MAGIC
@@ -18,8 +18,7 @@
 # MAGIC - `ml.surrogate_model.building_upgrade_simulation_outputs_annual`: Annual building model simulation outputs indexed by (building_id, upgrade_id)
 # MAGIC
 # MAGIC ##### Outputs: 
-# MAGIC - `gs://the-cube/export/surrogate_model_metrics/cnn/{model_name}_v{model_version_num}.csv'`: Aggregated evaluation metrics
-# MAGIC
+# MAGIC None. The model is logged to the unity catalog with the run id, but as of now is not registered due to issue with signature enforcement slowing down inference. 
 # MAGIC
 # MAGIC ### TODOs:
 # MAGIC
@@ -249,7 +248,7 @@ with mlflow.start_run() as run:
         epochs=2 if DEBUG else 100,
         batch_size=train_gen.batch_size,
         verbose=2,
-        callbacks=[keras.callbacks.EarlyStopping(monitor="val_loss", patience=5)],
+        callbacks=[keras.callbacks.EarlyStopping(monitor="val_loss", patience=10)],
     )
 
     # wrap in custom class that defines pre and post processing steps to be applied when called at inference time

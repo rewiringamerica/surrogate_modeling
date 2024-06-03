@@ -24,9 +24,7 @@
 # MAGIC #### Outstanding
 # MAGIC
 # MAGIC #### Future Work
-# MAGIC - Add upgrades to the building metadata table
-# MAGIC - Extend building metadata features to cover those related to all end uses and to SF Attatched homes 
-# MAGIC - More largely, updates to the feature table should merge and not overwrite, and in general transformation that are a hyperparameter of the model (i.e, that we may want to vary in different models) should be done downstream of this table. Sorting out exactly which transformations should happen in each of the `build_dataset`, `build_feature_store` and `model_training` files is still a WIP. 
+# MAGIC - Updates to the feature table should merge and not overwrite, and in general transformation that are a hyperparameter of the model (i.e, that we may want to vary in different models) should be done downstream of this table. Sorting out exactly which transformations should happen in each of the `build_dataset`, `build_feature_store` and `model_training` files is still a WIP. 
 # MAGIC
 # MAGIC ---
 # MAGIC Cluster/ User Requirements
@@ -291,7 +289,7 @@ def transform_building_features() -> DataFrame:
     """
     Read and transform subset of building_metadata features for single family dettatched homes.
     Adapted from _get_building_metadata() in datagen.py
-    TODO: add back attatched sf homes and features relevant for all end uses
+    TODO: add features relevant for all end uses
     """
     building_metadata_transformed = (
         spark.read.table("ml.surrogate_model.building_metadata")

@@ -27,8 +27,6 @@
 # MAGIC #### Outstanding
 # MAGIC
 # MAGIC #### Future Work
-# MAGIC - Add hourly outputs
-# MAGIC - Maybe do type conversion on building metadata in this script rather than downstream?
 
 # COMMAND ----------
 
