@@ -307,7 +307,7 @@ def transform_building_features() -> DataFrame:
         # not interested in vacant homes
         .where(F.col("vacancy_status") == "Occupied")
         # add upgrade id corresponding to baseline scenario
-        .withColumn("upgrade_id", F.lit("0"))
+        .withColumn("upgrade_id", F.lit(0.))
         # heating tranformations
         .withColumn(
             "heating_appliance_type",
@@ -440,7 +440,7 @@ def transform_building_features() -> DataFrame:
         .select(
             # primary keys
             "building_id",
-            "upgrade_id",
+            F.col("upgrade_id").cast('double'),
             # foreign key
             "weather_file_city",
             # heating
@@ -529,10 +529,10 @@ def apply_upgrades(baseline_building_features: DataFrame, upgrade_id: int) -> Da
         "upgrade_id", F.lit(upgrade_id)
     )
 
-    if upgrade_id == "0":  # baseline: return as is
+    if upgrade_id == 0:  # baseline: return as is
         return baseline_building_features
 
-    if upgrade_id == "1":  # basic enclosure
+    if upgrade_id == 1:  # basic enclosure
         return (
             baseline_building_features
             # Upgrade insulation of ceiling/roof
@@ -616,12 +616,12 @@ def apply_upgrades(baseline_building_features: DataFrame, upgrade_id: int) -> Da
             # .withColumn('backup_heating_efficiency', F.lit(1.0))
         )
 
-    if upgrade_id == "3":  # heat pump: min efficiency, electric backup
+    if upgrade_id == 3:  # heat pump: min efficiency, electric backup
         return baseline_building_features.transform(
             upgrade_to_hp, "Heat Pump, SEER 15, 9 HSPF", "Heat Pump, SEER 15, 9 HSPF"
         )
 
-    if upgrade_id == "4":  # heat pump: high efficiency, electric backup
+    if upgrade_id == 4:  # heat pump: high efficiency, electric backup
         return baseline_building_features.transform(
             upgrade_to_hp,
             "Heat Pump, SEER 24, 13 HSPF",
@@ -663,7 +663,7 @@ building_metadata_transformed = transform_building_features()
 
 # DBTITLE 1,Apply upgrade logic to metadata
 # create a metadata df for baseline and each HVAC upgrade
-upgrade_ids = ["0", "1", "3", "4"]
+upgrade_ids = [0., 1., 3., 4.]
 building_metadata_hvac_upgrades = reduce(
     DataFrame.unionByName,
     [
