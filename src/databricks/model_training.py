@@ -90,7 +90,7 @@ os.environ['TF_FORCE_GPU_ALLOW_GROWTH'] = 'true'
 # COMMAND ----------
 
 # DBTITLE 1,Load data
-train_data, val_data, test_data = load_data(n_subset=100 if DEBUG else None)
+train_data, val_data, test_data = load_data(n_train=1000 if DEBUG else None)
 
 # COMMAND ----------
 
@@ -210,7 +210,7 @@ class SurrogateModelingWrapper(mlflow.pyfunc.PythonModel):
 # COMMAND ----------
 
 # DBTITLE 1,Initialize model
-sm = Model(name="test" if DEBUG else "sf_hvac_by_fuel")
+sm = SurrogateModel(name="test" if DEBUG else "sf_hvac_by_fuel")
 
 # COMMAND ----------
 
@@ -263,7 +263,7 @@ with mlflow.start_run() as run:
     mlflow.pyfunc.log_model(
         python_model=pyfunc_model,
         artifact_path=sm.artifact_path,
-        code_paths=["model.py"],
+        code_paths=["surrogate_model.py"],
         # signature=mlflow.models.infer_signature(df)
     )
     # mlflow.register_model(f"runs:/{run_id}/model_path", str(model))

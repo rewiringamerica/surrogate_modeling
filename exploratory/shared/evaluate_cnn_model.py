@@ -9,66 +9,57 @@
 
 # COMMAND ----------
 
-import mlflow
-import numpy as np
-import pandas as pd
-import pyspark.sql.functions as F
-import seaborn as sns
-from functools import reduce
-from pyspark.sql import DataFrame
-from pyspark.sql.window import Window
-from pyspark.sql.types import ArrayType, IntegerType
-
-from src.databricks.datagen import DataGenerator, load_data
-from src.databricks.model import Model
+# MAGIC %load_ext autoreload
+# MAGIC %autoreload 2
+# MAGIC
+# MAGIC import mlflow
+# MAGIC import numpy as np
+# MAGIC import pandas as pd
+# MAGIC import pyspark.sql.functions as F
+# MAGIC import seaborn as sns
+# MAGIC from functools import reduce
+# MAGIC from pyspark.sql import DataFrame
+# MAGIC from pyspark.sql.window import Window
+# MAGIC from pyspark.sql.types import ArrayType, IntegerType
+# MAGIC
+# MAGIC from src.databricks.datagen import DataGenerator, load_data
+# MAGIC from src.databricks.surrogate_model import SurrogateModel
 
 # COMMAND ----------
 
 MODEL_NAME = "sf_hvac_by_fuel"
-RUN_ID= '21170c4978fd4efc9d90e25d70880d76'
+RUN_ID= 'ac6a0384d7d7448788fba8f7ffb34e04'
 
 # COMMAND ----------
 
-sm = Model(name=MODEL_NAME)
-_, _, test_data = load_data(n_subset=100000)
+sm = SurrogateModel(name=MODEL_NAME)
+_, _, test_data = load_data(n_test=100000)
 test_gen = DataGenerator(test_data)
+test_set = test_gen.init_training_set(test_data, exclude_columns=["weather_file_city"]).load_df()
 
 # COMMAND ----------
 
-#TODO: move to datagen class
-def init_training_set(dg, train_data, exclude_columns = ["building_id", "upgrade_id", "weather_file_city"]):
-    """
-    Initializes the Databricks TrainingSet object contaning targets, building feautres and weather features.
-
-    Parameters:
-        - train_data (DataFrame): the training data containing the targets and keys to join to the feature tables.
-
-    Returns:
-    - TrainingSet
-    """
-    # Join to feature tables and drop join keys since these aren't features we wanna train on
-    training_set = dg.fe.create_training_set(
-        df=train_data,
-        feature_lookups=dg.get_building_feature_lookups()
-        + dg.get_weather_feature_lookups(),
-        label=dg.targets,
-        exclude_columns=exclude_columns,
-    )
-    return training_set
-
-test_set = init_training_set(test_gen, test_data, exclude_columns=["weather_file_city"]).load_df()
+test_data.count()
 
 # COMMAND ----------
 
 mlflow.pyfunc.get_model_dependencies(model_uri = sm.get_model_uri(run_id=RUN_ID))
 # Load the model using its registered name and version/stage from the MLflow model registry
 model_loaded = mlflow.pyfunc.load_model(model_uri = sm.get_model_uri(run_id=RUN_ID))
+
+# COMMAND ----------
+
 # load input data table as a Spark DataFrame
 input_data = test_set.toPandas()
 
 # COMMAND ----------
 
+#takes ~20s on 10,0000 and ~2m on 100,0000 samples
 prediction_arr = model_loaded.predict(input_data)
+
+# COMMAND ----------
+
+prediction_arr.shape
 
 # COMMAND ----------
 
