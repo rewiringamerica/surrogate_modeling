@@ -53,7 +53,8 @@ print(DEBUG)
 # COMMAND ----------
 
 import os
-os.environ['TF_FORCE_GPU_ALLOW_GROWTH'] = 'true'
+
+os.environ["TF_FORCE_GPU_ALLOW_GROWTH"] = "true"
 
 # COMMAND ----------
 
@@ -81,6 +82,12 @@ os.environ['TF_FORCE_GPU_ALLOW_GROWTH'] = 'true'
 # MAGIC
 # MAGIC # list available GPUs
 # MAGIC tf.config.list_physical_devices("GPU")
+
+# COMMAND ----------
+
+# location to store the experiment runs if in production mode:
+# specifying this allows for models trained in notebook or job to be written to same place
+EXPERIMENT_LOCATION = "/Shared/surrogate_model/"
 
 # COMMAND ----------
 
@@ -137,7 +144,7 @@ class SurrogateModelingWrapper(mlflow.pyfunc.PythonModel):
         self.building_features = building_features
         self.weather_features = weather_features
         self.targets = targets
-    
+
     def load_context(self, context):
         pass
 
@@ -180,7 +187,7 @@ class SurrogateModelingWrapper(mlflow.pyfunc.PythonModel):
         - The model predictions floored at 0: np.ndarray of shape [N, M]
         """
         # from model import masked_mae
-        
+
         processed_df = self.preprocess_input(model_input)
         predictions_df = self.model.predict(processed_df)
         return self.postprocess_result(predictions_df)
@@ -213,10 +220,14 @@ sm = SurrogateModel(name="test" if DEBUG else "sf_hvac_by_fuel")
 
 # COMMAND ----------
 
+
+
+# COMMAND ----------
+
 # DBTITLE 1,Fit model
 # Train keras model and log the model with the Feature Engineering in UC.
 
-#Init FeatureEngineering client
+# Init FeatureEngineering client
 fe = FeatureEngineeringClient()
 
 # Set the activation function and numeric data type for the model's layers
@@ -231,6 +242,10 @@ layer_params = {
 mlflow.tensorflow.autolog(
     log_every_epoch=True, log_models=False, log_datasets=False, checkpoint=False
 )
+
+# if production, log to shared experiment space, otherwise just log at notebook level by default
+if not DEBUG:
+    mlflow.set_experiment(EXPERIMENT_LOCATION)
 
 # Starts an MLflow experiment to track training parameters and results.
 with mlflow.start_run() as run:
