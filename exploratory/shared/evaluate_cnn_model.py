@@ -339,7 +339,7 @@ metrics_combined = metrics_combined.pivot(
     ],
     columns=["Metric", "Model"],
     values="value",
-).sort_values(["Upgrade ID","Type"])
+).sort_values(["Upgrade ID","Type"])=
 
 # COMMAND ----------
 
@@ -481,5 +481,4 @@ def save_figure_to_gcfs(fig, gcspath, figure_format="png", dpi=200, transparent=
     blob.upload_from_file(buf, content_type=figure_format, rewind=True)
 
 # COMMAND ----------
-
 save_figure_to_gcfs(g.fig, EXPORT_FPATH / "surrogate_model_metrics" / "comparison"/ f"{MODEL_RUN_NAME}_vs_bucketed.png")
