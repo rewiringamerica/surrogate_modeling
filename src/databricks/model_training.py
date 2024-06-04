@@ -23,6 +23,9 @@
 # MAGIC ### TODOs:
 # MAGIC
 # MAGIC #### Outstanding
+# MAGIC * Figure out how to register the model with a signature without slowing down inference
+# MAGIC * Handle retracing issues
+# MAGIC * Install model dependencies using the logged requirements.txt file
 # MAGIC
 # MAGIC #### Future Work
 # MAGIC
@@ -31,16 +34,14 @@
 # MAGIC - Access Mode: Single User or Shared (Not No Isolation Shared)
 # MAGIC - Runtime: >= Databricks Runtime 14.3 ML (or >= Databricks Runtime 14.3 +  `%pip install databricks-feature-engineering`)
 # MAGIC - Node type: Single Node. Because of [this issue](https://kb.databricks.com/en_US/libraries/apache-spark-jobs-fail-with-environment-directory-not-found-error), worker nodes cannot access the directory needed to run inference on a keras trained model, meaning that the `score_batch()` function throws and OSError. 
+# MAGIC - Can be run on CPU or GPU, with 2x speedup on GPU
+# MAGIC - Cluster-level packages: `gcsfs==2023.5.0`, `mlflow==2.13.0` (newer than default, which is required to pass a `code_paths` in logging)
 # MAGIC - `USE CATALOG`, `CREATE SCHEMA` privleges on the `ml` Unity Catalog (Ask Miki if for access)
+# MAGIC
 
 # COMMAND ----------
 
-# # install required packages: note that tensorflow must be installed at the notebook-level
-%pip install mlflow==2.13.0
-dbutils.library.restartPython()
-
-# COMMAND ----------
-
+# DBTITLE 1,Set debug mode
 # this controls the training parameters, with test mode on a much smaller training set for fewer epochs
 dbutils.widgets.dropdown("mode", "test", ["test", "production"])
 
@@ -52,8 +53,8 @@ print(DEBUG)
 
 # COMMAND ----------
 
+# DBTITLE 1,Allow GPU growth
 import os
-
 os.environ["TF_FORCE_GPU_ALLOW_GROWTH"] = "true"
 
 # COMMAND ----------
@@ -85,6 +86,7 @@ os.environ["TF_FORCE_GPU_ALLOW_GROWTH"] = "true"
 
 # COMMAND ----------
 
+# DBTITLE 1,Set experiment location
 # location to store the experiment runs if in production mode:
 # specifying this allows for models trained in notebook or job to be written to same place
 EXPERIMENT_LOCATION = "/Shared/surrogate_model/"
@@ -186,8 +188,6 @@ class SurrogateModelingWrapper(mlflow.pyfunc.PythonModel):
         Returns:
         - The model predictions floored at 0: np.ndarray of shape [N, M]
         """
-        # from model import masked_mae
-
         processed_df = self.preprocess_input(model_input)
         predictions_df = self.model.predict(processed_df)
         return self.postprocess_result(predictions_df)
@@ -220,12 +220,8 @@ sm = SurrogateModel(name="test" if DEBUG else "sf_hvac_by_fuel")
 
 # COMMAND ----------
 
-
-
-# COMMAND ----------
-
 # DBTITLE 1,Fit model
-# Train keras model and log the model with the Feature Engineering in UC.
+# Train keras model and log the model with the Feature Engineering in UC. Note that right we are skipping registering the model in the UC-- this requires storing the signature, which for unclear reasons, is slowing down inference more than 10x.
 
 # Init FeatureEngineering client
 fe = FeatureEngineeringClient()
@@ -237,8 +233,10 @@ layer_params = {
     "kernel_initializer": "he_normal",
 }
 
-# signature_df = train_gen.training_set.load_df().select(train_gen.building_features + train_gen.weather_features).limit(1).toPandas()
+# signature_df = train_gen.training_set.load_df().select(train_gen.building_features + train_gen.targets + train_gen.weather_features).limit(1).toPandas()
+# signature=mlflow.models.infer_signature(model_input = signature_df[train_gen.building_features + train_gen.weather_features], model_output = signature_df[train_gen.targets])
 
+# turn on tf logging but without model checkpointing since this slows down training 2x
 mlflow.tensorflow.autolog(
     log_every_epoch=True, log_models=False, log_datasets=False, checkpoint=False
 )
@@ -278,9 +276,9 @@ with mlflow.start_run() as run:
         python_model=pyfunc_model,
         artifact_path=sm.artifact_path,
         code_paths=["surrogate_model.py"],
-        # signature=mlflow.models.infer_signature(df)
+        #signature=signature
     )
-    # mlflow.register_model(f"runs:/{run_id}/model_path", str(model))
+    #mlflow.register_model(f"runs:/{run_id}/{sm.artifact_path}", str(sm))
 
 # COMMAND ----------
 
@@ -304,27 +302,11 @@ if DEBUG:
 # evaluate the unregistered model we just logged and make sure everything runs
 if DEBUG:
     print(run_id)
-    mlflow.pyfunc.get_model_dependencies(model_uri=sm.get_model_uri(run_id=run_id))
+    #mlflow.pyfunc.get_model_dependencies(model_uri=sm.get_model_uri(run_id=run_id))
     # Load the model using its registered name and version/stage from the MLflow model registry
     model_loaded = mlflow.pyfunc.load_model(model_uri=sm.get_model_uri(run_id=run_id))
     test_gen = DataGenerator(train_data=test_data)
     # load input data table as a Spark DataFrame
     input_data = test_gen.training_set.load_df().toPandas()
+    #run prediction and output a N x M matrix of predictions where N is the number of rows in the input data table and M is the number of target columns
     print(model_loaded.predict(input_data))
-
-# COMMAND ----------
-
-# This doesn't work. Throws same fit about not knowing where the custom loss fn is.
-# from pyspark.sql.types import ArrayType, DoubleType
-# mlflow.pyfunc.get_model_dependencies(model_uri)
-# # model_loaded = mlflow.pyfunc.load_model(model_uri=model_uri)
-# # load input data table as a Spark DataFrame
-# input_data = test_gen.training_set.load_df()
-# model_udf = mlflow.pyfunc.spark_udf(spark, model_uri, result_type=ArrayType(DoubleType()))
-# columns = F.struct(input_data.columns) # use struct
-# df = input_data.withColumn("prediction", model_udf(columns))
-# df.display()
-
-# COMMAND ----------
-
-
