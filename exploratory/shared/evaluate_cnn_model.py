@@ -9,10 +9,12 @@
 
 # COMMAND ----------
 
+# DBTITLE 1,Import
 # MAGIC %load_ext autoreload
 # MAGIC %autoreload 2
 # MAGIC
 # MAGIC from functools import reduce
+# MAGIC from typing import List
 # MAGIC
 # MAGIC import mlflow
 # MAGIC import numpy as np
@@ -24,89 +26,134 @@
 # MAGIC from pyspark.sql.window import Window
 # MAGIC from pyspark.sql.types import ArrayType, IntegerType
 # MAGIC
-# MAGIC
 # MAGIC from src.databricks.datagen import DataGenerator, load_data
 # MAGIC from src.databricks.surrogate_model import SurrogateModel
 
 # COMMAND ----------
 
-EXPORT_FPATH = CloudPath("gs://the-cube") / "export"  #move to globals after reorg
+# DBTITLE 1,Globals
+# model name and run
 MODEL_NAME = "sf_hvac_by_fuel"
 RUN_ID = "ce448363eedb411bacbc443db3f988f2"
 MODEL_RUN_NAME = f"{MODEL_NAME}@{RUN_ID}"
 
+# number of samples from test set to to run inference on (takes too long to run on all)
+TEST_SIZE = 100000
+
+# path to write figures to
+EXPORT_FPATH = CloudPath("gs://the-cube") / "export"  #move to globals after reorg
+
 # COMMAND ----------
 
+# MAGIC %md ## Evaluate Model
+
+# COMMAND ----------
+
+# MAGIC %md ### Load Model and Inference Data
+
+# COMMAND ----------
+
+# DBTITLE 1,Load model
+#init model
 sm = SurrogateModel(name=MODEL_NAME)
-_, _, test_data = load_data(n_test=100000)
+# mlflow.pyfunc.get_model_dependencies(model_uri=sm.get_model_uri(run_id=RUN_ID))
+# Load the unregistered model using run ID
+model_loaded = mlflow.pyfunc.load_model(model_uri=sm.get_model_uri(run_id=RUN_ID))
+
+# COMMAND ----------
+
+# DBTITLE 1,Load test data
+# load test data
+_, _, test_data = load_data(n_test=TEST_SIZE)
+# init data generator so we can get all of the features -- note that we can't use databricks automatic lookup of features since we logged with mlflow
 test_gen = DataGenerator(test_data)
+# reload the training set but with building id and upgrade id keys which we need (this is a little hacky..)
 test_set = test_gen.init_training_set(
     test_data, exclude_columns=["weather_file_city"]
 ).load_df()
-
-# COMMAND ----------
-
-mlflow.pyfunc.get_model_dependencies(model_uri=sm.get_model_uri(run_id=RUN_ID))
-# Load the model using its registered name and version/stage from the MLflow model registry
-model_loaded = mlflow.pyfunc.load_model(model_uri=sm.get_model_uri(run_id=RUN_ID))
-# load input data table as a Spark DataFrame
+# convert from pyspark to pandas so we can run inference
 inference_data = test_set.toPandas()
 
 # COMMAND ----------
 
+# MAGIC %md ### Run Inference
+
+# COMMAND ----------
+
+# DBTITLE 1,Run inference
 # run inference: takes ~20s on 10,0000 and ~2m on 100,0000 samples
 prediction_arr = model_loaded.predict(inference_data)
 
 # COMMAND ----------
 
+# DBTITLE 1,Set targets to null if fuel type is not present
+#TODO: move this and the next two cells to SurrogateModelingWrapper.postprocess_result() once we add features that have indicators for presence each fuel type in the home
+# -- this code will get a lot simpler
 targets_formatted = np.array(
     [item.replace("_", " ").title() for item in test_gen.targets]
 )
+# create a N x A X M array where N is the number of test samples, A is the number of appliances that could use a particular fuel type and M is the number of fuel targets
+# fuel_present_by_sample_appliance_fuel[i][j][k] = True indicates that appliance j for building sample i uses fuel k
 fuel_present_by_sample_appliance_fuel = np.expand_dims(
     targets_formatted, axis=[0, 1]
 ) == np.expand_dims(inference_data[["heating_fuel"]], 2)
-fuel_present_by_sample_fuel_mask = fuel_present_by_sample_appliance_fuel.sum(1).astype(
-    bool
-)
+# sum over appliances to just get 2d mask where fuel_present_by_sample_fuel_mask[i][k] = True indicates building sample i uses fuel k
+fuel_present_by_sample_fuel_mask = fuel_present_by_sample_appliance_fuel.sum(1).astype(bool)
+# all(ish) homes have electricity so set this to always be True
 fuel_present_by_sample_fuel_mask[
     :, targets_formatted == "Electricity"
-] = True  # all(ish) homes have electricity so set this to always be 1
-# null out the predictions if there are no appliances with that fuel type
+] = True  
+# null out the predictions if there are no appliances with that fuel type -- we are basically setting these to 0, 
+# but we also want to make sure we don't give the model credit for predicting 0 when we manually set this
 predictions_with_nulled_out_fuels = np.where(
     ~fuel_present_by_sample_fuel_mask, np.nan, prediction_arr
 )
 
 # COMMAND ----------
 
-targets = test_gen.targets + ["total"]
-
-sample_pkeys = ["building_id", "upgrade_id"]
+# DBTITLE 1,Concatenate pkeys and predictions
+# create an array of N x 2 with the pkeys needed to join this to metadata
+sample_pkeys = ["building_id", "upgrade_id"] 
 sample_pkey_arr = inference_data[sample_pkeys].values
-predictions_with_nulled_out_fuels_and_building_ids = np.hstack(
+
+# combine prediction (including sum over all fuels) and pkeys to create a N x 2 (pkeys) array + M (fuel targets) + 1 (summed fuels)
+targets = test_gen.targets + ["total"]
+predictions_with_pkeys = np.hstack(
     [
         sample_pkey_arr,  # columns of pkeys
         predictions_with_nulled_out_fuels,  # columns for each fuel
         np.expand_dims(
-            np.nansum(predictions_with_nulled_out_fuels, 1), 1
-        ),  # add column for totals summed over all fuels
+            np.nansum(predictions_with_nulled_out_fuels, 1), 1  # column of totals summed over all fuels
+        ), 
     ]
 )
 
 # COMMAND ----------
 
-# Create a N x M DataFrame where N is the nummber of test samples and M is the number of targets
+# DBTITLE 1,Convert to prediction to pyspark df
+# Create a N x M + 1 DataFrame of predictions
 target_pred_labels = [f"{y}-pred" for y in targets]
 pred_only = spark.createDataFrame(
-    predictions_with_nulled_out_fuels_and_building_ids.tolist(),
+    predictions_with_pkeys.tolist(),
     sample_pkeys + target_pred_labels,
-)
+).replace(float("nan"), None)
 
+# COMMAND ----------
+
+# MAGIC %md ## Post-Process Results
+
+# COMMAND ----------
+
+# DBTITLE 1,Combine actual and predicted targets
 # Create dataframe with columns for actual and predicted values for each fuel
 # and add a total columns to the actual
 pred_wide = pred_only.join(
     test_data.withColumn("total", F.expr("+".join(test_gen.targets))), on=sample_pkeys
 )
 
+# COMMAND ----------
+
+# DBTITLE 1,Melt to long fuel format
 # Melt to long format by fuel with columns: building, upgrade, fuel, true, pred
 pred_by_building_upgrade_fuel = (
     pred_wide.melt(
@@ -127,25 +174,18 @@ pred_by_building_upgrade_fuel = (
     .agg(F.first("value"))  # vacuous agg
 )
 
-# add metadata
+# COMMAND ----------
+
+# DBTITLE 1,Add and transform metadata
+# add metadata that we will want to cut up results by
 keep_features = ["heating_fuel", "heating_appliance_type", "ac_type"]
-pred_by_building_upgrade_fuel = test_set.select(*sample_pkeys, *keep_features).join(
+pred_by_building_upgrade_fuel_with_metadata = test_set.select(*sample_pkeys, *keep_features).join(
     pred_by_building_upgrade_fuel, on=sample_pkeys
 )
 
-# COMMAND ----------
-
-w = Window().partitionBy("building_id", "fuel").orderBy(F.asc("upgrade_id"))
-
-
-@udf("double")
-def APE(prediction, actual, eps=1e-3):
-    return abs(float(prediction - actual) / actual) * 100 if abs(actual) > eps else None
-
-
-pred_df_hvac_process = (
-    pred_by_building_upgrade_fuel.replace("None", "No Heating", subset="heating_fuel")
-    .replace("None", "No Cooling", subset="ac_type")
+#do some manipulation on the metadata to make it more presentable and comparable to bucketed outputs
+pred_by_building_upgrade_fuel_with_metadata = (
+    pred_by_building_upgrade_fuel_with_metadata 
     .withColumn(
         "heating_fuel",
         F.when(F.col("ac_type") == "Heat Pump", F.lit("Heat Pump"))
@@ -162,34 +202,82 @@ pred_df_hvac_process = (
     )
 )
 
+# COMMAND ----------
+
+# MAGIC %md ### Calculate error metrics for upgrade and savings
+
+# COMMAND ----------
+
+# DBTITLE 1,Calculate error metrics
+#define function to calculate absolute prediction error
+@udf("double")
+def APE(prediction:float, actual:float, eps=1e-3):
+    """
+    Calculate the Absolute Percentage Error (APE) between prediction and actual values.
+
+    Parameters:
+    - prediction (float): The predicted value.
+    - actual (float): The actual value.
+    - eps (float): A small value to avoid division by zero; default is 1e-3.
+
+    Returns:
+    - double: The APE value, or None if actual or pred is None or 
+              the actual value is within the epsilon range of zero.
+    """
+    if actual is None or prediction is None:
+        return None
+    if abs(actual) < eps:
+        return None
+    return abs(float(prediction - actual) / actual) * 100
+
+# setup window to calculate savings between baseline (upgrade 0) all other upgrades
+w = Window().partitionBy("building_id", "fuel").orderBy(F.asc("upgrade_id"))
+
+#calculate baseline appliances, predicted and actual savings, and metrics (absolute error and APE) on upgrades and savings
 pred_df_savings = (
-    pred_df_hvac_process.withColumn(
-        "baseline_heating_fuel", F.first(F.col("heating_fuel")).over(w)
-    )
+    pred_by_building_upgrade_fuel_with_metadata
+    .withColumn("baseline_heating_fuel", F.first(F.col("heating_fuel")).over(w))
     .withColumn("baseline_ac_type", F.first(F.col("ac_type")).over(w))
     .withColumn("prediction_baseline", F.first(F.col("prediction")).over(w))
     .withColumn("actual_baseline", F.first(F.col("actual")).over(w))
     .withColumn("prediction_savings", F.col("prediction_baseline") - F.col("prediction"))
     .withColumn("actual_savings", F.col("actual_baseline") - F.col("actual"))
     .withColumn("absolute_error",F.abs(F.col("prediction") - F.col("actual")))
-    .withColumn("absolute_percentage_error", APE(F.col("prediction"), F.col("actual")))
-    .withColumn(
+    .withColumn( #set these to Null for baseline since there is no savings
         "absolute_error_savings",
         F.when(F.col("upgrade_id") == "0", F.lit(None)).otherwise(
             F.abs(F.col("prediction_savings") - F.col("actual_savings"))
         ),
     )
-    .withColumn(
-        "absolute_percentage_error_savings",
-        APE(F.col("prediction_savings"), F.col("actual_savings")),
-    )
-).replace(float("nan"), None)
-
+    .withColumn("absolute_percentage_error", APE(F.col("prediction"), F.col("actual")))
+    .withColumn("absolute_percentage_error_savings",APE(F.col("prediction_savings"), F.col("actual_savings")))
+)
 
 # COMMAND ----------
 
-def aggregate_metrics(pred_df_savings, groupby_cols):
+pred_df_savings.display()
 
+# COMMAND ----------
+
+# MAGIC %md ### Aggregate metrics
+
+# COMMAND ----------
+
+# DBTITLE 1,Define function for aggregating over metrics
+def aggregate_metrics(pred_df_savings:DataFrame, groupby_cols:List[str]):
+    """
+    Aggregates metrics for a given DataFrame by specified grouping columns.
+
+    This function calculates the median and mean of absolute error, absolute percentage error,
+    absolute error savings, and absolute percentage error savings. The results are rounded as specified.
+
+    Parameters:
+    - pred_df_savings (DataFrame): The DataFrame containing prediction savings and errors.
+    - groupby_cols (list or str): A list of column names to group the DataFrame by.
+
+    Returns:
+    - DataFrame: A DataFrame aggregated by the specified groupby columns with the calculated metrics.
+    """
     aggregation_expression = [
         F.round(f(F.col(colname)), round_precision).alias(
             f"{f.__name__}_{colname}"
@@ -207,6 +295,11 @@ def aggregate_metrics(pred_df_savings, groupby_cols):
 
 # COMMAND ----------
 
+# DBTITLE 1,Calculate aggregated metrics with various groupings
+# all metrics are calculated on the total sum of fuels unless otherwise specified
+
+# calculate metrics by by baseline cooling type for baseline only. showing this for all upgrades is too much, 
+# and probably not very useful except for maybe upgrade 1. Note that heat pumps are already covered in the heating rows below.
 cooling_metrics_by_type_upgrade = (
     aggregate_metrics(
         pred_df_savings=pred_df_savings.where(F.col("baseline_ac_type") != "Heat Pump")
@@ -216,6 +309,7 @@ cooling_metrics_by_type_upgrade = (
     ).withColumnRenamed("baseline_ac_type", "type")
 )
 
+# calculate metrics by upgrade and baseline heating fuel
 heating_metrics_by_type_upgrade = (
     aggregate_metrics(
         pred_df_savings=pred_df_savings.where(F.col("fuel") == "total"),
@@ -223,6 +317,7 @@ heating_metrics_by_type_upgrade = (
     ).withColumnRenamed("baseline_heating_fuel", "type")
 )
 
+# calculate metrics by upgrade over all baseline types
 total_metrics_by_upgrade = (
     aggregate_metrics(
         pred_df_savings=pred_df_savings.where(F.col("fuel") == "total"),
@@ -231,16 +326,19 @@ total_metrics_by_upgrade = (
     .withColumn('type', F.lit('Total'))
 )
 
-
+# calculate metrics by fuel over all types and upgrades, skipping rows where the fuel is not present in the home
 total_metrics_by_fuel = (
     aggregate_metrics(
-        pred_df_savings=pred_df_savings.where(F.col("prediction").isNotNull()).where(F.col("fuel") != "total"),
+        pred_df_savings=pred_df_savings
+            .where(F.col("prediction").isNotNull())
+            .where(F.col("fuel") != "total"),
         groupby_cols=["fuel"])
     .withColumn("type", F.initcap(F.regexp_replace("fuel", '_', ' ')))
     .drop("fuel")
     .withColumn('upgrade_id', F.lit('Total By Fuel'))
 )
 
+#combine all of the results into a single table
 dfs = [
     heating_metrics_by_type_upgrade,
     cooling_metrics_by_type_upgrade,
@@ -251,10 +349,12 @@ cnn_evaluation_metrics = reduce(DataFrame.unionByName, dfs)
 
 # COMMAND ----------
 
+# DBTITLE 1,Display results
 cnn_evaluation_metrics.display()
 
 # COMMAND ----------
 
+# DBTITLE 1,Save metrics table
 # save the metrics table tagged with the model name and version number
 (
     cnn_evaluation_metrics
@@ -272,6 +372,28 @@ cnn_evaluation_metrics.display()
 
 # COMMAND ----------
 
+# MAGIC %md ### Tabular Results
+
+# COMMAND ----------
+
+# DBTITLE 1,Read in bucketed aggregated results
+# bring in bucketed metrics
+bucket_metrics = pd.read_csv(
+    "gs://the-cube/export/surrogate_model_metrics/bucketed_sf_hvac.csv",
+    keep_default_na=False,
+    dtype={"upgrade_id": "double"},
+)
+bucket_metrics["upgrade_id"] = bucket_metrics["upgrade_id"].astype('str')
+
+
+# COMMAND ----------
+
+# DBTITLE 1,Combine results from both methods
+cnn_metrics = cnn_evaluation_metrics.toPandas()
+
+bucket_metrics["Model"] = "Bucketed"
+cnn_metrics["Model"] = "CNN"
+
 # rename metric columns to be more readable
 metric_rename_dict = {
     "median_absolute_percentage_error_savings": "Median APE - Savings",
@@ -283,6 +405,18 @@ metric_rename_dict = {
     "median_absolute_error": "Median Abs Error",
     "mean_absolute_error": "Mean Abs Error",
 }
+
+#combine and rename
+metrics_combined_by_upgrade_type_model = (
+    pd.concat([bucket_metrics, cnn_metrics])
+    .rename(
+        columns={**metric_rename_dict, **{"upgrade_id": "Upgrade ID", "type": "Type"}}
+    )
+)
+
+# COMMAND ----------
+
+# DBTITLE 1,Specify row order
 # set the order in which types will appear in the table
 types = [
     "Electricity",
@@ -300,74 +434,52 @@ types = [
     "Total"
 ]
 
-# COMMAND ----------
-
-# bring in bucketed metrics and compare against that.
-bucket_metrics = pd.read_csv(
-    "gs://the-cube/export/surrogate_model_metrics/bucketed_sf_hvac.csv",
-    keep_default_na=False,
-    dtype={"upgrade_id": "double"},
+metrics_combined_by_upgrade_type_model["Type"] = pd.Categorical(
+    metrics_combined_by_upgrade_type_model["Type"], categories=types, ordered=True
 )
-bucket_metrics["upgrade_id"] = bucket_metrics["upgrade_id"].astype('str')
-cnn_metrics = cnn_evaluation_metrics.toPandas()
 
 # COMMAND ----------
 
-bucket_metrics["Model"] = "Bucketed"
-cnn_metrics["Model"] = "CNN"
-
-metrics_combined = (
-    pd.concat([bucket_metrics, cnn_metrics])
-    .rename(
-        columns={**metric_rename_dict, **{"upgrade_id": "Upgrade ID", "type": "Type"}}
-    )
-    .melt(
-        id_vars=["Type", "Model", "Upgrade ID"],
-        value_vars=list(metric_rename_dict.values()),
-        var_name="Metric",
-    )
+# DBTITLE 1,Pivot to wide on model type and sort by upgrade and type
+metrics_combined_by_upgrade_type_model_metric = (
+    metrics_combined_by_upgrade_type_model
+        .melt(
+            id_vars=["Type", "Model", "Upgrade ID"],
+            value_vars=list(metric_rename_dict.values()),
+            var_name="Metric",
+        )
 )
 
-metrics_combined["Type"] = pd.Categorical(
-    metrics_combined["Type"], categories=types, ordered=True
-)
-
-metrics_combined = metrics_combined.pivot(
+metrics_combined_by_upgrade_type = metrics_combined_by_upgrade_type_model_metric.pivot(
     index=[
         "Upgrade ID",
         "Type",
     ],
     columns=["Metric", "Model"],
     values="value",
-).sort_values(["Upgrade ID","Type"])=
+).sort_values(["Upgrade ID","Type"])
 
 # COMMAND ----------
 
-metrics_combined.to_csv(
+# DBTITLE 1,Display results
+metrics_combined_by_upgrade_type
+
+# COMMAND ----------
+
+# DBTITLE 1,Write results to csv
+metrics_combined_by_upgrade_type.to_csv(
     f"gs://the-cube/export/surrogate_model_metrics/comparison/{MODEL_RUN_NAME}_by_method_upgrade_type.csv"
 )
 
 # COMMAND ----------
 
-# MAGIC %md ## Visualize Comparison between Model Metrics
+# MAGIC %md ### Visualize Comparison
 
 # COMMAND ----------
 
-pred_df_savings
-
-# COMMAND ----------
-
-pred_df_savings_hvac = (
-    pred_df_savings
-        .where(F.col("fuel") == "total")
-        .withColumn("absolute_percentage_error",
-                    F.when(F.col("upgrade_id") == 0, F.col("absolute_percentage_error"))
-                    .otherwise(F.col("absolute_percentage_error_savings")))
-        .select("upgrade_id", "baseline_heating_fuel", "absolute_percentage_error")
-)
-
-# COMMAND ----------
-
+# DBTITLE 1,Read in building level metrics for buckets
+# read in data and
+# set the metric to savings APE on upgrade rows and baseline APE for baseline
 bucketed_pred = (
     spark.table("ml.surrogate_model.bucketed_sf_hvac_predictions")
     .withColumn(
@@ -385,14 +497,41 @@ bucketed_pred = (
 
 # COMMAND ----------
 
+bucketed_pred.display()
+
+# COMMAND ----------
+
+# DBTITLE 1,Preprocess building level metrics for CNN
+# subset to only total consumption predictions and
+# set the metric to savings APE on upgrade rows and baseline APE for baseline
+pred_df_savings_total = (
+    pred_df_savings
+        .where(F.col("fuel") == "total")
+        .withColumn("absolute_percentage_error",
+                    F.when(F.col("upgrade_id") == 0, F.col("absolute_percentage_error"))
+                    .otherwise(F.col("absolute_percentage_error_savings")))
+        .select("upgrade_id", "baseline_heating_fuel", "absolute_percentage_error")
+)
+
+# COMMAND ----------
+
+pred_df_savings_total.display()
+
+# COMMAND ----------
+
+# DBTITLE 1,Combine predictions from both models
+# combine predictions
+# do some cleanup to amke labels more presentable, including removing baseline hps for the sake of space
+# convert to pandas
 pred_df_savings_pd = (
-    pred_df_savings_hvac.withColumn("Model", F.lit("CNN"))
+    pred_df_savings_total
+    .withColumn("Model", F.lit("CNN"))
     .unionByName(bucketed_pred.withColumn("Model", F.lit("Bucketed")))
     .replace(
         {"Shared Heating": "Shared", "No Heating": "None"},
         subset="baseline_heating_fuel",
     )
-    .where(F.col("baseline_heating_fuel") != "Heat Pump")
+    .where(F.col("baseline_heating_fuel") != "Heat Pump") 
     .withColumnsRenamed(
         {
             "baseline_heating_fuel": "Baseline Heating Fuel",
@@ -404,6 +543,7 @@ pred_df_savings_pd = (
 
 # COMMAND ----------
 
+# DBTITLE 1,Draw boxplot of comparison
 pred_df_savings_pd_clip = pred_df_savings_pd.copy()
 pred_df_savings_pd_clip["Absolute Percentage Error"] = pred_df_savings_pd_clip[
     "Absolute Percentage Error"
@@ -447,6 +587,7 @@ g.fig.suptitle("Prediction Metric Comparison for HVAC Savings")
 
 # COMMAND ----------
 
+# DBTITLE 1,Function for saving fig to gcs
 # TODO: move to a utils file once code is reorged
 import io
 from google.cloud import storage
@@ -481,4 +622,6 @@ def save_figure_to_gcfs(fig, gcspath, figure_format="png", dpi=200, transparent=
     blob.upload_from_file(buf, content_type=figure_format, rewind=True)
 
 # COMMAND ----------
+
+# DBTITLE 1,Write out figure
 save_figure_to_gcfs(g.fig, EXPORT_FPATH / "surrogate_model_metrics" / "comparison"/ f"{MODEL_RUN_NAME}_vs_bucketed.png")

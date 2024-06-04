@@ -3,10 +3,6 @@
 
 # COMMAND ----------
 
-# MAGIC %pip install gcsfs==2023.5.0
-
-# COMMAND ----------
-
 import pandas as pd
 from pyspark.sql.types import BooleanType, FloatType
 import pyspark.sql.functions as F
