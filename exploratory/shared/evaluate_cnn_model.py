@@ -16,7 +16,7 @@ from pyspark.sql.window import Window
 
 # COMMAND ----------
 
-MODEL_NAME = "sf_detatched_hvac"
+MODEL_NAME = "sf_hvac"
 MODEL_TESTSET_PREDICTIONS_TABLE = f"ml.surrogate_model.{MODEL_NAME}_predictions"
 MODEL_VERSION_NUMBER = (
     spark.sql(
@@ -29,10 +29,7 @@ MODEL_VERSION_NAME = f"ml.surrogate_model.{MODEL_NAME}@v{MODEL_VERSION_NUMBER}"
 
 # COMMAND ----------
 
-targets = [
-    "heating",
-    "cooling",
-]  # in theory could prob pull this from model artifacts..
+targets = [ "heating", "cooling"]  # in theory could prob pull this from model artifacts..
 pred_df = spark.table(MODEL_TESTSET_PREDICTIONS_TABLE)
 building_features = spark.table("ml.surrogate_model.building_features")
 
@@ -252,10 +249,6 @@ metrics_combined = metrics_combined.pivot(
 
 # COMMAND ----------
 
-metrics_combined
-
-# COMMAND ----------
-
 metrics_combined.to_csv(
     f"gs://the-cube/export/surrogate_model_metrics/comparison/{MODEL_VERSION_NAME}_by_method_upgrade_type.csv"
 )
@@ -386,14 +379,7 @@ def save_figure_to_gcfs(fig, gcspath, figure_format="png", dpi=200, transparent=
 
 # COMMAND ----------
 
-save_figure_to_gcfs(
-    g.fig,
-    CloudPath("gs://the-cube")
-    / "export"
-    / "surrogate_model_metrics"
-    / "comparison"
-    / f"{MODEL_VERSION_NAME}_vs_bucketed.png",
-)
+save_figure_to_gcfs(g.fig, CloudPath("gs://the-cube") / "export" / "surrogate_model_metrics" / "comparison" / f"{MODEL_VERSION_NAME}_vs_bucketed.png")
 
 # COMMAND ----------
 
