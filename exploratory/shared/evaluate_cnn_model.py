@@ -4,7 +4,7 @@
 
 # COMMAND ----------
 
-# MAGIC %pip install mlflow==2.13.0 seaborn==v0.13.0
+# MAGIC %pip install seaborn==v0.13.0
 # MAGIC dbutils.library.restartPython()
 
 # COMMAND ----------
