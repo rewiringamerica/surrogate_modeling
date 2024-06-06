@@ -90,11 +90,12 @@ def absolute_percentage_error(pred, true, eps=1e-3):
     else:
         return None
 
+
 # join buildings to bucket prediction (baseline)
 prediction_actual_by_building_bucket_baseline = (
     actual_baseline_consumption_by_building_bucket.join(
         predicted_bucketed_baseline_consumption,
-        F.col("true.bucket_id") == F.col("pred.id"),
+        on = F.col("true.bucket_id") == F.col("pred.id"),
     )
     .join(building_metadata, on="building_id")
     .drop("bucket_id")
@@ -160,7 +161,7 @@ error_by_building_upgrade = (
     )
     .withColumn(
         "absolute_error",
-        F.round(F.abs(F.col("kwh_upgrade_median") - F.col("kwh_upgrade")))
+        F.round(F.abs(F.col("kwh_upgrade_median") - F.col("kwh_upgrade"))),
     )
     .withColumn(
         "absolute_percentage_error_savings",
@@ -168,7 +169,7 @@ error_by_building_upgrade = (
     )
     .withColumn(
         "absolute_error_savings",
-        F.round(F.abs(F.col("kwh_delta_median") - F.col("kwh_delta")))
+        F.round(F.abs(F.col("kwh_delta_median") - F.col("kwh_delta"))),
     )
 )
 
@@ -211,21 +212,18 @@ metrics_by_heating_fuel_upgrade = aggregate_metrics(
 # aggregate hvac prediction metrics by upgrade and cooling type for baseline only
 # where heat pumps are already covered by the heating rows above
 metrics_by_cooling_type_upgrade = aggregate_metrics(
-    df=error_by_building_upgrade.where(F.col("cooling_type") != "Heat Pump").where(
-        F.col("upgrade_id") == 0
-    ),
+    df=error_by_building_upgrade.where(F.col("cooling_type") != "Heat Pump").where(F.col("upgrade_id") == 0),
     groupby_cols=["cooling_type", "upgrade_id"],
 ).withColumnRenamed("cooling_type", "type")
 
 # aggregate hvac prediction metrics by upgrade
 metrics_by_upgrade = aggregate_metrics(
-    df=error_by_building_upgrade, groupby_cols=["upgrade_id"]
+    df=error_by_building_upgrade,
+    groupby_cols=["upgrade_id"]
 ).withColumn("type", F.lit("Total"))
 
 # combine all the various aggregated metrics
-metrics_buckets = metrics_by_heating_fuel_upgrade.unionByName(
-    metrics_by_cooling_type_upgrade
-).unionByName(metrics_by_upgrade)
+metrics_buckets = metrics_by_heating_fuel_upgrade.unionByName(metrics_by_cooling_type_upgrade).unionByName(metrics_by_upgrade)
 
 # COMMAND ----------
 
