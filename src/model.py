@@ -80,6 +80,8 @@ def create_building_model(train_gen, layer_params):
 
     m = layers.Dense(32, name='second_dense', **layer_params)(m)
     m = layers.Dense(8, name='third_dense', **layer_params)(m)
+    # TODO: consider applying batchnorm
+    # m = layers.BatchNormalization()(m)
 
     bmo = models.Model(
         inputs=bmo_inputs_dict, outputs=m, name='building_features_model')
@@ -119,10 +121,7 @@ def create_weather_model(train_gen, layer_params):
     )(wm)
     # sum the time dimension
     wm = layers.Lambda(
-        lambda x: K.sum(x, axis=1),
-        dtype=layer_params['dtype'], 
-        #output_shape = (8,) needed for tf v2.16.1
-        )(wm)
+        lambda x: K.sum(x, axis=1), dtype=layer_params['dtype'])(wm)
 
     wmo = models.Model(
         inputs=weather_inputs_dict, outputs=wm, name='weather_features_model')
