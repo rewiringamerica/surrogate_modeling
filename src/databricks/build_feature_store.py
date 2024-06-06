@@ -11,11 +11,11 @@
 # MAGIC
 # MAGIC ### I/Os
 # MAGIC
-# MAGIC ##### Inputs: 
+# MAGIC ##### Inputs:
 # MAGIC - `ml.surrogate_model.building_metadata`: Building metadata indexed by (building_id)
 # MAGIC - `ml.surrogate_model.weather_data_hourly`: Hourly weather data indexed by (weather_file_city, hour datetime)
 # MAGIC
-# MAGIC ##### Outputs: 
+# MAGIC ##### Outputs:
 # MAGIC - `ml.surrogate_model.building_features`: Building metadata features indexed by (building_id)
 # MAGIC - `ml.surrogate_model.weather_features_hourly`: Weather features indexed by (weather_file_city) with a 8670-length timeseries vector for each weather feature column
 # MAGIC
@@ -24,7 +24,7 @@
 # MAGIC #### Outstanding
 # MAGIC
 # MAGIC #### Future Work
-# MAGIC - Updates to the feature table should merge and not overwrite, and in general transformation that are a hyperparameter of the model (i.e, that we may want to vary in different models) should be done downstream of this table. Sorting out exactly which transformations should happen in each of the `build_dataset`, `build_feature_store` and `model_training` files is still a WIP. 
+# MAGIC - Updates to the feature table should merge and not overwrite, and in general transformation that are a hyperparameter of the model (i.e, that we may want to vary in different models) should be done downstream of this table. Sorting out exactly which transformations should happen in each of the `build_dataset`, `build_feature_store` and `model_training` files is still a WIP.
 # MAGIC
 # MAGIC ---
 # MAGIC Cluster/ User Requirements
@@ -37,12 +37,16 @@
 # DBTITLE 1,Imports
 import re
 from functools import reduce
+import re
+from functools import reduce
 from itertools import chain
 from typing import Dict
 
 from pyspark.sql import DataFrame
 from pyspark.sql.column import Column
 import pyspark.sql.functions as F
+from pyspark.sql.types import IntegerType, DoubleType
+from pyspark.sql.window import Window
 from pyspark.sql.types import IntegerType, DoubleType
 from pyspark.sql.window import Window
 from databricks.feature_engineering import FeatureEngineeringClient
@@ -66,6 +70,7 @@ EER_CONVERSION = {
 
 
 @udf(returnType=DoubleType())
+@udf(returnType=DoubleType())
 def extract_percentage(value: str) -> float:
     """Extract percentage of space given
 
@@ -84,6 +89,7 @@ def extract_percentage(value: str) -> float:
     try:
         return (match and float(match.group(1))) / 100.0
     except ValueError:
+        raise ValueError(f"Cannot extract percentage from: f{value}")
         raise ValueError(f"Cannot extract percentage from: f{value}")
 
 
@@ -138,6 +144,7 @@ def extract_r_value(construction_type: str) -> int:
 
 # TODO: figure out why raise value error is triggering
 @udf(returnType=DoubleType())
+@udf(returnType=DoubleType())
 def extract_cooling_efficiency(cooling_efficiency: str) -> float:
     """Convert a ResStock cooling efficiency into EER value
 
@@ -149,12 +156,17 @@ def extract_cooling_efficiency(cooling_efficiency: str) -> float:
     10.7
     >>> extract_cooling_efficiency('Shared Cooling')
     13.0
+    >>> extract_cooling_efficiency('Shared Cooling')
+    13.0
     >>> extract_cooling_efficiency('None') >= 99
     True
     """
     if cooling_efficiency == "None":
         # insanely high efficiency to mimic a nonexistent cooling
         return 999.0
+    # mapping of HVAC Shared Efficiencies -> cooling_system_cooling_efficiency from options.tsv
+    if cooling_efficiency == "Shared Cooling":
+        cooling_efficiency = "SEER 13"
     # mapping of HVAC Shared Efficiencies -> cooling_system_cooling_efficiency from options.tsv
     if cooling_efficiency == "Shared Cooling":
         cooling_efficiency = "SEER 13"
@@ -186,6 +198,8 @@ def extract_heating_efficiency(heating_efficiency: str) -> int:
     100
     >>> extract_heating_efficiency('Fan Coil Heating And Cooling, Natural Gas')
     78
+    >>> extract_heating_efficiency('Fan Coil Heating And Cooling, Natural Gas')
+    78
     >>> extract_heating_efficiency('Other')  # doctest: +IGNORE_EXCEPTION_DETAIL
     Traceback (most recent call last):
         ...
@@ -199,10 +213,19 @@ def extract_heating_efficiency(heating_efficiency: str) -> int:
         return 100
     if efficiency in ["Fuel Oil", "Natural Gas", "Propane"]:
         return 78
+    # mapping of HVAC Shared Efficiencies -> heating_system_heating_efficiency from options.tsv
+    if efficiency == "Electricity":
+        return 100
+    if efficiency in ["Fuel Oil", "Natural Gas", "Propane"]:
+        return 78
 
     try:
         number = float(efficiency.strip().split(" ", 1)[0].strip("%"))
     except ValueError:
+        return "ERROR"
+        # raise ValueError(
+        #     f"Cannot extract heating efficiency from: {heating_efficiency}"
+        # )
         return "ERROR"
         # raise ValueError(
         #     f"Cannot extract heating efficiency from: {heating_efficiency}"
@@ -218,6 +241,7 @@ def extract_heating_efficiency(heating_efficiency: str) -> int:
 
 
 @udf(returnType=DoubleType())
+@udf(returnType=DoubleType())
 def temp_from(temperature_string, base_temp=0) -> float:
     """Convert string Fahrenheit degrees to float F - base_temp deg
 
@@ -227,7 +251,8 @@ def temp_from(temperature_string, base_temp=0) -> float:
     -3.0
     """
     if not re.match(r"\d+F", temperature_string):
-        raise ValueError(f"Unrecognized temperature format: {temperature_string}")
+        raise ValueError(f"Unrecognized temperature format: {
+                         temperature_string}")
     return float(temperature_string.strip().lower()[:-1]) - base_temp
 
 
@@ -285,6 +310,9 @@ luminous_efficacy_mapping = make_map_type_from_dict(
 # COMMAND ----------
 
 # DBTITLE 1,Building metadata feature transformation function
+# DBTITLE 1,Building metadata feature transformation function
+
+
 def transform_building_features() -> DataFrame:
     """
     Read and transform subset of building_metadata features for single family homes.
@@ -314,7 +342,8 @@ def transform_building_features() -> DataFrame:
         .withColumn(
             "heating_appliance_type",
             F.when(
-                F.col("hvac_heating_efficiency") == "Shared Heating", F.lit("Shared")
+                F.col("hvac_heating_efficiency") == "Shared Heating", F.lit(
+                    "Shared")
             )
             .when(F.col("heating_appliance_type").contains("Furnace"), "Furnace")
             .when(F.col("heating_appliance_type").contains("Boiler"), "Boiler")
@@ -341,16 +370,19 @@ def transform_building_features() -> DataFrame:
         .withColumn(
             "ac_type",
             F.when(
-                (F.col("hvac_cooling_efficiency") == "Shared Cooling"), F.lit("Shared")
+                (F.col("hvac_cooling_efficiency") ==
+                 "Shared Cooling"), F.lit("Shared")
             ).otherwise(F.split(F.col("hvac_cooling_efficiency"), ",")[0]),
         )
         .withColumn(
             "has_ac",
-            (F.split(F.col("hvac_cooling_efficiency"), ",")[0] != "None").cast("int"),
+            (F.split(F.col("hvac_cooling_efficiency"), ",")
+             [0] != "None").cast("int"),
         )
         .withColumn(
             "cooled_space_proportion",
-            extract_percentage(F.col("hvac_cooling_partial_space_conditioning")),
+            extract_percentage(
+                F.col("hvac_cooling_partial_space_conditioning")),
         )
         .withColumn(
             "cooling_efficiency_eer_str",
@@ -377,7 +409,8 @@ def transform_building_features() -> DataFrame:
         .withColumn("ducts_insulation", extract_r_value(F.col("ducts")))
         .withColumn("ducts_leakage", extract_percentage(F.col("ducts")))
         .withColumn(
-            "infiltration_ach50", F.split(F.col("infiltration"), " ")[0].cast("int")
+            "infiltration_ach50", F.split(F.col("infiltration"), " ")[
+                0].cast("int")
         )
         # insulation tranformations
         .withColumn("wall_type", F.col("insulation_wall"))
@@ -385,7 +418,8 @@ def transform_building_features() -> DataFrame:
         .withColumn("insulation_wall", extract_r_value(F.col("wall_type")))
         .withColumn("insulation_slab", extract_r_value(F.col("insulation_slab")))
         .withColumn(
-            "insulation_rim_joist", extract_r_value(F.col("insulation_rim_joist"))
+            "insulation_rim_joist", extract_r_value(
+                F.col("insulation_rim_joist"))
         )
         .withColumn("insulation_floor", extract_r_value(F.col("insulation_floor")))
         .withColumn(
@@ -416,10 +450,12 @@ def transform_building_features() -> DataFrame:
         )
         # misc transformations
         .withColumn(
-            "climate_zone_temp", F.substring("ashrae_iecc_climate_zone_2004", 1, 1)
+            "climate_zone_temp", F.substring(
+                "ashrae_iecc_climate_zone_2004", 1, 1)
         )
         .withColumn(
-            "climate_zone_moisture", F.substring("ashrae_iecc_climate_zone_2004", 2, 1)
+            "climate_zone_moisture", F.substring(
+                "ashrae_iecc_climate_zone_2004", 2, 1)
         )
         .withColumn("vintage", vintage2age2000(F.col("vintage")))
         .withColumn(
@@ -489,6 +525,7 @@ def transform_building_features() -> DataFrame:
 
 # COMMAND ----------
 
+
 # DBTITLE 1,Apply upgrade function
 # Mapping of climate zone temperature  -> threshold, insulation
 # where climate zone temperature is the first character in the ASHRAE IECC climate zone
@@ -507,6 +544,8 @@ BASIC_ENCLOSURE_INSULATION = spark.createDataFrame(
 )
 
 # Define a function to apply upgrades based on upgrade_id
+
+
 def apply_upgrades(baseline_building_features: DataFrame, upgrade_id: int) -> DataFrame:
     """
     Augment building features to reflect the upgrade. Source:
@@ -551,7 +590,8 @@ def apply_upgrades(baseline_building_features: DataFrame, upgrade_id: int) -> Da
             .withColumn(
                 "infiltration_ach50",
                 F.when(
-                    F.col("infiltration_ach50") >= 15, F.col("infiltration_ach50") * 0.7
+                    F.col("infiltration_ach50") >= 15, F.col(
+                        "infiltration_ach50") * 0.7
                 ).otherwise(F.col("infiltration_ach50")),
             )
             # Duct sealing: update duct leakage rate and insulation if there is some leakage
@@ -656,8 +696,17 @@ def transform_weather_features() -> DataFrame:
         ]
     )
     return weather_data_arrays
+    weather_data_arrays = weather_df.groupBy(weather_pkeys).agg(
+        *[
+            F.collect_list(c).alias(c)
+            for c in weather_df.columns
+            if c not in weather_pkeys + ["datetime_formatted"]
+        ]
+    )
+    return weather_data_arrays
 
 # COMMAND ----------
+
 
 # DBTITLE 1,Transform building metadata
 building_metadata_transformed = transform_building_features()
@@ -688,13 +737,52 @@ w = Window.partitionBy(partition_cols).orderBy(F.asc("upgrade_id"))
 
 building_metadata_hvac_upgrades_dedup = (
     building_metadata_hvac_upgrades
-        .withColumn("rank", F.rank().over(w))
-        .filter(F.col("rank") == 1)  # keep upgrade = 0
-        .drop("rank")
+    .withColumn("rank", F.rank().over(w))
+    .filter(F.col("rank") == 1)  # keep upgrade = 0
+    .drop("rank")
 )
 
 # print out how many dups were dropped
-building_metadata_hvac_upgrades.count() - building_metadata_hvac_upgrades_dedup.count()
+building_metadata_hvac_upgrades.count(
+) - building_metadata_hvac_upgrades_dedup.count()
+
+# Look at those that weren't upgraded
+# building_metadata_hvac_upgrades.groupby(building_metadata_transformed.drop('upgrade_id').columns).count().where(F.col('count') > 1).display()
+
+# COMMAND ----------
+
+# TODO: check if any cols are null
+# building_metadata_transformed.select([(F.when(F.isnull(c), c)).alias(c) for c in .select([(F.when(F.isnull(c), c)).alias(c) for c in df.columns]).d.columns]).display()
+
+# COMMAND ----------
+
+# DBTITLE 1,Apply upgrade logic to metadata
+# create a metadata df for baseline and each HVAC upgrade
+upgrade_ids = [0., 1., 3., 4.]
+building_metadata_hvac_upgrades = reduce(
+    DataFrame.unionByName,
+    [
+        apply_upgrades(
+            baseline_building_features=building_metadata_transformed, upgrade_id=upgrade
+        )
+        for upgrade in upgrade_ids
+    ],
+)
+
+# drop upgrades that had no unchanged features and therefore weren't upgraded
+partition_cols = building_metadata_transformed.drop("upgrade_id").columns
+w = Window.partitionBy(partition_cols).orderBy(F.asc("upgrade_id"))
+
+building_metadata_hvac_upgrades_dedup = (
+    building_metadata_hvac_upgrades
+    .withColumn("rank", F.rank().over(w))
+    .filter(F.col("rank") == 1)  # keep upgrade = 0
+    .drop("rank")
+)
+
+# print out how many dups were dropped
+building_metadata_hvac_upgrades.count(
+) - building_metadata_hvac_upgrades_dedup.count()
 
 # Look at those that weren't upgraded
 # building_metadata_hvac_upgrades.groupby(building_metadata_transformed.drop('upgrade_id').columns).count().where(F.col('count') > 1).display()
@@ -747,12 +835,16 @@ fe = FeatureEngineeringClient()
 # DBTITLE 1,Write out building metadata feature store
 table_name = "ml.surrogate_model.building_features"
 df = building_metadata_hvac_upgrades_dedup
+df = building_metadata_hvac_upgrades_dedup
 if spark.catalog.tableExists(table_name):
+    fe.write_table(name=table_name, df=df, mode="merge")
     fe.write_table(name=table_name, df=df, mode="merge")
 else:
     fe.create_table(
         name=table_name,
         primary_keys=["building_id", "upgrade_id"],
+        df=df,
+        schema=df.schema,
         df=df,
         schema=df.schema,
         description="building metadata features",
@@ -763,9 +855,11 @@ else:
 # DBTITLE 1,Write out weather data feature store
 table_name = "ml.surrogate_model.weather_features_hourly"
 df = weather_data_transformed
+df = weather_data_transformed
 if spark.catalog.tableExists(table_name):
     fe.write_table(
         name=table_name,
+        df=df,
         df=df,
         mode="merge",
     )
@@ -773,6 +867,8 @@ else:
     fe.create_table(
         name=table_name,
         primary_keys=["weather_file_city"],
+        df=df,
+        schema=df.schema,
         df=df,
         schema=df.schema,
         description="hourly weather timeseries array features",

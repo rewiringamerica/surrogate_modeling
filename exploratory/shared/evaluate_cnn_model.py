@@ -33,6 +33,8 @@
 
 # DBTITLE 1,Globals
 # model name and run
+from google.cloud import storage
+import io
 MODEL_NAME = "sf_hvac_by_fuel"
 RUN_ID = "ce448363eedb411bacbc443db3f988f2"
 MODEL_RUN_NAME = f"{MODEL_NAME}@{RUN_ID}"
@@ -41,7 +43,8 @@ MODEL_RUN_NAME = f"{MODEL_NAME}@{RUN_ID}"
 TEST_SIZE = 100
 
 # path to write figures to
-EXPORT_FPATH = CloudPath("gs://the-cube") / "export"  # move to globals after reorg
+EXPORT_FPATH = CloudPath("gs://the-cube") / \
+    "export"  # move to globals after reorg
 
 # COMMAND ----------
 
@@ -58,7 +61,8 @@ EXPORT_FPATH = CloudPath("gs://the-cube") / "export"  # move to globals after re
 sm = SurrogateModel(name=MODEL_NAME)
 # mlflow.pyfunc.get_model_dependencies(model_uri=sm.get_model_uri(run_id=RUN_ID))
 # Load the unregistered model using run ID
-model_loaded = mlflow.pyfunc.load_model(model_uri=sm.get_model_uri(run_id=RUN_ID))
+model_loaded = mlflow.pyfunc.load_model(
+    model_uri=sm.get_model_uri(run_id=RUN_ID))
 
 # COMMAND ----------
 
@@ -69,7 +73,7 @@ _, _, test_data = load_data(n_test=TEST_SIZE)
 test_gen = DataGenerator(test_data)
 # reload the training set but with building id and upgrade id keys which we need (this is a little hacky..)
 test_set = test_gen.init_training_set(
-    train_data = test_data, 
+    train_data=test_data,
     exclude_columns=["weather_file_city"]
 ).load_df()
 # convert from pyspark to pandas so we can run inference
@@ -95,14 +99,17 @@ targets_formatted = np.array(
 )
 # create a N x A X M array where N is the number of test samples, A is the number of appliances that could use a particular fuel type and M is the number of fuel targets
 # fuel_present_by_sample_appliance_fuel[i][j][k] = True indicates that appliance j for building sample i uses fuel k
-fuel_present_by_sample_appliance_fuel = np.expand_dims(targets_formatted, axis=[0, 1]) == np.expand_dims(inference_data[["heating_fuel"]], 2)
+fuel_present_by_sample_appliance_fuel = np.expand_dims(targets_formatted, axis=[
+                                                       0, 1]) == np.expand_dims(inference_data[["heating_fuel"]], 2)
 # sum over appliances to just get 2d mask where fuel_present_by_sample_fuel_mask[i][k] = True indicates building sample i uses fuel k
-fuel_present_by_sample_fuel_mask = fuel_present_by_sample_appliance_fuel.sum(1).astype(bool)
+fuel_present_by_sample_fuel_mask = fuel_present_by_sample_appliance_fuel.sum(
+    1).astype(bool)
 # all(ish) homes have electricity so set this to always be True
 fuel_present_by_sample_fuel_mask[:, targets_formatted == "Electricity"] = True
 # null out the predictions if there are no appliances with that fuel type -- we are basically setting these to 0,
 # but we also want to make sure we don't give the model credit for predicting 0 when we manually set this
-predictions_with_nulled_out_fuels = np.where(~fuel_present_by_sample_fuel_mask, np.nan, prediction_arr)
+predictions_with_nulled_out_fuels = np.where(
+    ~fuel_present_by_sample_fuel_mask, np.nan, prediction_arr)
 
 # COMMAND ----------
 
@@ -117,7 +124,8 @@ predictions_with_pkeys = np.hstack(
     [
         sample_pkey_arr,  # columns of pkeys
         predictions_with_nulled_out_fuels,  # columns for each fuel
-        np.expand_dims(np.nansum(predictions_with_nulled_out_fuels, 1),1), # column of totals summed over all fuels
+        # column of totals summed over all fuels
+        np.expand_dims(np.nansum(predictions_with_nulled_out_fuels, 1), 1),
     ]
 )
 
@@ -174,8 +182,8 @@ pred_by_building_upgrade_fuel = (
 keep_features = ["heating_fuel", "heating_appliance_type", "ac_type"]
 pred_by_building_upgrade_fuel_with_metadata = (
     test_set
-        .select(*sample_pkeys, *keep_features)
-        .join(pred_by_building_upgrade_fuel, on=sample_pkeys)
+    .select(*sample_pkeys, *keep_features)
+    .join(pred_by_building_upgrade_fuel, on=sample_pkeys)
 )
 
 # do some manipulation on the metadata to make it more presentable and comparable to bucketed outputs
@@ -203,6 +211,8 @@ pred_by_building_upgrade_fuel_with_metadata = (
 
 # DBTITLE 1,Calculate error metrics
 # define function to calculate absolute prediction error
+
+
 @udf("double")
 def APE(prediction: float, actual: float, eps=1e-3):
     """
@@ -236,12 +246,13 @@ pred_df_savings = (
     .withColumn("prediction_baseline", F.first(F.col("prediction")).over(w))
     .withColumn("actual_baseline", F.first(F.col("actual")).over(w))
     .withColumn(
-        "prediction_savings", F.col("prediction_baseline") - F.col("prediction")
+        "prediction_savings", F.col(
+            "prediction_baseline") - F.col("prediction")
     )
     .withColumn("actual_savings", F.col("actual_baseline") - F.col("actual"))
     .withColumn("absolute_error", F.abs(F.col("prediction") - F.col("actual")))
-    .withColumn( # set these to Null for baseline since there is no savings
-        "absolute_error_savings", 
+    .withColumn(  # set these to Null for baseline since there is no savings
+        "absolute_error_savings",
         F.when(F.col("upgrade_id") == "0", F.lit(None))
         .otherwise(F.abs(F.col("prediction_savings") - F.col("actual_savings"))),
     )
@@ -260,6 +271,8 @@ pred_df_savings.display()
 # COMMAND ----------
 
 # DBTITLE 1,Define function for aggregating over metrics
+
+
 def aggregate_metrics(pred_df_savings: DataFrame, groupby_cols: List[str]):
     """
     Aggregates metrics for a given DataFrame by specified grouping columns.
@@ -275,7 +288,8 @@ def aggregate_metrics(pred_df_savings: DataFrame, groupby_cols: List[str]):
     - DataFrame: A DataFrame aggregated by the specified groupby columns with the calculated metrics.
     """
     aggregation_expression = [
-        F.round(f(F.col(colname)), round_precision).alias(f"{f.__name__}_{colname}")
+        F.round(f(F.col(colname)), round_precision).alias(
+            f"{f.__name__}_{colname}")
         for f in [F.median, F.mean]
         for colname, round_precision in [
             ("absolute_error", 0),
@@ -292,13 +306,14 @@ def aggregate_metrics(pred_df_savings: DataFrame, groupby_cols: List[str]):
 # DBTITLE 1,Calculate aggregated metrics with various groupings
 # all metrics are calculated on the total sum of fuels unless otherwise specified
 
+
 # calculate metrics by by baseline cooling type for baseline only. showing this for all upgrades is too much,
 # and probably not very useful except for maybe upgrade 1. Note that heat pumps are already covered in the heating rows below.
 cooling_metrics_by_type_upgrade = aggregate_metrics(
     pred_df_savings=pred_df_savings
-        .where(F.col("baseline_ac_type") != "Heat Pump")
-        .where(F.col("fuel") == "total")
-        .where(F.col("upgrade_id") == 0),
+    .where(F.col("baseline_ac_type") != "Heat Pump")
+    .where(F.col("fuel") == "total")
+    .where(F.col("upgrade_id") == 0),
     groupby_cols=["baseline_ac_type", "upgrade_id"],
 ).withColumnRenamed("baseline_ac_type", "type")
 
@@ -318,8 +333,8 @@ total_metrics_by_upgrade = aggregate_metrics(
 total_metrics_by_fuel = (
     aggregate_metrics(
         pred_df_savings=pred_df_savings
-            .where(F.col("prediction").isNotNull())
-            .where(F.col("fuel") != "total"),
+        .where(F.col("prediction").isNotNull())
+        .where(F.col("fuel") != "total"),
         groupby_cols=["fuel"],
     )
     .withColumn("type", F.initcap(F.regexp_replace("fuel", "_", " ")))
@@ -450,7 +465,8 @@ metrics_combined_by_upgrade_type
 
 # DBTITLE 1,Write results to csv
 metrics_combined_by_upgrade_type.to_csv(
-    f"gs://the-cube/export/surrogate_model_metrics/comparison/{MODEL_RUN_NAME}_by_method_upgrade_type.csv"
+    f"gs://the-cube/export/surrogate_model_metrics/comparison/{
+        MODEL_RUN_NAME}_by_method_upgrade_type.csv"
 )
 
 # COMMAND ----------
@@ -570,8 +586,6 @@ g.fig.suptitle("Prediction Metric Comparison for HVAC Savings")
 
 # DBTITLE 1,Function for saving fig to gcs
 # TODO: move to a utils file once code is reorged
-import io
-from google.cloud import storage
 
 
 def save_figure_to_gcfs(fig, gcspath, figure_format="png", dpi=200, transparent=False):
@@ -592,7 +606,8 @@ def save_figure_to_gcfs(fig, gcspath, figure_format="png", dpi=200, transparent=
     """
     supported_formats = ["pdf", "svg", "png", "jpg"]
     if figure_format not in supported_formats:
-        raise ValueError(f"Please pass supported format in {supported_formats}")
+        raise ValueError(f"Please pass supported format in {
+                         supported_formats}")
 
     # Save figure image to a bytes buffer
     buf = io.BytesIO()
@@ -606,5 +621,7 @@ def save_figure_to_gcfs(fig, gcspath, figure_format="png", dpi=200, transparent=
 
 # COMMAND ----------
 
+
 # DBTITLE 1,Write out figure
-save_figure_to_gcfs(g.fig, EXPORT_FPATH / "surrogate_model_metrics" / "comparison" / f"{MODEL_RUN_NAME}_vs_bucketed.png")
+save_figure_to_gcfs(g.fig, EXPORT_FPATH / "surrogate_model_metrics" /
+                    "comparison" / f"{MODEL_RUN_NAME}_vs_bucketed.png")
