@@ -3,7 +3,10 @@
 
 # COMMAND ----------
 
+from typing import List 
+
 import pandas as pd
+from pyspark.sql import DataFrame
 from pyspark.sql.types import BooleanType, FloatType
 import pyspark.sql.functions as F
 from pyspark.sql.window import Window
@@ -28,7 +31,7 @@ predicted_bucketed_baseline_consumption = (
         "cooling_type",
         "baseline_appliance_fuel",
     )
-).alias("pred")
+).alias("pred_baseline")
 
 predicted_bucketed_upgrade_consumption = (
     spark.table("housing_profile.all_project_savings_bucketed").select(
@@ -44,7 +47,7 @@ predicted_bucketed_upgrade_consumption = (
         "cooling_type",
         "baseline_appliance_fuel",
     )
-).alias("pred")
+).alias("pred_upgrade")
 
 # baseline energy consumption by building for single family homes in upgrade scenarios
 actual_baseline_consumption_by_building_bucket = spark.sql(
@@ -55,7 +58,7 @@ actual_baseline_consumption_by_building_bucket = spark.sql(
         AND end_use IN ('heating', 'cooling')
     GROUP BY building_id, bucket_id
     """
-).alias("true")
+).alias("true_baseline")
 
 # baseline energy consumption by building for single family homes in upgrade scenarios
 actual_consumption_savings_by_building_bucket = spark.sql(
@@ -66,7 +69,7 @@ actual_consumption_savings_by_building_bucket = spark.sql(
         AND upgrade_id IN (1, 3, 4)
     GROUP BY building_id, bucket_id
     """
-).alias("true")
+).alias("true_upgrade")
 
 building_metadata = spark.sql(
     """
@@ -95,7 +98,7 @@ def absolute_percentage_error(pred, true, eps=1e-3):
 prediction_actual_by_building_bucket_baseline = (
     actual_baseline_consumption_by_building_bucket.join(
         predicted_bucketed_baseline_consumption,
-        on = F.col("true.bucket_id") == F.col("pred.id"),
+        on = F.col("true_baseline.bucket_id") == F.col("pred_baseline.id"),
     )
     .join(building_metadata, on="building_id")
     .drop("bucket_id")
@@ -105,7 +108,7 @@ prediction_actual_by_building_bucket_baseline = (
 prediction_actual_by_building_bucket_upgrade = (
     actual_consumption_savings_by_building_bucket.join(
         predicted_bucketed_upgrade_consumption,
-        F.col("true.bucket_id") == F.col("pred.id"),
+        F.col("true_upgrade.bucket_id") == F.col("pred_upgrade.id"),
     )
     .join(building_metadata, on="building_id")
     .drop("bucket_id")
@@ -185,9 +188,17 @@ error_by_building_upgrade = (
 
 # COMMAND ----------
 
-def aggregate_metrics(df, groupby_cols):
-
-    # for computing various statistics of interest over all building ids within a bucket
+def aggregate_metrics(df: DataFrame, groupby_cols: List[str]):
+    """
+    Aggregates metrics for a given DataFrame by specified grouping columns.
+    This function calculates the median and mean of absolute error, absolute percentage error,
+    absolute error savings, and absolute percentage error savings. The results are rounded as specified.
+    Args:
+        df (DataFrame): The DataFrame containing prediction savings and errors.
+        groupby_cols (list or str): A list of column names to group the DataFrame by.
+    Returns:
+        DataFrame: A DataFrame aggregated by the specified groupby columns with the calculated metrics.
+    """
     aggregation_expression = [
         F.round(f(F.col(colname)), round_precision).alias(f"{f.__name__}_{colname}")
         for f in [F.median, F.mean]
