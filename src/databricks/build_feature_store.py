@@ -543,12 +543,55 @@ BASIC_ENCLOSURE_INSULATION = spark.createDataFrame(
     ("climate_zone_temp", "existing_insulation_max_threshold", "insulation_upgrade"),
 )
 
-# Define a function to apply upgrades based on upgrade_id
+
+def upgrade_to_hp(
+    baseline_building_features: DataFrame,
+    ducted_efficiency: str,
+    non_ducted_efficiency: str,
+) -> DataFrame:
+    """
+        Upgrade the baseline building features to an air source heat pump (ASHP) with specified efficiencies.
+        Note that all baseline hps in Resstock are lower efficiency than specified upgrade thresholds (<=SEER 15; <=HSPF 8.5)
+
+        Args:
+            baseline_building_features (DataFrame): The baseline building features.
+            ducted_efficiency (str): The efficiency of the ducted heat pump.
+            non_ducted_efficiency (str): The efficiency of the ductless heat pump.
+
+        Returns:
+            DataFrame: The upgraded building features DataFrame with the heat pump.
+        """
+    return (
+        baseline_building_features.withColumn(
+            "heating_appliance_type", F.lit("ASHP")
+        )
+        .withColumn("heating_fuel", F.lit("Electricity"))
+        .withColumn(
+            "cooling_efficiency_eer",
+            F.when(
+                F.col("has_ducts") == 1,
+                extract_cooling_efficiency(F.lit(ducted_efficiency)),
+            ).otherwise(extract_cooling_efficiency(F.lit(non_ducted_efficiency))),
+        )
+        .withColumn(
+            "heating_efficiency",
+            F.when(
+                F.col("has_ducts") == 1,
+                extract_heating_efficiency(F.lit(ducted_efficiency)),
+            ).otherwise(extract_heating_efficiency(F.lit(non_ducted_efficiency))),
+        )
+        .withColumn("has_ductless_heating", (F.col("has_ducts") == 0).cast("int"))
+        .withColumn("ac_type", F.lit("Heat Pump"))
+        .withColumn("has_ac", F.lit(1))
+        .withColumn(
+            "cooled_space_proportion", F.lit(1.0)
+        )
+    )
 
 
 def apply_upgrades(baseline_building_features: DataFrame, upgrade_id: int) -> DataFrame:
     """
-    Augment building features to reflect the upgrade. Source:
+    Modify building features to reflect the upgrade. Source:
     https://oedi-data-lake.s3.amazonaws.com/nrel-pds-building-stock/end-use-load-profiles-for-us-building-stock/2022/EUSS_ResRound1_Technical_Documentation.pdf
     In case of contradictions, consult: https://github.com/NREL/resstock/blob/run/euss/EUSS-project-file_2018_10k.yml.
 
@@ -614,50 +657,6 @@ def apply_upgrades(baseline_building_features: DataFrame, upgrade_id: int) -> Da
                     F.col("wall_type") == "Wood Stud, Uninsulated",
                     extract_r_value(F.lit("Wood Stud, R-13")),
                 ).otherwise(F.col("insulation_wall")),
-            )
-        )
-
-    def upgrade_to_hp(
-        baseline_building_features: DataFrame,
-        ducted_efficiency: str,
-        non_ducted_efficiency: str,
-    ) -> DataFrame:
-        """
-        Upgrade the baseline building features to an air source heat pump (ASHP) with specified efficiencies.
-        Note that all baseline hps in Resstock are lower efficiency than specified upgrade thresholds (<=SEER 15; <=HSPF 8.5)
-
-        Args:
-            baseline_building_features (DataFrame): The baseline building features.
-            ducted_efficiency (str): The efficiency of the ducted heat pump.
-            non_ducted_efficiency (str): The efficiency of the ductless heat pump.
-
-        Returns:
-            DataFrame: The upgraded building features DataFrame with the heat pump.
-        """
-        return (
-            baseline_building_features.withColumn(
-                "heating_appliance_type", F.lit("ASHP")
-            )
-            .withColumn("heating_fuel", F.lit("Electricity"))
-            .withColumn(
-                "cooling_efficiency_eer",
-                F.when(
-                    F.col("has_ducts") == 1,
-                    extract_cooling_efficiency(F.lit(ducted_efficiency)),
-                ).otherwise(extract_cooling_efficiency(F.lit(non_ducted_efficiency))),
-            )
-            .withColumn(
-                "heating_efficiency",
-                F.when(
-                    F.col("has_ducts") == 1,
-                    extract_heating_efficiency(F.lit(ducted_efficiency)),
-                ).otherwise(extract_heating_efficiency(F.lit(non_ducted_efficiency))),
-            )
-            .withColumn("has_ductless_heating", (F.col("has_ducts") == 0).cast("int"))
-            .withColumn("ac_type", F.lit("Heat Pump"))
-            .withColumn("has_ac", F.lit(1))
-            .withColumn(
-                "cooled_space_proportion", F.lit(1.0)
             )
         )
 
