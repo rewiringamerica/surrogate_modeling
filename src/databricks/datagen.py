@@ -7,7 +7,6 @@ import pandas as pd
 import tensorflow as tf
 from databricks.feature_engineering import FeatureEngineeringClient, FeatureLookup
 from databricks.ml_features.training_set import TrainingSet
-from databricks.ml_features.entities.feature_lookup import FeatureLookup
 from pyspark.sql import DataFrame
 
 

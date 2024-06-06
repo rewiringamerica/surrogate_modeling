@@ -289,14 +289,12 @@ luminous_efficacy_mapping = make_map_type_from_dict(
 # DBTITLE 1,Building metadata feature transformation function
 def transform_building_features() -> DataFrame:
     """
-    Read and transform subset of building_metadata features for single family dettatched homes.
+    Read and transform subset of building_metadata features for single family homes.
     Adapted from _get_building_metadata() in datagen.py
-    TODO: add back attatched sf homes and features relevant for all end uses
     """
     building_metadata_transformed = (
         spark.read.table("ml.surrogate_model.building_metadata")
-        # filter to sf detatched homes with modeled heating fuel
-        # (subset to detatched until we figure out shared heating/cooling coding representation)
+        # filter to sf homes with modeled heating fuel
         .where(
             F.col("geometry_building_type_acs").isin(
                 ["Single-Family Detached", "Single-Family Attached"]
@@ -518,7 +516,7 @@ def apply_upgrades(baseline_building_features: DataFrame, upgrade_id: int) -> Da
     In case of contradictions, consult: https://github.com/NREL/resstock/blob/run/euss/EUSS-project-file_2018_10k.yml.
 
     Args:
-          building_features: (DataFrame) building features coming from metadata.
+          baseline_building_features: (DataFrame) building features coming from metadata.
           upgrade_id: (int)
 
     Returns:
@@ -580,14 +578,24 @@ def apply_upgrades(baseline_building_features: DataFrame, upgrade_id: int) -> Da
                 ).otherwise(F.col("insulation_wall")),
             )
         )
-        # .drop('climate_zone_temp', 'existing_insulation_max_threshold')
 
     def upgrade_to_hp(
         baseline_building_features: DataFrame,
         ducted_efficiency: str,
         non_ducted_efficiency: str,
     ) -> DataFrame:
-        # Note that all baseline hps are lower efficiency than specified upgrade thresholds (<=SEER 15; <=HSPF 8.5)
+        """
+        Upgrade the baseline building features to an air source heat pump (ASHP) with specified efficiencies.
+        Note that all baseline hps in Resstock are lower efficiency than specified upgrade thresholds (<=SEER 15; <=HSPF 8.5)
+
+        Args:
+            baseline_building_features (DataFrame): The baseline building features.
+            ducted_efficiency (str): The efficiency of the ducted heat pump.
+            non_ducted_efficiency (str): The efficiency of the ductless heat pump.
+
+        Returns:
+            DataFrame: The upgraded building features DataFrame with the heat pump.
+        """
         return (
             baseline_building_features.withColumn(
                 "heating_appliance_type", F.lit("ASHP")
@@ -612,8 +620,7 @@ def apply_upgrades(baseline_building_features: DataFrame, upgrade_id: int) -> Da
             .withColumn("has_ac", F.lit(1))
             .withColumn(
                 "cooled_space_proportion", F.lit(1.0)
-            )  # heat_pump_fraction_heat_load_served=1
-            # .withColumn('backup_heating_efficiency', F.lit(1.0))
+            )
         )
 
     if upgrade_id == 3:  # heat pump: min efficiency, electric backup
@@ -636,6 +643,9 @@ def transform_weather_features() -> DataFrame:
     """
     Read and transform weather timeseries table. Pivot from long format indexed by (weather_file_city, hour)
     to a table indexed by weather_file_city with a 8670 len array timeseries for each weather feature column
+
+    Returns:
+        DataFrame: wide(ish) format dataframe indexed by weather_file_city with timeseries array for each weather feature
     """
     weather_df = spark.read.table("ml.surrogate_model.weather_data_hourly")
     weather_pkeys = ["weather_file_city"]
@@ -675,13 +685,14 @@ building_metadata_hvac_upgrades = reduce(
 )
 
 # drop upgrades that had no unchanged features and therefore weren't upgraded
-w = Window.partitionBy(
-    building_metadata_transformed.drop("upgrade_id").columns
-).orderBy(F.asc("upgrade_id"))
+partition_cols = building_metadata_transformed.drop("upgrade_id").columns
+w = Window.partitionBy(partition_cols).orderBy(F.asc("upgrade_id"))
+
 building_metadata_hvac_upgrades_dedup = (
-    building_metadata_hvac_upgrades.withColumn("rank", F.rank().over(w))
-    .filter(F.col("rank") == 1)  # keep upgrade = 0
-    .drop("rank")
+    building_metadata_hvac_upgrades
+        .withColumn("rank", F.rank().over(w))
+        .filter(F.col("rank") == 1)  # keep upgrade = 0
+        .drop("rank")
 )
 
 # print out how many dups were dropped
