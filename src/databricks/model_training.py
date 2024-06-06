@@ -63,10 +63,6 @@ os.environ["TF_FORCE_GPU_ALLOW_GROWTH"] = "true"
 # MAGIC %load_ext autoreload
 # MAGIC %autoreload 2
 # MAGIC
-# MAGIC import os
-# MAGIC
-# MAGIC os.environ["TF_FORCE_GPU_ALLOW_GROWTH"] = "true"
-# MAGIC
 # MAGIC import mlflow
 # MAGIC import numpy as np
 # MAGIC import pandas as pd
