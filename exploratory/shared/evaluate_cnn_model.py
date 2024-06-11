@@ -35,12 +35,12 @@
 # model name and run
 from google.cloud import storage
 import io
-MODEL_NAME = "sf_hvac_by_fuel"
-RUN_ID = "ce448363eedb411bacbc443db3f988f2"
+MODEL_NAME = "mvp"
+RUN_ID = "1cdf6b758a4541a99589626d12dbb75d"
 MODEL_RUN_NAME = f"{MODEL_NAME}@{RUN_ID}"
 
 # number of samples from test set to to run inference on (takes too long to run on all)
-TEST_SIZE = 100
+TEST_SIZE = 10000
 
 # path to write figures to
 EXPORT_FPATH = CloudPath("gs://the-cube") / \
@@ -211,8 +211,6 @@ pred_by_building_upgrade_fuel_with_metadata = (
 
 # DBTITLE 1,Calculate error metrics
 # define function to calculate absolute prediction error
-
-
 @udf("double")
 def APE(prediction: float, actual: float, eps=1e-3):
     """
@@ -271,8 +269,6 @@ pred_df_savings.display()
 # COMMAND ----------
 
 # DBTITLE 1,Define function for aggregating over metrics
-
-
 def aggregate_metrics(pred_df_savings: DataFrame, groupby_cols: List[str]):
     """
     Aggregates metrics for a given DataFrame by specified grouping columns.
@@ -305,7 +301,6 @@ def aggregate_metrics(pred_df_savings: DataFrame, groupby_cols: List[str]):
 
 # DBTITLE 1,Calculate aggregated metrics with various groupings
 # all metrics are calculated on the total sum of fuels unless otherwise specified
-
 
 # calculate metrics by by baseline cooling type for baseline only. showing this for all upgrades is too much,
 # and probably not very useful except for maybe upgrade 1. Note that heat pumps are already covered in the heating rows below.
@@ -621,7 +616,7 @@ def save_figure_to_gcfs(fig, gcspath, figure_format="png", dpi=200, transparent=
 
 # COMMAND ----------
 
-
 # DBTITLE 1,Write out figure
+
 save_figure_to_gcfs(g.fig, EXPORT_FPATH / "surrogate_model_metrics" /
                     "comparison" / f"{MODEL_RUN_NAME}_vs_bucketed.png")

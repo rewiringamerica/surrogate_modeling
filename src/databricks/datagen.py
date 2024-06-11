@@ -9,7 +9,6 @@ import tensorflow as tf
 from databricks.feature_engineering import FeatureEngineeringClient, FeatureLookup
 from databricks.ml_features.training_set import TrainingSet
 from databricks.sdk.runtime import spark
-from sklearn.preprocessing import StandardScaler
 
 from pyspark.sql import DataFrame
 
@@ -192,7 +191,7 @@ class DataGenerator(tf.keras.utils.Sequence):
         self.training_df = self.init_building_features_and_targets(
             train_data=train_data
         )
-        #self.standard_scalar = None
+        
         self.weather_features_df = self.init_weather_features()
         self.building_feature_vocab_dict = self.init_building_feature_vocab_dict()
 
@@ -288,22 +287,6 @@ class DataGenerator(tf.keras.utils.Sequence):
         return weather_features_table.select(
             "weather_file_city", *self.weather_features
         ).toPandas()
-    
-    # def normalize_features(self, standard_scalar = None):
-    #     # subset to just the numeric building features 
-    #     building_features_numeric = [k for k, v in self.training_df.dtypes.items() if v!=object and k in self.building_features]
-    #     X_train_numeric = self.training_df[building_features_numeric]
-    #     if standard_scalar:
-    #         X_scaled = scaler.transform(X_train_numeric)
-
-
-    #     # Initialize the scaler
-    #     scaler = StandardScaler()
-
-    #     # Fit the scaler on the numeric features of the training data and apply transformation transform
-    #     X_train_scaled = scaler.fit_transform(X_train_numeric)
-
-    #     train_gen.training_df[building_features_numeric] = X_train_scaled
 
     def feature_dtype(self, feature_name: str) -> Any:
         """
