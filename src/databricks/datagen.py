@@ -39,7 +39,7 @@ class DataGenerator(tf.keras.utils.Sequence):
                                         of all possible features if string feature else empty}}.
     - fe (databricks.feature_engineering.client.FeatureEngineeringClient: client for interacting with the
                                                                             Databricks Feature Engineering in Unity Catalog
-    
+
     TODO: modify this be more flexible to use this at inference time only (e.g, don't load various feature tables into mem)
     """
 
@@ -51,48 +51,79 @@ class DataGenerator(tf.keras.utils.Sequence):
     weather_feature_table_name = "ml.surrogate_model.weather_features_hourly"
 
     building_features = [
+        # structure
+        "n_bedrooms",
+        "n_bathrooms",
+        "attic_type",
+        "sqft",
+        "foundation_type",
+        "garage_size_n_car",
+        "n_stories",
+        "orientation_degrees",
+        "roof_material",
+        "window_wall_ratio",
+        "window_ufactor",
+        "window_shgc",
         # heating
         "heating_fuel",
         "heating_appliance_type",
-        "heating_efficiency",
         "has_ductless_heating",
-        "heating_setpoint",
-        "heating_setpoint_offset_magnitude",
+        "heating_efficiency_nominal_percentage",
+        "heating_setpoint_degrees_from_70f",
+        "heating_setpoint_offset_magnitude_degrees_f",
         # cooling
         "ac_type",
-        "has_ac",
-        "cooled_space_proportion",
+        "cooled_space_percentage",
         "cooling_efficiency_eer",
-        "cooling_setpoint",
-        "cooling_setpoint_offset_magnitude",
+        "cooling_setpoint_degrees_from_70f",
+        "cooling_setpoint_offset_magnitude_degrees_f",
+        # water heater
+        "water_heater_fuel",
+        "water_heater_type",
+        "water_heater_tank_volume_gal",
+        "water_heater_efficiency_ef",
+        "water_heater_recovery_efficiency_ef",
+        "has_water_heater_in_unit",
         # ducts
         "has_ducts",
-        "ducts_insulation",
-        "ducts_leakage",
+        "duct_insulation_r_value",
+        "duct_leakage_percentage",
         "infiltration_ach50",
         # insulalation
         "wall_material",
-        "insulation_wall",
-        "insulation_slab",
-        "insulation_rim_joist",
-        "insulation_floor",
-        "insulation_ceiling_roof",
+        "insulation_wall_r_value",
+        "insulation_foundation_wall_r_value",
+        "insulation_slab_r_value",
+        "insulation_rim_joist_r_value",
+        "insulation_floor_r_value",
+        "insulation_ceiling_roof_r_value",
         # attached home
         "is_attached",
-        "num_building_units",
+        "n_building_units",
         "is_middle_unit",
+        # other appliances
+        "has_ceiling_fan",
+        "clothes_dryer_fuel",
+        "clothes_washer_efficiency",
+        "cooking_range_fuel",
+        "dishwasher_efficiency_kwh",
+        "lighting_efficiency",
+        "refrigerator_extra_efficiency_ef",
+        "has_standalone_freezer",
+        "has_gas_fireplace",
+        "has_gas_grill",
+        "has_gas_lighting",
+        "has_well_pump",
+        "hot_tub_spa_fuel",
+        "pool_heater_fuel",
+        "refrigerator_efficiency_ef",
+        "plug_load_percentage",
+        "usage_level_appliances",
         # misc
-        "bedrooms",
-        "stories",
-        "foundation_type",
-        "attic_type",
         "climate_zone_temp",
         "climate_zone_moisture",
-        "sqft",
         "vintage",
-        "num_occupants",
-        "orientation",
-        "window_area",
+        "n_occupants",
     ]
 
     weather_features = [
@@ -211,7 +242,7 @@ class DataGenerator(tf.keras.utils.Sequence):
 
         Parameters:
             - train_data (DataFrame): the training data containing the targets and keys to join to the feature tables.
-            - exclude_columns (list of str): columns to be excluded from the output training set. 
+            - exclude_columns (list of str): columns to be excluded from the output training set.
                                              Defaults to the join keys: ["building_id", "upgrade_id", "weather_file_city"].
 
         Returns:
