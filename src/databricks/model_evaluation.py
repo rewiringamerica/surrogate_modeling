@@ -1,9 +1,29 @@
 # Databricks notebook source
 # MAGIC %md # Evaluate CNN Model
-# MAGIC
 
 # COMMAND ----------
 
+# DBTITLE 1,Widget setup
+dbutils.widgets.dropdown("mode", "test", ["test", "production"])
+dbutils.widgets.text("model_name", "test")
+dbutils.widgets.text("run_id", "")
+dbutils.widgets.text("test_size", "10000") # default in test mode
+DEBUG = dbutils.widgets.get("mode") == "test"
+# name of the model 
+MODEL_NAME = dbutils.widgets.get("model_name")
+# run ID of the model to test. If passed in by prior task in job, then overrride the input value
+RUN_ID = dbutils.jobs.taskValues.get(taskKey = "model_training", key = "run_id", debugValue=dbutils.widgets.get("run_id"))
+assert RUN_ID != ""
+# number of samples from test set to to run inference on (takes too long to run on all)
+TEST_SIZE = int(dbutils.widgets.get("test_size"))
+print(DEBUG)
+print(MODEL_NAME)
+print(RUN_ID)
+print(TEST_SIZE)
+
+# COMMAND ----------
+
+# DBTITLE 1,Install newer version of seaborn
 # MAGIC %pip install seaborn==v0.13.0
 # MAGIC dbutils.library.restartPython()
 
@@ -32,19 +52,10 @@
 # COMMAND ----------
 
 # DBTITLE 1,Globals
-# model name and run
-from google.cloud import storage
-import io
-MODEL_NAME = "mvp"
-RUN_ID = "1cdf6b758a4541a99589626d12dbb75d"
 MODEL_RUN_NAME = f"{MODEL_NAME}@{RUN_ID}"
 
-# number of samples from test set to to run inference on (takes too long to run on all)
-TEST_SIZE = 10000
-
 # path to write figures to
-EXPORT_FPATH = CloudPath("gs://the-cube") / \
-    "export"  # move to globals after reorg
+EXPORT_FPATH = CloudPath("gs://the-cube") / "export"  # move to globals after reorg
 
 # COMMAND ----------
 
@@ -354,14 +365,15 @@ cnn_evaluation_metrics.display()
 # COMMAND ----------
 
 # DBTITLE 1,Save metrics table
+if not DEBUG:
 # save the metrics table tagged with the model name and version number
-(
-    cnn_evaluation_metrics.write.format("delta")
-    .mode("overwrite")
-    .option("overwriteSchema", "true")
-    .option("userMetadata", MODEL_RUN_NAME)
-    .saveAsTable("ml.surrogate_model.evaluation_metrics")
-)
+    (
+        cnn_evaluation_metrics.write.format("delta")
+        .mode("overwrite")
+        .option("overwriteSchema", "true")
+        .option("userMetadata", MODEL_RUN_NAME)
+        .saveAsTable("ml.surrogate_model.evaluation_metrics")
+    )
 
 # COMMAND ----------
 
@@ -381,6 +393,7 @@ bucket_metrics = pd.read_csv(
     dtype={"upgrade_id": "double"},
 )
 bucket_metrics["upgrade_id"] = bucket_metrics["upgrade_id"].astype("str")
+bucket_metrics.replace({'Natural Gas': 'Methane Gas'}, inplace=True)
 
 # COMMAND ----------
 
@@ -416,7 +429,7 @@ metrics_combined_by_upgrade_type_model["Type"] = pd.Categorical(
     categories=[
         "Electricity",
         "Electric Resistance",
-        "Natural Gas",
+        "Methane Gas",
         "Propane",
         "Fuel Oil",
         "Shared Heating",
@@ -459,10 +472,10 @@ metrics_combined_by_upgrade_type
 # COMMAND ----------
 
 # DBTITLE 1,Write results to csv
-metrics_combined_by_upgrade_type.to_csv(
-    f"gs://the-cube/export/surrogate_model_metrics/comparison/{
-        MODEL_RUN_NAME}_by_method_upgrade_type.csv"
-)
+if not DEBUG:
+    metrics_combined_by_upgrade_type.to_csv(
+        f"gs://the-cube/export/surrogate_model_metrics/comparison/{MODEL_RUN_NAME}_by_method_upgrade_type.csv"
+    )
 
 # COMMAND ----------
 
@@ -489,10 +502,6 @@ bucketed_pred = (
 
 # COMMAND ----------
 
-bucketed_pred.display()
-
-# COMMAND ----------
-
 # DBTITLE 1,Preprocess building level metrics for CNN
 # subset to only total consumption predictions and
 # set the metric to savings APE on upgrade rows and baseline APE for baseline
@@ -505,10 +514,6 @@ pred_df_savings_total = (
     )
     .select("upgrade_id", "baseline_heating_fuel", "absolute_percentage_error")
 )
-
-# COMMAND ----------
-
-pred_df_savings_total.display()
 
 # COMMAND ----------
 
@@ -581,8 +586,8 @@ g.fig.suptitle("Prediction Metric Comparison for HVAC Savings")
 
 # DBTITLE 1,Function for saving fig to gcs
 # TODO: move to a utils file once code is reorged
-
-
+from google.cloud import storage
+import io
 def save_figure_to_gcfs(fig, gcspath, figure_format="png", dpi=200, transparent=False):
     """
     Write out a figure to google cloud storage
@@ -601,8 +606,7 @@ def save_figure_to_gcfs(fig, gcspath, figure_format="png", dpi=200, transparent=
     """
     supported_formats = ["pdf", "svg", "png", "jpg"]
     if figure_format not in supported_formats:
-        raise ValueError(f"Please pass supported format in {
-                         supported_formats}")
+        raise ValueError(f"Please pass supported format in {supported_formats}")
 
     # Save figure image to a bytes buffer
     buf = io.BytesIO()
@@ -617,6 +621,5 @@ def save_figure_to_gcfs(fig, gcspath, figure_format="png", dpi=200, transparent=
 # COMMAND ----------
 
 # DBTITLE 1,Write out figure
-
-save_figure_to_gcfs(g.fig, EXPORT_FPATH / "surrogate_model_metrics" /
-                    "comparison" / f"{MODEL_RUN_NAME}_vs_bucketed.png")
+if not DEBUG:
+    save_figure_to_gcfs(g.fig, EXPORT_FPATH / "surrogate_model_metrics" / "comparison" / f"{MODEL_RUN_NAME}_vs_bucketed.png")

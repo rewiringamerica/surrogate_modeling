@@ -44,11 +44,7 @@
 # DBTITLE 1,Set debug mode
 # this controls the training parameters, with test mode on a much smaller training set for fewer epochs
 dbutils.widgets.dropdown("mode", "test", ["test", "production"])
-
-if dbutils.widgets.get("mode") == "test":
-    DEBUG = True
-else:
-    DEBUG = False
+DEBUG = dbutils.widgets.get("mode") == "test"
 print(DEBUG)
 
 # COMMAND ----------
@@ -288,25 +284,26 @@ with mlflow.start_run() as run:
 
 # DBTITLE 1,Inspect predictions for one batch
 # print out model predictions just to make sure everything worked
-if DEBUG:
-    results = keras_model.predict(val_gen[0][0])
-    print(np.hstack([results[c] for c in train_gen.targets]))
+results = keras_model.predict(val_gen[0][0])
+print(np.hstack([results[c] for c in train_gen.targets]))
 
 # COMMAND ----------
 
 # DBTITLE 1,Inspect predictions using logged model
 # evaluate the unregistered model we just logged and make sure everything runs
-if DEBUG:
-    print(run_id)
-    #mlflow.pyfunc.get_model_dependencies(model_uri=sm.get_model_uri(run_id=run_id))
-    # Load the model using its registered name and version/stage from the MLflow model registry
-    model_loaded = mlflow.pyfunc.load_model(model_uri=sm.get_model_uri(run_id=run_id))
-    test_gen = DataGenerator(train_data=test_data)
-    # load input data table as a Spark DataFrame
-    input_data = test_gen.training_set.load_df().toPandas()
-    #run prediction and output a N x M matrix of predictions where N is the number of rows in the input data table and M is the number of target columns
-    print(model_loaded.predict(input_data))
+print(run_id)
+#mlflow.pyfunc.get_model_dependencies(model_uri=sm.get_model_uri(run_id=run_id))
+# Load the model using its registered name and version/stage from the MLflow model registry
+model_loaded = mlflow.pyfunc.load_model(model_uri=sm.get_model_uri(run_id=run_id))
+test_gen = DataGenerator(train_data=test_data)
+# load input data table as a Spark DataFrame
+input_data = test_gen.training_set.load_df().toPandas()
+#run prediction and output a N x M matrix of predictions where N is the number of rows in the input data table and M is the number of target columns
+print(model_loaded.predict(input_data))
 
 # COMMAND ----------
 
+#pass the run id to the next notebook for evaluation
+if not DEBUG:
+    dbutils.jobs.taskValues.set(key = "run_id", value = run_id)
 

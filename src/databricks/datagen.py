@@ -140,7 +140,7 @@ class DataGenerator(tf.keras.utils.Sequence):
     # HVAC consumption by fuel
     consumption_group_dict = {
         "electricity": ["electricity__total"],
-        "natural_gas": ["natural_gas__total"],
+        "methane_gas": ["natural_gas__total"],
         "fuel_oil": ["fuel_oil__total"],
         "propane": ["propane__total"],
     }
