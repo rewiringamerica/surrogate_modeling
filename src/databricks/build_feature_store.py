@@ -98,17 +98,17 @@ def extract_percentage(value: str) -> float:
 
 
 @udf(returnType=IntegerType())
-def vintage2age2000(vintage: str) -> int:
-    """vintage of the building in the year of 2000
-    >>> vintage2age2000('<1940')
-    70
-    >>> vintage2age2000('1960s')
-    40
+def extract_vintage(vintage: str) -> int:
+    """vintage of the building, floored at 1930
+    >>> extract_vintage('<1940')
+    1930
+    >>> extract_vintage('1960s')
+    1960
     """
     vintage = vintage.strip()
     if vintage.startswith("<"):  # '<1940' bin in resstock
-        return 70
-    return 2000 - int(vintage[:4])
+        return 1930
+    return int(vintage[:4])
 
 
 @udf(returnType=IntegerType())
@@ -230,17 +230,17 @@ def extract_heating_efficiency(heating_efficiency: str) -> int:
 
 
 @udf(returnType=DoubleType())
-def temp_from(temperature_string, base_temp=0) -> float:
-    """Convert string Fahrenheit degrees to float F - base_temp deg
+def extract_temp(temperature_string) -> float:
+    """Convert string Fahrenheit degrees to float F
 
-    >>> temp_from('70F', base_temp = 70)
-    0.0
-    >>> temp_from('-3F')
+    >>> extract_temp('70F')
+    70.0
+    >>> extract_temp('-3F')
     -3.0
     """
     if not re.match(r"\d+F", temperature_string):
         raise ValueError(f"Unrecognized temperature format: {temperature_string}")
-    return float(temperature_string.strip().lower()[:-1]) - base_temp
+    return float(temperature_string.strip().lower()[:-1])
 
 
 @udf(returnType=DoubleType())
@@ -534,9 +534,16 @@ appliance_fuel_cols = [
     "clothes_dryer_fuel",
     "cooking_range_fuel",
     "heating_fuel",
-    "misc_hot_tub_spa",
-    "misc_pool_heater",
+    "hot_tub_spa_fuel",
+    "pool_heater_fuel",
     "water_heater_fuel",
+]
+
+# list of columns containing fuel types for appliances
+gas_appliance_indicator_cols = [
+    'has_gas_fireplace',
+    'has_gas_grill',
+    'has_gas_lighting',
 ]
 
 # COMMAND ----------
@@ -610,12 +617,12 @@ def transform_building_features() -> DataFrame:
             ).otherwise(extract_heating_efficiency(F.col("hvac_heating_efficiency"))),
         )
         .withColumn(
-            "heating_setpoint_degrees_from_70f",
-            temp_from(F.col("heating_setpoint"), F.lit(70)),
+            "heating_setpoint_degrees_f",
+            extract_temp(F.col("heating_setpoint")),
         )
         .withColumn(
             "heating_setpoint_offset_magnitude_degrees_f",
-            temp_from(F.col("heating_setpoint_offset_magnitude")),
+            extract_temp(F.col("heating_setpoint_offset_magnitude")),
         )
         .withColumn(  # note there are cases where hvac_has_ducts = True, but heating system is still ductless
             "has_ductless_heating",
@@ -643,12 +650,12 @@ def transform_building_features() -> DataFrame:
             extract_cooling_efficiency(F.col("cooling_efficiency_eer_str")),
         )
         .withColumn(
-            "cooling_setpoint_degrees_from_70f",
-            temp_from(F.col("cooling_setpoint"), F.lit(70)),
+            "cooling_setpoint_degrees_f",
+            extract_temp(F.col("cooling_setpoint")),
         )
         .withColumn(
             "cooling_setpoint_offset_magnitude_degrees_f",
-            temp_from(F.col("cooling_setpoint_offset_magnitude")),
+            extract_temp(F.col("cooling_setpoint_offset_magnitude")),
         )
         # -- water heating tranformations -- #
         .withColumn(
@@ -761,8 +768,9 @@ def transform_building_features() -> DataFrame:
         .withColumn(
             "has_gas_lighting", (F.col("misc_gas_lighting") != "None").cast("int")
         )
+        .withColumnRenamed("misc_hot_tub_spa", "hot_tub_spa_fuel")
+        .withColumnRenamed("misc_pool_heater", "pool_heater_fuel")
         .withColumn("has_well_pump", (F.col("misc_well_pump") != "None").cast("int"))
-        .withColumn("has_well_pump", (F.col("misc_hot_tub_spa") != "None").cast("int"))
         .withColumn(
             "refrigerator_efficiency_ef", extract_energy_factor(F.col("refrigerator"))
         )
@@ -778,14 +786,18 @@ def transform_building_features() -> DataFrame:
         .withColumn(
             "climate_zone_moisture", F.substring("ashrae_iecc_climate_zone_2004", 2, 1)
         )
-        .withColumn("vintage", vintage2age2000(F.col("vintage")))
+        .withColumn(
+            "neighbor_distance_ft",
+            F.when(F.col("neighbors") == "Left/Right at 15ft", 15.)
+            .when(F.col("neighbors") == "None", 9999.)
+            .otherwise(F.col("neighbors").cast("double"))
+        )
         .withColumn(
             "n_occupants",
-            F.when(F.col("occupants") == "10+", 11).otherwise(
-                F.col("occupants").cast("int")
-            ),
-        #TODO: add neighbors_distance
+            F.when(F.col("occupants") == "10+", 11)
+            .otherwise(F.col("occupants").cast("int"))
         )
+        .withColumn("vintage", extract_vintage(F.col("vintage")))
         # -- fuel tranformations -- #
         # align names for methane gas across applainces
         # TODO: add has_fuel_type_x features
@@ -822,13 +834,13 @@ def transform_building_features() -> DataFrame:
             "heating_appliance_type",
             "has_ductless_heating",
             "heating_efficiency_nominal_percentage",
-            "heating_setpoint_degrees_from_70f",
+            "heating_setpoint_degrees_f",
             "heating_setpoint_offset_magnitude_degrees_f",
             # cooling
             "ac_type",
             "cooled_space_percentage",
             "cooling_efficiency_eer",
-            "cooling_setpoint_degrees_from_70f",
+            "cooling_setpoint_degrees_f",
             "cooling_setpoint_offset_magnitude_degrees_f",
             # water heater
             "water_heater_fuel",
@@ -868,16 +880,17 @@ def transform_building_features() -> DataFrame:
             "has_gas_grill",
             "has_gas_lighting",
             "has_well_pump",
-            F.col("misc_hot_tub_spa").alias("hot_tub_spa_fuel"),
-            F.col("misc_pool_heater").alias("pool_heater_fuel"),
+            "hot_tub_spa_fuel",
+            "pool_heater_fuel",
             "refrigerator_efficiency_ef",
             "plug_load_percentage",
             "usage_level_appliances",
             # misc
             "climate_zone_temp",
             "climate_zone_moisture",
-            "vintage",
+            "neighbor_distance_ft",
             "n_occupants",
+            "vintage",
         )
     )
     return building_metadata_transformed

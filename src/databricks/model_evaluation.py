@@ -102,15 +102,25 @@ prediction_arr = model_loaded.predict(inference_data)
 # COMMAND ----------
 
 # DBTITLE 1,Set targets to null if fuel type is not present
-# TODO: move this and the next two cells to SurrogateModelingWrapper.postprocess_result() once we add features that have indicators for presence each fuel type in the home
-# -- this code will get a lot simpler
+# TODO: move this and the next two cells to SurrogateModelingWrapper.postprocess_result() once we add features that have indicators for presence each fuel type in the home, so this code will get a lot simpler
+
+# list of columns containing fuel types for appliances
+appliance_fuel_cols = [
+    "clothes_dryer_fuel",
+    "cooking_range_fuel",
+    "heating_fuel",
+    "hot_tub_spa_fuel",
+    "pool_heater_fuel",
+    "water_heater_fuel",
+]
+
 targets_formatted = np.array(
     [item.replace("_", " ").title() for item in test_gen.targets]
 )
 # create a N x A X M array where N is the number of test samples, A is the number of appliances that could use a particular fuel type and M is the number of fuel targets
 # fuel_present_by_sample_appliance_fuel[i][j][k] = True indicates that appliance j for building sample i uses fuel k
 fuel_present_by_sample_appliance_fuel = np.expand_dims(targets_formatted, axis=[
-                                                       0, 1]) == np.expand_dims(inference_data[["heating_fuel"]], 2)
+                                                       0, 1]) == np.expand_dims(inference_data[appliance_fuel_cols], 2)
 # sum over appliances to just get 2d mask where fuel_present_by_sample_fuel_mask[i][k] = True indicates building sample i uses fuel k
 fuel_present_by_sample_fuel_mask = fuel_present_by_sample_appliance_fuel.sum(
     1).astype(bool)
@@ -148,6 +158,10 @@ pred_only = spark.createDataFrame(
     predictions_with_pkeys.tolist(),
     sample_pkeys + target_pred_labels,
 ).replace(float("nan"), None)
+
+# COMMAND ----------
+
+pred_only.display()
 
 # COMMAND ----------
 

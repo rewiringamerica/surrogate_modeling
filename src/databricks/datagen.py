@@ -69,13 +69,13 @@ class DataGenerator(tf.keras.utils.Sequence):
         "heating_appliance_type",
         "has_ductless_heating",
         "heating_efficiency_nominal_percentage",
-        "heating_setpoint_degrees_from_70f",
+        "heating_setpoint_degrees_f",
         "heating_setpoint_offset_magnitude_degrees_f",
         # cooling
         "ac_type",
         "cooled_space_percentage",
         "cooling_efficiency_eer",
-        "cooling_setpoint_degrees_from_70f",
+        "cooling_setpoint_degrees_f",
         "cooling_setpoint_offset_magnitude_degrees_f",
         # water heater
         "water_heater_fuel",
@@ -122,9 +122,10 @@ class DataGenerator(tf.keras.utils.Sequence):
         # misc
         "climate_zone_temp",
         "climate_zone_moisture",
-        "vintage",
+        "neighbor_distance_ft",
         "n_occupants",
-    ]
+        "vintage",
+]
 
     weather_features = [
         "temp_air",
