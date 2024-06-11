@@ -3,6 +3,11 @@
 
 # COMMAND ----------
 
+# MAGIC %pip install seaborn==v0.13.0
+# MAGIC dbutils.library.restartPython()
+
+# COMMAND ----------
+
 # DBTITLE 1,Widget setup
 dbutils.widgets.dropdown("mode", "test", ["test", "production"])
 dbutils.widgets.text("model_name", "test")
@@ -14,19 +19,13 @@ MODEL_NAME = dbutils.widgets.get("model_name")
 # run ID of the model to test. If passed in by prior task in job, then overrride the input value
 input_run_id = dbutils.widgets.get("run_id")
 RUN_ID = dbutils.jobs.taskValues.get(taskKey = "model_training", key = "run_id", debugValue=input_run_id, default=input_run_id)
-assert RUN_ID != ""
+assert RUN_ID != "" "Must pass in run id-- if running in notebook, insert run id in widget text box"
 # number of samples from test set to to run inference on (takes too long to run on all)
 TEST_SIZE = int(dbutils.widgets.get("test_size"))
 print(DEBUG)
 print(MODEL_NAME)
 print(RUN_ID)
 print(TEST_SIZE)
-
-# COMMAND ----------
-
-# DBTITLE 1,Install newer version of seaborn
-# MAGIC %pip install seaborn==v0.13.0
-# MAGIC dbutils.library.restartPython()
 
 # COMMAND ----------
 
@@ -54,7 +53,6 @@ print(TEST_SIZE)
 
 # DBTITLE 1,Globals
 MODEL_RUN_NAME = f"{MODEL_NAME}@{RUN_ID}"
-
 # path to write figures to
 EXPORT_FPATH = CloudPath("gs://the-cube") / "export"  # move to globals after reorg
 
