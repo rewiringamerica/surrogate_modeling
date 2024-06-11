@@ -549,7 +549,9 @@ def transform_building_features() -> DataFrame:
     """
     building_metadata_transformed = (
         spark.read.table("ml.surrogate_model.building_metadata")
-        # -- filter to occupied sf homes with modeled heating fuel -- #
+        # add upgrade id for baseline
+        .withColumn("upgrade_id", F.lit(0.0))
+        # -- filter to occupied sf homes with modeled fuels -- #
         # sf homes only
         .where(
             F.col("geometry_building_type_acs").isin(
@@ -770,7 +772,6 @@ def transform_building_features() -> DataFrame:
         )
         # -- misc transformations -- #
         # add upgrade id corresponding to baseline scenario
-        .withColumn("upgrade_id", F.lit(0.0))
         .withColumn(
             "climate_zone_temp", F.substring("ashrae_iecc_climate_zone_2004", 1, 1)
         )
@@ -783,6 +784,7 @@ def transform_building_features() -> DataFrame:
             F.when(F.col("occupants") == "10+", 11).otherwise(
                 F.col("occupants").cast("int")
             ),
+        #TODO: add neighbors_distance
         )
         # -- fuel tranformations -- #
         # align names for methane gas across applainces

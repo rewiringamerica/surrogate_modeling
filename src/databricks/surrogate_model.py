@@ -87,10 +87,19 @@ class SurrogateModel:
         bm = layers.Concatenate(name="concat_layer", dtype=layer_params["dtype"])(
             bmo_inputs
         )
+        bm = layers.BatchNormalization(name = 'init_batchnorm')(bm)
         bm = layers.Dense(128, name="first_dense", **layer_params)(bm)
+        bm = layers.BatchNormalization(name = 'first_batchnorm')(bm)
+        bm = layers.LeakyReLU(name = 'first_leakyrelu')(bm)
         bm = layers.Dense(64, name="second_dense", **layer_params)(bm)
+        bm = layers.BatchNormalization(name = 'second_batchnorm')(bm)
+        bm = layers.LeakyReLU(name = 'second_leakyrelu')(bm)
         bm = layers.Dense(32, name="third_dense", **layer_params)(bm)
+        bm = layers.BatchNormalization(name = 'third_batchnorm')(bm)
+        bm = layers.LeakyReLU(name = 'third_leakyrelu')(bm)
         bm = layers.Dense(8, name="fourth_dense", **layer_params)(bm)
+        bm = layers.BatchNormalization(name = 'fourth_batchnorm')(bm)
+        bm = layers.LeakyReLU(name = 'fourth_leakyrelu')(bm)
 
         bmo = models.Model(
             inputs=bmo_inputs_dict, outputs=bm, name="building_features_model"
@@ -113,6 +122,7 @@ class SurrogateModel:
         wm = layers.Concatenate(
             axis=-1, name="weather_concat_layer", dtype=layer_params["dtype"]
         )(weather_inputs)
+        wm = layers.BatchNormalization(name = 'init_conv_batchnorm')(wm)
         wm = layers.Conv1D(
             filters=16,
             kernel_size=8,
@@ -121,6 +131,8 @@ class SurrogateModel:
             name="first_1dconv",
             **layer_params,
         )(wm)
+        wm = layers.BatchNormalization(name = 'first_conv_batchnorm')(wm)
+        wm = layers.LeakyReLU(name = 'first_conv_leakyrelu')(wm)
         wm = layers.Conv1D(
             filters=8,
             kernel_size=8,
@@ -129,6 +141,8 @@ class SurrogateModel:
             name="last_1dconv",
             **layer_params,
         )(wm)
+        wm = layers.BatchNormalization(name = 'second_conv_batchnorm')(wm)
+        wm = layers.LeakyReLU(name = 'second_conv_leakyrelu')(wm)
 
         # sum the time dimension
         wm = layers.Lambda(
@@ -144,14 +158,24 @@ class SurrogateModel:
         # Combined model and separate towers for output groups
         cm = layers.Concatenate(name="combine")([bmo.output, wmo.output])
         cm = layers.Dense(16,name="combine_first_dense",  **layer_params)(cm)
+        #cm = layers.BatchNormalization(name = 'first_combine_batchnorm')(cm)
+        cm = layers.LeakyReLU(name = 'first_combine_leakyrelu')(cm)
         cm = layers.Dense(16, name="combine_second_dense", **layer_params)(cm)
+        #cm = layers.BatchNormalization(name = 'second_combine_batchnorm')(cm)
+        cm = layers.LeakyReLU(name = 'second_combine_leakyrelu')(cm)
 
         # building a separate tower for each output group
+        final_layer_params = layer_params.copy()
+        final_layer_params['activation'] = 'leaky_relu'
         final_outputs = {}
         for consumption_group in train_gen.targets:
             io = layers.Dense(4, name=consumption_group + "_entry", **layer_params)(cm)
+            #io = layers.BatchNormalization(name=consumption_group + "_entry_batchnorm")(io)
+            io = layers.LeakyReLU(name=consumption_group + "_entry_leakyrelu")(io)
             io = layers.Dense(2, name=consumption_group + "_mid", **layer_params)(io)
-            io = layers.Dense(1, name=consumption_group, **layer_params)(cm)
+            #io = layers.BatchNormalization(name=consumption_group + "_mid_batchnorm")(io)
+            io = layers.LeakyReLU(name=consumption_group + "_mid_leakyrelu")(io)
+            io = layers.Dense(1, name=consumption_group, **final_layer_params)(io)
             final_outputs[consumption_group] = io
 
         final_model = models.Model(

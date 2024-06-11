@@ -94,7 +94,7 @@ EXPERIMENT_LOCATION = "/Shared/surrogate_model/"
 # COMMAND ----------
 
 # DBTITLE 1,Load data
-train_data, val_data, test_data = load_data(n_train=1000 if DEBUG else None)
+train_data, val_data, test_data = load_data(n_train=5000 if DEBUG else None)
 
 # COMMAND ----------
 
@@ -216,7 +216,7 @@ sm = SurrogateModel(name="test" if DEBUG else "mvp")
 
 # COMMAND ----------
 
-# DBTITLE 1,Fit model
+# DBTITLE 1,Train model
 # Train keras model and log the model with the Feature Engineering in UC. Note that right we are skipping registering the model in the UC-- this requires storing the signature, which for unclear reasons, is slowing down inference more than 10x.
 
 # Init FeatureEngineering client
@@ -224,7 +224,7 @@ fe = FeatureEngineeringClient()
 
 # Set the activation function and numeric data type for the model's layers
 layer_params = {
-    "activation": "leaky_relu",
+    "activation": "linear",
     "dtype": np.float32,
     "kernel_initializer": "he_normal",
 }
@@ -254,10 +254,10 @@ with mlflow.start_run() as run:
     history = keras_model.fit(
         train_gen,
         validation_data=val_gen,
-        epochs=2 if DEBUG else 100,
+        epochs=10 if DEBUG else 100,
         batch_size=train_gen.batch_size,
         verbose=2,
-        callbacks=[keras.callbacks.EarlyStopping(monitor="val_loss", patience=10)],
+        #callbacks=[keras.callbacks.EarlyStopping(monitor="val_loss", patience=10)],
     )
 
     # wrap in custom class that defines pre and post processing steps to be applied when called at inference time
