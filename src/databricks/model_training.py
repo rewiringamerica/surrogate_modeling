@@ -212,7 +212,7 @@ class SurrogateModelingWrapper(mlflow.pyfunc.PythonModel):
 # COMMAND ----------
 
 # DBTITLE 1,Initialize model
-sm = SurrogateModel(name="test" if DEBUG else "sf_hvac_by_fuel")
+sm = SurrogateModel(name="test" if DEBUG else "mvp")
 
 # COMMAND ----------
 
@@ -306,3 +306,7 @@ if DEBUG:
     input_data = test_gen.training_set.load_df().toPandas()
     #run prediction and output a N x M matrix of predictions where N is the number of rows in the input data table and M is the number of target columns
     print(model_loaded.predict(input_data))
+
+# COMMAND ----------
+
+
