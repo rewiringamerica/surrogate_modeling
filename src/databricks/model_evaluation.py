@@ -12,7 +12,8 @@ DEBUG = dbutils.widgets.get("mode") == "test"
 # name of the model 
 MODEL_NAME = dbutils.widgets.get("model_name")
 # run ID of the model to test. If passed in by prior task in job, then overrride the input value
-RUN_ID = dbutils.jobs.taskValues.get(taskKey = "model_training", key = "run_id", debugValue=dbutils.widgets.get("run_id"))
+input_run_id = dbutils.widgets.get("run_id")
+RUN_ID = dbutils.jobs.taskValues.get(taskKey = "model_training", key = "run_id", debugValue=input_run_id, default=input_run_id)
 assert RUN_ID != ""
 # number of samples from test set to to run inference on (takes too long to run on all)
 TEST_SIZE = int(dbutils.widgets.get("test_size"))
