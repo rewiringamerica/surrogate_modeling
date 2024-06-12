@@ -90,20 +90,13 @@ EXPERIMENT_LOCATION = "/Shared/surrogate_model/"
 # COMMAND ----------
 
 # DBTITLE 1,Load data
-train_data, val_data, test_data = load_data(n_train=5000 if DEBUG else None)
+train_data, val_data, test_data = load_data(n_train=1000 if DEBUG else None)
 
 # COMMAND ----------
 
 # DBTITLE 1,Initialize train/val data generators
 train_gen = DataGenerator(train_data=train_data, batch_size=256)
 val_gen = DataGenerator(train_data=val_data, batch_size=256)
-
-# COMMAND ----------
-
-# feature_df = train_gen.train_df
-
-# X_train_bm = {col: np.array(feature_df[col]).astype(int) if feature_df.dtypes[col] == 'bool' else
-#                 np.array(feature_df[col]) for col in train_gen.building_features}
 
 # COMMAND ----------
 
@@ -161,7 +154,7 @@ class SurrogateModelingWrapper(mlflow.pyfunc.PythonModel):
         """
         return self.convert_feature_dataframe_to_dict(model_input)
 
-    def postprocess_result(self, results: Dict[str, np.ndarray]) -> np.ndarray:
+    def postprocess_result(self, results: Dict[str, np.ndarray], feature_df: pd.DataFrame) -> np.ndarray:
         """
         Postprocesses the model results for N samples over M targets.
 
@@ -172,9 +165,15 @@ class SurrogateModelingWrapper(mlflow.pyfunc.PythonModel):
         - The model predictions floored at 0: np.ndarray of shape [N, M]
 
         """
-        return np.clip(
-            np.hstack([results[c] for c in self.targets]), a_min=0, a_max=None
-        )
+        for fuel in self.targets:
+            if fuel == 'electricity':
+                results[fuel] = results[fuel].flatten()
+            else:
+                # null out fuel target if fuel is not present in any appliance in the home
+                results[fuel] = np.where(~feature_df[f"has_{fuel}_appliance"], np.nan, results[fuel].flatten())
+        #stack into N x M array and clip at 0
+        return np.clip(np.vstack(list(results.values())).T, a_min=0, a_max=None)
+
 
     def predict(self, context, model_input: pd.DataFrame) -> np.ndarray:
         """
@@ -189,7 +188,7 @@ class SurrogateModelingWrapper(mlflow.pyfunc.PythonModel):
         """
         processed_df = self.preprocess_input(model_input)
         predictions_df = self.model.predict(processed_df)
-        return self.postprocess_result(predictions_df)
+        return self.postprocess_result(predictions_df, model_input)
 
     def convert_feature_dataframe_to_dict(
         self, feature_df: pd.DataFrame
@@ -215,7 +214,7 @@ class SurrogateModelingWrapper(mlflow.pyfunc.PythonModel):
 # COMMAND ----------
 
 # DBTITLE 1,Initialize model
-sm = SurrogateModel(name="test" if DEBUG else "mvp")
+sm = SurrogateModel(name="test" if DEBUG else "mvp_hvac_upgrades")
 
 # COMMAND ----------
 
@@ -257,7 +256,7 @@ with mlflow.start_run() as run:
     history = keras_model.fit(
         train_gen,
         validation_data=val_gen,
-        epochs=3 if DEBUG else 100,
+        epochs=2 if DEBUG else 100,
         batch_size=train_gen.batch_size,
         verbose=2,
         callbacks=[keras.callbacks.EarlyStopping(monitor="val_loss", patience=12)],

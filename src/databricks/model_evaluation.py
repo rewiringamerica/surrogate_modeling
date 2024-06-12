@@ -101,38 +101,6 @@ prediction_arr = model_loaded.predict(inference_data)
 
 # COMMAND ----------
 
-# DBTITLE 1,Set targets to null if fuel type is not present
-# TODO: move this and the next two cells to SurrogateModelingWrapper.postprocess_result() once we add features that have indicators for presence each fuel type in the home, so this code will get a lot simpler
-
-# list of columns containing fuel types for appliances
-appliance_fuel_cols = [
-    "clothes_dryer_fuel",
-    "cooking_range_fuel",
-    "heating_fuel",
-    "hot_tub_spa_fuel",
-    "pool_heater_fuel",
-    "water_heater_fuel",
-]
-
-targets_formatted = np.array(
-    [item.replace("_", " ").title() for item in test_gen.targets]
-)
-# create a N x A X M array where N is the number of test samples, A is the number of appliances that could use a particular fuel type and M is the number of fuel targets
-# fuel_present_by_sample_appliance_fuel[i][j][k] = True indicates that appliance j for building sample i uses fuel k
-fuel_present_by_sample_appliance_fuel = np.expand_dims(targets_formatted, axis=[
-                                                       0, 1]) == np.expand_dims(inference_data[appliance_fuel_cols], 2)
-# sum over appliances to just get 2d mask where fuel_present_by_sample_fuel_mask[i][k] = True indicates building sample i uses fuel k
-fuel_present_by_sample_fuel_mask = fuel_present_by_sample_appliance_fuel.sum(
-    1).astype(bool)
-# all(ish) homes have electricity so set this to always be True
-fuel_present_by_sample_fuel_mask[:, targets_formatted == "Electricity"] = True
-# null out the predictions if there are no appliances with that fuel type -- we are basically setting these to 0,
-# but we also want to make sure we don't give the model credit for predicting 0 when we manually set this
-predictions_with_nulled_out_fuels = np.where(
-    ~fuel_present_by_sample_fuel_mask, np.nan, prediction_arr)
-
-# COMMAND ----------
-
 # DBTITLE 1,Concatenate pkeys and predictions
 # create an array of N x 2 with the pkeys needed to join this to metadata
 sample_pkeys = ["building_id", "upgrade_id"]
@@ -143,9 +111,9 @@ targets = test_gen.targets + ["total"]
 predictions_with_pkeys = np.hstack(
     [
         sample_pkey_arr,  # columns of pkeys
-        predictions_with_nulled_out_fuels,  # columns for each fuel
+        prediction_arr,  # columns for each fuel
         # column of totals summed over all fuels
-        np.expand_dims(np.nansum(predictions_with_nulled_out_fuels, 1), 1),
+        np.expand_dims(np.nansum(prediction_arr, 1), 1),
     ]
 )
 
@@ -222,10 +190,6 @@ pred_by_building_upgrade_fuel_with_metadata = (
         .otherwise(F.col("ac_type")),
     )
 )
-
-# COMMAND ----------
-
-pred_by_building_upgrade_fuel_with_metadata.display()
 
 # COMMAND ----------
 

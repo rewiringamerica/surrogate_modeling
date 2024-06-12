@@ -67,7 +67,7 @@ class DataGenerator(tf.keras.utils.Sequence):
         # heating
         "heating_fuel",
         "heating_appliance_type",
-        "has_ductless_heating",
+        "has_ducted_heating",
         "heating_efficiency_nominal_percentage",
         "heating_setpoint_degrees_f",
         "heating_setpoint_offset_magnitude_degrees_f",
@@ -125,6 +125,10 @@ class DataGenerator(tf.keras.utils.Sequence):
         "neighbor_distance_ft",
         "n_occupants",
         "vintage",
+        # fuel indicators -- these must be present for post-processing to work!!
+        "has_methane_gas_appliance",
+        "has_fuel_oil_appliance",
+        "has_propane_appliance",
 ]
 
     weather_features = [
