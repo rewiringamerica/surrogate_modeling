@@ -291,7 +291,8 @@ class DataGenerator(tf.keras.utils.Sequence):
 
     def feature_dtype(self, feature_name: str) -> Any:
         """
-        Returns the dtype of the feature.
+        Returns the dtype of the feature, which is tf.string
+        if object, otherwise self.dtype
 
         Parameters:
         - feature_name (str): the name of the feature.

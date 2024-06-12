@@ -503,7 +503,7 @@ def make_map_type_from_dict(mapping: Dict) -> Column:
     return F.create_map([F.lit(x) for x in chain(*mapping.items())])
 
 
-yes_no_mapping = make_map_type_from_dict({"Yes": 1, "No": 0})
+yes_no_mapping = make_map_type_from_dict({"Yes": True, "No": False})
 
 low_medium_high_mapping = make_map_type_from_dict({"Low": 1, "Medium": 2, "High": 3})
 
@@ -541,9 +541,9 @@ appliance_fuel_cols = [
 
 # list of columns containing fuel types for appliances
 gas_appliance_indicator_cols = [
-    'has_gas_fireplace',
-    'has_gas_grill',
-    'has_gas_lighting',
+    "has_gas_fireplace",
+    "has_gas_grill",
+    "has_gas_lighting",
 ]
 
 # COMMAND ----------
@@ -626,7 +626,7 @@ def transform_building_features() -> DataFrame:
         )
         .withColumn(  # note there are cases where hvac_has_ducts = True, but heating system is still ductless
             "has_ductless_heating",
-            (F.col("hvac_heating_type") == "Non-Ducted Heating").cast("int"),
+            (F.col("hvac_heating_type") == "Non-Ducted Heating"),
         )
         # -- cooling tranformations -- #
         .withColumn("ac_type", F.split(F.col("hvac_cooling_efficiency"), ",")[0])
@@ -724,9 +724,7 @@ def transform_building_features() -> DataFrame:
         #  -- attached home transformations -- #
         .withColumn(
             "is_attached",
-            (F.col("geometry_building_type_acs") == "Single-Family Attached").cast(
-                "int"
-            ),
+            F.col("geometry_building_type_acs") == "Single-Family Attached",
         )
         .withColumn(
             "n_building_units",
@@ -736,12 +734,10 @@ def transform_building_features() -> DataFrame:
         )
         .withColumn(
             "is_middle_unit",
-            (F.col("geometry_building_horizontal_location_sfa") == "Middle").cast(
-                "int"
-            ),
+            F.col("geometry_building_horizontal_location_sfa") == "Middle"
         )
         # -- other appliances -- #
-        .withColumn("has_ceiling_fan", (F.col("ceiling_fan") != "None").cast("int"))
+        .withColumn("has_ceiling_fan", F.col("ceiling_fan") != "None")
         .withColumn("clothes_dryer_fuel", F.split(F.col("clothes_dryer"), ",")[0])
         .withColumn(
             "clothes_washer_efficiency", F.split(F.col("clothes_washer"), ",")[0]
@@ -758,19 +754,13 @@ def transform_building_features() -> DataFrame:
             "refrigerator_extra_efficiency_ef",
             extract_energy_factor(F.col("misc_extra_refrigerator")),
         )
-        .withColumn(
-            "has_standalone_freezer", (F.col("misc_freezer") != "None").cast("int")
-        )
-        .withColumn(
-            "has_gas_fireplace", (F.col("misc_gas_fireplace") != "None").cast("int")
-        )
-        .withColumn("has_gas_grill", (F.col("misc_gas_grill") != "None").cast("int"))
-        .withColumn(
-            "has_gas_lighting", (F.col("misc_gas_lighting") != "None").cast("int")
-        )
+        .withColumn("has_standalone_freezer", F.col("misc_freezer") != "None")
+        .withColumn("has_gas_fireplace", F.col("misc_gas_fireplace") != "None")
+        .withColumn("has_gas_grill", F.col("misc_gas_grill") != "None")
+        .withColumn("has_gas_lighting", F.col("misc_gas_lighting") != "None")
         .withColumnRenamed("misc_hot_tub_spa", "hot_tub_spa_fuel")
         .withColumnRenamed("misc_pool_heater", "pool_heater_fuel")
-        .withColumn("has_well_pump", (F.col("misc_well_pump") != "None").cast("int"))
+        .withColumn("has_well_pump", F.col("misc_well_pump") != "None")
         .withColumn(
             "refrigerator_efficiency_ef", extract_energy_factor(F.col("refrigerator"))
         )
@@ -943,18 +933,18 @@ def upgrade_to_hp(
         .withColumn(
             "cooling_efficiency_eer",
             F.when(
-                F.col("has_ducts") == 1,
+                F.col("has_ducts"),
                 extract_cooling_efficiency(F.lit(ducted_efficiency)),
             ).otherwise(extract_cooling_efficiency(F.lit(non_ducted_efficiency))),
         )
         .withColumn(
             "heating_efficiency_nominal_percentage",
             F.when(
-                F.col("has_ducts") == 1,
+                F.col("has_ducts"),
                 extract_heating_efficiency(F.lit(ducted_efficiency)),
             ).otherwise(extract_heating_efficiency(F.lit(non_ducted_efficiency))),
         )
-        .withColumn("has_ductless_heating", (F.col("has_ducts") == 0).cast("int"))
+        .withColumn("has_ductless_heating", F.col("has_ducts"))
         .withColumn("ac_type", F.lit("Heat Pump"))
         .withColumn("cooled_space_percentage", F.lit(1.0))
     )
@@ -1047,7 +1037,7 @@ def apply_upgrades(baseline_building_features: DataFrame, upgrade_id: int) -> Da
 
 # COMMAND ----------
 
-# DBTITLE 1,Apply upgrade logic to metadata
+# DBTITLE 1,Apply upgrade logic to baseline features
 # create a metadata df for baseline and each HVAC upgrade
 upgrade_ids = [0.0, 1.0, 3.0, 4.0]
 building_metadata_hvac_upgrades = reduce(
@@ -1211,6 +1201,11 @@ weather_data_transformed = transform_weather_features()
 
 # DBTITLE 1,Create a FeatureEngineeringClient
 fe = FeatureEngineeringClient()
+
+# COMMAND ----------
+
+# MAGIC %sql
+# MAGIC DROP TABLE ml.surrogate_model.building_features
 
 # COMMAND ----------
 

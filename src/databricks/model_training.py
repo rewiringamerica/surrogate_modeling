@@ -100,6 +100,13 @@ val_gen = DataGenerator(train_data=val_data, batch_size=256)
 
 # COMMAND ----------
 
+# feature_df = train_gen.train_df
+
+# X_train_bm = {col: np.array(feature_df[col]).astype(int) if feature_df.dtypes[col] == 'bool' else
+#                 np.array(feature_df[col]) for col in train_gen.building_features}
+
+# COMMAND ----------
+
 # DBTITLE 1,Inspect data gen output for one batch
 if DEBUG:
     print("FEATURES:")
@@ -221,7 +228,7 @@ fe = FeatureEngineeringClient()
 # Set the activation function and numeric data type for the model's layers
 layer_params = {
     "activation": "linear",
-    "dtype": np.float32,
+    "dtype": train_gen.dtype,
     "kernel_initializer": "he_normal",
 }
 
@@ -250,10 +257,10 @@ with mlflow.start_run() as run:
     history = keras_model.fit(
         train_gen,
         validation_data=val_gen,
-        epochs=10 if DEBUG else 100,
+        epochs=3 if DEBUG else 100,
         batch_size=train_gen.batch_size,
         verbose=2,
-        #callbacks=[keras.callbacks.EarlyStopping(monitor="val_loss", patience=10)],
+        callbacks=[keras.callbacks.EarlyStopping(monitor="val_loss", patience=12)],
     )
 
     # wrap in custom class that defines pre and post processing steps to be applied when called at inference time

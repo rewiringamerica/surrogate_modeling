@@ -161,10 +161,6 @@ pred_only = spark.createDataFrame(
 
 # COMMAND ----------
 
-pred_only.display()
-
-# COMMAND ----------
-
 # MAGIC %md ## Post-Process Results
 
 # COMMAND ----------
@@ -216,16 +212,20 @@ pred_by_building_upgrade_fuel_with_metadata = (
         "heating_fuel",
         F.when(F.col("ac_type") == "Heat Pump", F.lit("Heat Pump"))
         .when(F.col("heating_fuel") == "Electricity", F.lit("Electric Resistance"))
-        .when(F.col("heating_appliance_type") == "Shared", F.lit("Shared Heating"))
+        .when(F.col("heating_appliance_type") == "Shared Heating", F.lit("Shared Heating"))
         .when(F.col("heating_fuel") == "None", F.lit("No Heating"))
         .otherwise(F.col("heating_fuel")),
     ).withColumn(
         "ac_type",
-        F.when(F.col("ac_type") == "Shared", F.lit("Shared Cooling"))
+        F.when(F.col("ac_type") == "Shared Cooling", F.lit("Shared Cooling"))
         .when(F.col("ac_type") == "None", F.lit("No Cooling"))
         .otherwise(F.col("ac_type")),
     )
 )
+
+# COMMAND ----------
+
+pred_by_building_upgrade_fuel_with_metadata.display()
 
 # COMMAND ----------
 
@@ -407,6 +407,7 @@ bucket_metrics = pd.read_csv(
 )
 bucket_metrics["upgrade_id"] = bucket_metrics["upgrade_id"].astype("str")
 bucket_metrics.replace({'Natural Gas': 'Methane Gas'}, inplace=True)
+# bucket_metrics[bucket_metrics.ac]
 
 # COMMAND ----------
 
@@ -593,7 +594,7 @@ with sns.axes_style("whitegrid"):
         },
     )
 g.fig.subplots_adjust(top=0.93)
-g.fig.suptitle("Prediction Metric Comparison for HVAC Savings")
+g.fig.suptitle("Prediction Metric Comparison for Total Energy Savings")
 
 # COMMAND ----------
 
