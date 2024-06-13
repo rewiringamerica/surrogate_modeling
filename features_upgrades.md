@@ -8,15 +8,11 @@ The following list describes mapping from Simulation Features to Surrogate Model
 
 **Surrogate Model Features**: Simulation inputs transformed for the surrogate model. The [options_lookup.tsv](https://github.com/NREL/resstock/blob/run/euss/resources/options_lookup.tsv) defines the mapping from select ResStock characteristics to EnergyPlus arguments. In many cases this provides a mapping from a categorical feature to a set of numerical features, and so we will likely want to leverage this mapping. In future work, we will directly use this .tsv file to apply the mapping, but for the MVP we decided to just define these manually and non-comprehensively.
 
-See [Feature Types](https://www.notion.so/Feature-Types-1250da4608264726988651f7995b01d7?pvs=21) for details.
-
-We consider the set of Simulation Features, the details for which can be viewed in [this sheet](https://docs.google.com/spreadsheets/d/1cLx5fhWQB1RY650zgRlGebXTKQjDL0cLBnQizuTa9rU/edit#gid=1750978356) when applying the “Simulation Features” filtered view. Note that this sheet was derived from ResStock 2024 features, which deviates slightly from the ResStock 2022 EUSS features, and this was accounted for and noted in the following list .
-
 The mapping takes the following format:
 
 > Simulation Feature:
 >
->          `surrogate_model_feature` (dtype) : description of feature and transformation
+> `surrogate_model_feature` (dtype) : description of feature and transformation
 
 ### Simulation Features → Surrogate Model Features
 
@@ -49,8 +45,6 @@ Cooking Range: _Note in ResStock 2024, the usage portion of this feature is spli
 `cooking_range_fuel` (str): Fuel type of the cooking range. This simulation feature includes both fuel and usage percentage, but we just extract fuel since usage percentage for appliances is completely determined by “Usage Level”.
 
 Cooling Setpoint:
-
-TODO: remove centering.
 
 `cooling_setpoint_degrees` (double): Cooling setpoint in Fahrenheit.
 
@@ -204,7 +198,7 @@ Misc Pool Heater:
 
 Misc Well Pump:
 
-`has_well_pump` (bool): Indicator for whether the unit has a well pump. This is coded as an indicator because the simulation feature has only non-None possible value.
+`has_well_pump` (bool): Indicator for whether the unit has a well pump. This is coded as an indicator because the simulation feature has only one non-None possible value.
 
 Neighbors:
 
@@ -216,7 +210,7 @@ Occupants:
 
 Orientation:
 
-`orientation_degrees` (int): Compass orientation of the unit translated to degrees, with N represented as 0.
+`orientation_degrees` (int): Compass orientation of the unit translated to degrees, with North represented as 0, Northeast as 45, etc.
 
 Plug Loads:
 
