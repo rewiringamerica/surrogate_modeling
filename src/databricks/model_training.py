@@ -295,13 +295,17 @@ print(np.hstack([results[c] for c in train_gen.targets]))
 
 # COMMAND ----------
 
+run_id = 'c1032013f87f4c26a28dfa263fd643fc'
+
+# COMMAND ----------
+
 # DBTITLE 1,Inspect predictions using logged model
 # evaluate the unregistered model we just logged and make sure everything runs
 print(run_id)
 #mlflow.pyfunc.get_model_dependencies(model_uri=sm.get_model_uri(run_id=run_id))
 # Load the model using its registered name and version/stage from the MLflow model registry
 model_loaded = mlflow.pyfunc.load_model(model_uri=sm.get_model_uri(run_id=run_id))
-test_gen = DataGenerator(train_data=test_data)
+test_gen = DataGenerator(train_data=test_data.limit(10))
 # load input data table as a Spark DataFrame
 input_data = test_gen.training_set.load_df().toPandas()
 #run prediction and output a N x M matrix of predictions where N is the number of rows in the input data table and M is the number of target columns
