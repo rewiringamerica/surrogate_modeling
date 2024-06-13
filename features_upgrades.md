@@ -90,7 +90,7 @@ Geometry Building Type ACS:
 
 Geometry Floor Area: _We actually will use the sqft simulation feature which is created in EnergyPlus pre-processing_
 
-`sqft` (double): Finished floor area of the housing unit in ft^2. This is actually derived directly from the `sqft` variable which is the midpoint of the Geometry Floor Area variable. This variable is produced by a preprocessing step in EnergyPlus and output, but it doesn’t it isn’t technically sampled metadata feature, which is why it isn’t in this list.
+`sqft` (double): Finished floor area of the housing unit in ft^2. This is actually derived directly from the `sqft` variable which is the midpoint of the Geometry Floor Area variable. This variable is produced by a preprocessing step in EnergyPlus and output, but it isn’t technically sampled metadata feature, which is why it isn’t in this list.
 
 Geometry Foundation Type
 
