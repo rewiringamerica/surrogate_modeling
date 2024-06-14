@@ -256,10 +256,10 @@ with mlflow.start_run() as run:
     history = keras_model.fit(
         train_gen,
         validation_data=val_gen,
-        epochs=2 if DEBUG else 100,
+        epochs=2 if DEBUG else 120,
         batch_size=train_gen.batch_size,
         verbose=2,
-        callbacks=[keras.callbacks.EarlyStopping(monitor="val_loss", patience=12)],
+        callbacks=[keras.callbacks.EarlyStopping(monitor="val_loss", patience=20)],
     )
 
     # wrap in custom class that defines pre and post processing steps to be applied when called at inference time
@@ -295,10 +295,6 @@ print(np.hstack([results[c] for c in train_gen.targets]))
 
 # COMMAND ----------
 
-run_id = 'c1032013f87f4c26a28dfa263fd643fc'
-
-# COMMAND ----------
-
 # DBTITLE 1,Inspect predictions using logged model
 # evaluate the unregistered model we just logged and make sure everything runs
 print(run_id)
@@ -313,7 +309,7 @@ print(model_loaded.predict(input_data))
 
 # COMMAND ----------
 
-#pass the run id to the next notebook for evaluation
+# DBTITLE 1,Pass Run ID to next notebook if running in job
 if not DEBUG:
     dbutils.jobs.taskValues.set(key = "run_id", value = run_id)
 

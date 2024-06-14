@@ -59,11 +59,18 @@ from pyspark.sql.window import Window
 
 # COMMAND ----------
 
-# MAGIC %md ### Building Metadata Feature Transformation
+# MAGIC %md ### Building Features
 
 # COMMAND ----------
 
-# DBTITLE 1,Feature transformation helper functions
+# MAGIC %md #### Baseline
+# MAGIC
+# MAGIC Refer to [Notion Page](https://www.notion.so/rewiringamerica/Features-Upgrades-c8239f52a100427fbf445878663d7135?pvs=4#086a1d050b8c4094ad10e2275324668b) and [options.tsv](https://github.com/NREL/resstock/blob/run/euss/resources/options_lookup.tsv) and 
+# MAGIC
+
+# COMMAND ----------
+
+# DBTITLE 1,Constants
 # Constants
 BTU_PER_WH = 3.413
 
@@ -74,7 +81,54 @@ EER_CONVERSION = {
     "EER2": 1.04,
 }
 
+# list of columns containing fuel types for appliances
+APPLIANCE_FUEL_COLS = [
+    "clothes_dryer_fuel",
+    "cooking_range_fuel",
+    "heating_fuel",
+    "hot_tub_spa_fuel",
+    "pool_heater_fuel",
+    "water_heater_fuel",
+]
 
+# list of columns containing fuel types for appliances
+GAS_APPLIANCE_INDICATOR_COLS = [
+    "has_gas_fireplace",
+    "has_gas_grill",
+    "has_gas_lighting",
+]
+ 
+# mapping of window description to ufactor and shgc (solar heat gain coefficient) pulled from options.ts
+WINDOW_DESCRIPTION_TO_SPEC = spark.createDataFrame(
+    [
+        ("Double, Clear, Thermal-Break, Air", 0.63, 0.62),
+        ("Double, Low-E, H-Gain", 0.29, 0.56),
+        ("Double, Low-E, L-Gain", 0.26, 0.31),
+        ("Single, Clear, Metal, Exterior Low-E Storm", 0.57, 0.47),
+        ("Single, Clear, Non-metal, Exterior Low-E Storm", 0.36, 0.46),
+        ("Double, Clear, Metal, Exterior Low-E Storm", 0.49, 0.44),
+        ("Double, Clear, Non-metal, Exterior Low-E Storm", 0.28, 0.42),
+        ("Double, Clear, Metal, Air", 0.76, 0.67),
+        ("Double, Clear, Metal, Air, Exterior Clear Storm", 0.55, 0.51),
+        ("Double, Clear, Non-metal, Air", 0.49, 0.56),
+        ("Double, Clear, Non-metal, Air, Exterior Clear Storm", 0.34, 0.49),
+        ("Double, Low-E, Non-metal, Air, M-Gain", 0.38, 0.44),
+        ("Double, Low-E, Non-metal, Air, L-Gain", 0.37, 0.30),
+        ("Single, Clear, Metal", 1.16, 0.76),
+        ("Single, Clear, Metal, Exterior Clear Storm", 0.67, 0.56),
+        ("Single, Clear, Non-metal", 0.84, 0.63),
+        ("Single, Clear, Non-metal, Exterior Clear Storm", 0.47, 0.54),
+        ("Triple, Low-E, Non-metal, Air, L-Gain", 0.29, 0.26),
+        ("Triple, Low-E, Insulated, Argon, H-Gain", 0.18, 0.40),
+        ("Triple, Low-E, Insulated, Argon, L-Gain", 0.17, 0.27),
+        ("No Windows", 0.84, 0.63),
+    ],
+    ("windows", "window_ufactor", "window_shgc"),
+)
+
+# COMMAND ----------
+
+# DBTITLE 1,Helper functions
 @udf(returnType=DoubleType())
 def extract_percentage(value: str) -> float:
     """Extract percentage from string and divide by 100
@@ -321,6 +375,72 @@ wh_schema = StructType(
 )
 
 
+@udf(IntegerType())
+def get_water_heater_capacity_ashrae(
+    n_bedrooms: int, n_bathrooms: float, is_electric: bool
+) -> int:
+    """
+    Calculates the recommended water heater capacity in gallons based on
+    the number of bedrooms, bathrooms, and whether the heater is electric.
+    Source: https://www.nrel.gov/docs/fy10osti/47246.pdf
+    Table 8. Benchmark Domestic Hot Water Storage and Burner Capacity (ASHRAE 1999)
+
+    >>> get_water_heater_capacity(3, 4, False)
+    40
+    >>> get_water_heater_capacity(1, 1.5, True)
+    20
+    >> get_water_heater_capacity(6, 5, True)
+    80
+    """
+    match n_bedrooms:
+        case 1:
+            return 20
+        case 2:
+            if n_bathrooms < 2:
+                return 30
+            elif n_bathrooms < 3:
+                if is_electric:
+                    return 40
+                else:
+                    return 30
+            else:
+                if is_electric:
+                    return 50
+                else:
+                    return 40
+        case 3:
+            if n_bathrooms < 2:
+                if is_electric:
+                    return 40
+                else:
+                    return 30
+            else:
+                if is_electric:
+                    return 50
+                else:
+                    return 40
+        case 4:
+            if n_bathrooms < 3:
+                if is_electric:
+                    return 50
+                else:
+                    return 40
+            else:
+                if is_electric:
+                    return 66
+                else:
+                    return 50
+        case 5:
+            if is_electric:
+                return 66
+            else:
+                return 50
+        case 6:
+            if is_electric:
+                return 80
+            else:
+                return 50
+
 @udf(wh_schema)
 def get_water_heater_specs(name: str) -> StructType:
     """
@@ -407,102 +527,30 @@ def get_water_heater_specs(name: str) -> StructType:
 
     return specs
 
-
-@udf(IntegerType())
-def get_water_heater_capacity_ashrae(
-    n_bedrooms: int, n_bathrooms: float, is_electric: bool
-) -> int:
-    """
-    Calculates the recommended water heater capacity in gallons based on
-    the number of bedrooms, bathrooms, and whether the heater is electric.
-    Source: https://www.nrel.gov/docs/fy10osti/47246.pdf
-    Table 8. Benchmark Domestic Hot Water Storage and Burner Capacity (ASHRAE 1999)
-
-    >>> get_water_heater_capacity(3, 4, False)
-    40
-    >>> get_water_heater_capacity(1, 1.5, True)
-    20
-    >> get_water_heater_capacity(6, 5, True)
-    80
-    """
-    match n_bedrooms:
-        case 1:
-            return 20
-        case 2:
-            if n_bathrooms < 2:
-                return 30
-            elif n_bathrooms < 3:
-                if is_electric:
-                    return 40
-                else:
-                    return 30
-            else:
-                if is_electric:
-                    return 50
-                else:
-                    return 40
-        case 3:
-            if n_bathrooms < 2:
-                if is_electric:
-                    return 40
-                else:
-                    return 30
-            else:
-                if is_electric:
-                    return 50
-                else:
-                    return 40
-        case 4:
-            if n_bathrooms < 3:
-                if is_electric:
-                    return 50
-                else:
-                    return 40
-            else:
-                if is_electric:
-                    return 66
-                else:
-                    return 50
-        case 5:
-            if is_electric:
-                return 66
-            else:
-                return 50
-        case 6:
-            if is_electric:
-                return 80
-            else:
-                return 50
-
-
-# mapping of window description to ufactor and shgc (solar heat gain coefficient) pulled from options.ts
-WINDOW_DESCRIPTION_TO_SPEC = spark.createDataFrame(
-    [
-        ("Double, Clear, Thermal-Break, Air", 0.63, 0.62),
-        ("Double, Low-E, H-Gain", 0.29, 0.56),
-        ("Double, Low-E, L-Gain", 0.26, 0.31),
-        ("Single, Clear, Metal, Exterior Low-E Storm", 0.57, 0.47),
-        ("Single, Clear, Non-metal, Exterior Low-E Storm", 0.36, 0.46),
-        ("Double, Clear, Metal, Exterior Low-E Storm", 0.49, 0.44),
-        ("Double, Clear, Non-metal, Exterior Low-E Storm", 0.28, 0.42),
-        ("Double, Clear, Metal, Air", 0.76, 0.67),
-        ("Double, Clear, Metal, Air, Exterior Clear Storm", 0.55, 0.51),
-        ("Double, Clear, Non-metal, Air", 0.49, 0.56),
-        ("Double, Clear, Non-metal, Air, Exterior Clear Storm", 0.34, 0.49),
-        ("Double, Low-E, Non-metal, Air, M-Gain", 0.38, 0.44),
-        ("Double, Low-E, Non-metal, Air, L-Gain", 0.37, 0.30),
-        ("Single, Clear, Metal", 1.16, 0.76),
-        ("Single, Clear, Metal, Exterior Clear Storm", 0.67, 0.56),
-        ("Single, Clear, Non-metal", 0.84, 0.63),
-        ("Single, Clear, Non-metal, Exterior Clear Storm", 0.47, 0.54),
-        ("Triple, Low-E, Non-metal, Air, L-Gain", 0.29, 0.26),
-        ("Triple, Low-E, Insulated, Argon, H-Gain", 0.18, 0.40),
-        ("Triple, Low-E, Insulated, Argon, L-Gain", 0.17, 0.27),
-        ("No Windows", 0.84, 0.63),
-    ],
-    ("windows", "window_ufactor", "window_shgc"),
+def add_water_heater_features(df):
+    return (
+        df
+        .withColumn(
+            "wh_struct", get_water_heater_specs(F.col("water_heater_efficiency"))
+        )
+        .withColumn("water_heater_type", F.col("wh_struct.water_heater_type"))
+        .withColumn(
+            "water_heater_tank_volume_gal",
+            F.col("wh_struct.water_heater_tank_volume_gal")
+        )
+        .withColumn(
+            "water_heater_efficiency_ef", F.col("wh_struct.water_heater_efficiency_ef")
+        )
+        .withColumn(
+            "water_heater_recovery_efficiency_ef",
+            F.col("wh_struct.water_heater_recovery_efficiency_ef"),
+        )
+        .drop("wh_struct")
 )
 
+# COMMAND ----------
+
+# DBTITLE 1,Mapping Expressions
 # Make various mapping expressions
 def make_map_type_from_dict(mapping: Dict) -> Column:
     """
@@ -537,23 +585,6 @@ luminous_efficiency_mapping = make_map_type_from_dict(
         "100% LED": 0.15,  # 11-30%
     }
 )
-
-# list of columns containing fuel types for appliances
-appliance_fuel_cols = [
-    "clothes_dryer_fuel",
-    "cooking_range_fuel",
-    "heating_fuel",
-    "hot_tub_spa_fuel",
-    "pool_heater_fuel",
-    "water_heater_fuel",
-]
-
-# list of columns containing fuel types for appliances
-gas_appliance_indicator_cols = [
-    "has_gas_fireplace",
-    "has_gas_grill",
-    "has_gas_lighting",
-]
 
 # COMMAND ----------
 
@@ -673,6 +704,7 @@ def transform_building_features() -> DataFrame:
             extract_temp(F.col("cooling_setpoint_offset_magnitude")),
         )
         # -- water heating tranformations -- #
+        .transform(add_water_heater_features)
         .withColumn(
             "water_heater_tank_volume_gal_ashrae",
             get_water_heater_capacity_ashrae(
@@ -682,24 +714,12 @@ def transform_building_features() -> DataFrame:
             ),
         )
         .withColumn(
-            "wh_struct", get_water_heater_specs(F.col("water_heater_efficiency"))
-        )
-        .withColumn("water_heater_type", F.col("wh_struct.water_heater_type"))
-        .withColumn(
             "water_heater_tank_volume_gal",
             F.coalesce(
-                F.col("wh_struct.water_heater_tank_volume_gal"),
+                F.col("water_heater_tank_volume_gal"),
                 F.col("water_heater_tank_volume_gal_ashrae"),
             ),
         )
-        .withColumn(
-            "water_heater_efficiency_ef", F.col("wh_struct.water_heater_efficiency_ef")
-        )
-        .withColumn(
-            "water_heater_recovery_efficiency_ef",
-            F.col("wh_struct.water_heater_recovery_efficiency_ef"),
-        )
-        .drop("wh_struct", "water_heater_tank_volume_ashrae")
         .withColumn(
             "has_water_heater_in_unit", yes_no_mapping[F.col("water_heater_in_unit")]
         )
@@ -731,13 +751,8 @@ def transform_building_features() -> DataFrame:
         .withColumn(
             "insulation_floor_r_value", extract_r_value(F.col("insulation_floor"))
         )
-        .withColumn(
-            "insulation_ceiling_roof_r_value",
-            F.greatest(
-                extract_r_value(F.col("insulation_ceiling")),
-                extract_r_value(F.col("insulation_roof")),
-            ),
-        )
+        .withColumn("insulation_ceiling_r_value",extract_r_value(F.col("insulation_ceiling")))
+        .withColumn("insulation_roof_r_value",extract_r_value(F.col("insulation_roof")))
         #  -- attached home transformations -- #
         .withColumn(
             "is_attached",
@@ -813,7 +828,7 @@ def transform_building_features() -> DataFrame:
                 "Gas": "Methane Gas",
                 "Electric": "Electricity",
             },
-            subset=appliance_fuel_cols,
+            subset=APPLIANCE_FUEL_COLS,
         )
         # subset to all possible features of interest
         .select(
@@ -868,7 +883,8 @@ def transform_building_features() -> DataFrame:
             "insulation_slab_r_value",
             "insulation_rim_joist_r_value",
             "insulation_floor_r_value",
-            "insulation_ceiling_roof_r_value",
+            "insulation_roof_r_value",
+            "insulation_ceiling_r_value",
             # attached home
             "is_attached",
             "n_building_units",
@@ -909,6 +925,12 @@ building_metadata_transformed = transform_building_features()
 # COMMAND ----------
 
 building_metadata_transformed.display()
+
+# COMMAND ----------
+
+# MAGIC %md #### Upgrades
+# MAGIC
+# MAGIC Refer to [Notion Page](https://www.notion.so/rewiringamerica/Features-Upgrades-c8239f52a100427fbf445878663d7135?pvs=4#3141dfeeb07144da9fe983b2db13b6d3), [ResStock docs](https://oedi-data-lake.s3.amazonaws.com/nrel-pds-building-stock/end-use-load-profiles-for-us-building-stock/2022/EUSS_ResRound1_Technical_Documentation.pdf), and [upgrade.yml](https://github.com/NREL/resstock/blob/run/euss/EUSS-project-file_2018_10k.yml).
 
 # COMMAND ----------
 
@@ -994,20 +1016,20 @@ def apply_upgrades(baseline_building_features: DataFrame, upgrade_id: int) -> Da
     elif upgrade_id == 1:  # basic enclosure
         upgrade_building_features = (
             baseline_building_features
-            # Upgrade insulation of ceiling/roof
+            # Upgrade insulation of ceiling
             # Map the climate zone number to the insulation params for the upgrade
             .join(BASIC_ENCLOSURE_INSULATION, on="climate_zone_temp")
-            # Attic floor insulation if
+            # Attic floor insulation if current insulation is below threshold
             .withColumn(
-                "insulation_ceiling_roof_r_value",
+                "insulation_ceiling_r_value",
                 F.when(
                     (F.col("attic_type") == "Vented Attic")
                     & (
-                        F.col("insulation_ceiling_roof_r_value")
+                        F.col("insulation_ceiling_r_value")
                         <= F.col("existing_insulation_max_threshold")
                     ),
                     F.col("insulation_upgrade"),
-                ).otherwise(F.col("insulation_ceiling_roof_r_value")),
+                ).otherwise(F.col("insulation_ceiling_r_value")),
             )
             .drop("insulation_upgrade", "existing_insulation_max_threshold")
             # Air leakage reduction if high levels of infiltration
@@ -1020,11 +1042,17 @@ def apply_upgrades(baseline_building_features: DataFrame, upgrade_id: int) -> Da
             # Duct sealing: update duct leakage rate to at most 10% and insulation to at least R-8
             .withColumn(
                 "duct_leakage_percentage",
-                F.least(F.col("duct_leakage_percentage"), F.lit(0.1)),
+                F.when(
+                    F.col("has_ducts"),
+                     F.least(F.col("duct_leakage_percentage"), F.lit(0.1)),
+                ).otherwise(F.col("duct_leakage_percentage")),
             )
             .withColumn(
                 "duct_insulation_r_value",
-                F.greatest(F.col("duct_insulation_r_value"), F.lit(8.0)),
+                F.when(
+                    F.col("has_ducts"),
+                     F.greatest(F.col("duct_insulation_r_value"), F.lit(8.0)),
+                ).otherwise(F.col("duct_insulation_r_value")),
             )
             # Drill-and-fill wall insulation if the wall type is uninsulated
             .withColumn(
@@ -1047,6 +1075,11 @@ def apply_upgrades(baseline_building_features: DataFrame, upgrade_id: int) -> Da
             "Heat Pump, SEER 24, 13 HSPF",
             "Heat Pump, SEER 29.3, 14 HSPF",
         )
+    elif upgrade_id == 6:
+         upgrade_building_features = (
+            baseline_building_features
+                .withColumn()
+         )
     else:
         # Raise an error if an unsupported upgrade ID is provided
         raise ValueError(f"Upgrade id={upgrade_id} is not yet supported")
@@ -1054,10 +1087,10 @@ def apply_upgrades(baseline_building_features: DataFrame, upgrade_id: int) -> Da
     # add indicator features for presence of fuels (not including electricity)
     upgrade_building_features = (
         upgrade_building_features.withColumn(
-            "appliance_fuel_arr", F.array(appliance_fuel_cols)
+            "appliance_fuel_arr", F.array(APPLIANCE_FUEL_COLS)
         )
         .withColumn(
-            "gas_misc_appliance_indicator_arr", F.array(gas_appliance_indicator_cols)
+            "gas_misc_appliance_indicator_arr", F.array(GAS_APPLIANCE_INDICATOR_COLS)
         )
         .withColumn(
             "has_methane_gas_appliance",
@@ -1094,8 +1127,6 @@ building_metadata_hvac_upgrades = reduce(
     ],
 )
 
-# COMMAND ----------
-
 # w = Window.partitionBy('building_id').orderBy(F.asc("upgrade_id"))
 # building_metadata_hvac_upgrades.withColumn('diff', F.col('has_methane_gas_appliance') != F.first('has_methane_gas_appliance').over(w)).where(F.col('diff'))
 
@@ -1128,6 +1159,10 @@ building_metadata_hvac_upgrades_dedup = building_metadata_hvac_upgrades_ranked.w
 
 # # Look at those that weren't upgraded
 # building_metadata_hvac_upgrades_ranked.where(F.col('is_duplicate')).display()
+
+# COMMAND ----------
+
+# MAGIC %md #### Summary
 
 # COMMAND ----------
 
@@ -1175,7 +1210,7 @@ print(
 
 # COMMAND ----------
 
-# MAGIC %md ### Weather Feature Transformation
+# MAGIC %md ### Weather Features
 
 # COMMAND ----------
 
@@ -1250,11 +1285,6 @@ weather_data_transformed = transform_weather_features()
 
 # DBTITLE 1,Create a FeatureEngineeringClient
 fe = FeatureEngineeringClient()
-
-# COMMAND ----------
-
-# %sql
-# DROP TABLE ml.surrogate_model.building_features
 
 # COMMAND ----------
 

@@ -96,7 +96,10 @@ inference_data = test_set.toPandas()
 # COMMAND ----------
 
 # DBTITLE 1,Run inference
-# run inference: takes ~20s on 10,0000 and ~2m on 100,0000 samples
+# run inference: output a N x M matrix of predictions 
+# where N is the number of rows in the input data table 
+# and M is the number of target columns
+# takes ~20s on 10,0000 and ~2m on 100,0000 samples
 prediction_arr = model_loaded.predict(inference_data)
 
 # COMMAND ----------

@@ -96,9 +96,8 @@ class DataGenerator(tf.keras.utils.Sequence):
         "insulation_slab_r_value",
         "insulation_rim_joist_r_value",
         "insulation_floor_r_value",
-        # "insulation_ceiling_r_value",
-        "insulation_ceiling_roof_r_value",
-        #"insulation_roof_r_value",
+        "insulation_ceiling_r_value",
+        "insulation_roof_r_value",
         # attached home
         "is_attached",
         "n_building_units",
