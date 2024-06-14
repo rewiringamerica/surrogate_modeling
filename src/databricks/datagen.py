@@ -143,14 +143,71 @@ class DataGenerator(tf.keras.utils.Sequence):
         "weekend",
     ]
 
-    # HVAC consumption by fuel
-    consumption_group_dict = {
-        "electricity": ["electricity__total"],
-        "methane_gas": ["methane_gas__total"],
-        "fuel_oil": ["fuel_oil__total"],
-        "propane": ["propane__total"],
-    }
+    # # consumption by fuel
+    # consumption_group_dict = {
+    #     "electricity": ["electricity__total"],
+    #     "methane_gas": ["methane_gas__total"],
+    #     "fuel_oil": ["fuel_oil__total"],
+    #     "propane": ["propane__total"],
+    # }
 
+    # consumption by fuel and end use
+    consumption_group_dict = {
+        'electricity__hvac': [
+            'electricity__cooling_fans_pumps',
+            'electricity__cooling',
+            'electricity__heating_fans_pumps',
+            'electricity__heating_hp_bkup',
+            'electricity__heating'
+        ],
+        'electricity__water_heater': ['electricity__hot_water'],
+        'electricity__dryer': ['electricity__clothes_dryer'],
+        'electricity__range_oven': ['electricity__range_oven'],
+        'electricity__other': [
+            'electricity__ceiling_fan',
+            'electricity__clothes_washer',
+            'electricity__dishwasher',
+            'electricity__freezer',
+            'electricity__hot_tub_heater',
+            'electricity__hot_tub_pump',
+            'electricity__lighting_exterior',
+            'electricity__lighting_garage',
+            'electricity__lighting_interior',
+            'electricity__mech_vent',
+            'electricity__plug_loads',
+            'electricity__pool_heater',
+            'electricity__pool_pump',
+            'electricity__refrigerator',
+            'electricity__well_pump'
+        ],
+        'methane_gas__hvac': [
+            'methane_gas__heating_hp_bkup',
+            'methane_gas__heating'
+        ],
+        'methane_gas__water_heater': ['methane_gas__hot_water'],
+        'methane_gas__dryer': ['methane_gas__clothes_dryer'],
+        'methane_gas__range': ['methane_gas__range_oven'],
+
+        'methane_gas__other': [
+            'methane_gas__fireplace',
+            'methane_gas__grill',
+            'methane_gas__hot_tub_heater',
+            'methane_gas__lighting',
+            'methane_gas__pool_heater'
+        ],
+        'fuel_oil__hvac': [
+            'fuel_oil__heating_hp_bkup',
+            'fuel_oil__heating'
+        ],
+        'fuel_oil__water_heater': ['fuel_oil__hot_water'],
+        'propane__hvac': [
+            'propane__heating_hp_bkup',
+            'propane__heating'
+        ],
+        'propane__water_heater': ['propane__hot_water'],
+        'propane__dryer': ['propane__clothes_dryer'],
+        'propane__range': ['propane__range_oven'],
+    }
     # baseline and HVAC upgrades
     upgrade_ids = ["0", "1", "3", "4"]
 

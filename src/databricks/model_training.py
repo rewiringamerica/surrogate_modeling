@@ -165,15 +165,17 @@ class SurrogateModelingWrapper(mlflow.pyfunc.PythonModel):
         - The model predictions floored at 0: np.ndarray of shape [N, M]
 
         """
-        for fuel in self.targets:
-            if fuel == 'electricity':
-                results[fuel] = results[fuel].flatten()
-            else:
-                # null out fuel target if fuel is not present in any appliance in the home
-                results[fuel] = np.where(~feature_df[f"has_{fuel}_appliance"], np.nan, results[fuel].flatten())
-        #stack into N x M array and clip at 0
-        return np.clip(np.vstack(list(results.values())).T, a_min=0, a_max=None)
-
+        # for fuel in self.targets:
+        #     if fuel == 'electricity':
+        #         results[fuel] = results[fuel].flatten()
+        #     else:
+        #         # null out fuel target if fuel is not present in any appliance in the home
+        #         results[fuel] = np.where(~feature_df[f"has_{fuel}_appliance"], np.nan, results[fuel].flatten())
+        # #stack into N x M array and clip at 0
+        # return np.clip(np.vstack(list(results.values())).T, a_min=0, a_max=None)
+        return np.clip(
+            np.hstack([results[c] for c in self.targets]), a_min=0, a_max=None
+        )
 
     def predict(self, context, model_input: pd.DataFrame) -> np.ndarray:
         """

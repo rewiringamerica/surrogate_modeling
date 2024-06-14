@@ -97,9 +97,12 @@ class SurrogateModel:
         bm = layers.Dense(32, name="third_dense", **layer_params)(bm)
         bm = layers.BatchNormalization(name = 'third_batchnorm')(bm)
         bm = layers.LeakyReLU(name = 'third_leakyrelu')(bm)
-        bm = layers.Dense(8, name="fourth_dense", **layer_params)(bm)
+        bm = layers.Dense(16, name="fourth_dense", **layer_params)(bm)
         bm = layers.BatchNormalization(name = 'fourth_batchnorm')(bm)
         bm = layers.LeakyReLU(name = 'fourth_leakyrelu')(bm)
+        bm = layers.Dense(8, name="fifth_dense", **layer_params)(bm)
+        bm = layers.BatchNormalization(name = 'fifth_batchnorm')(bm)
+        bm = layers.LeakyReLU(name = 'fifth_leakyrelu')(bm)
 
         bmo = models.Model(
             inputs=bmo_inputs_dict, outputs=bm, name="building_features_model"
@@ -169,10 +172,10 @@ class SurrogateModel:
         final_layer_params['activation'] = 'leaky_relu'
         final_outputs = {}
         for consumption_group in train_gen.targets:
-            io = layers.Dense(4, name=consumption_group + "_entry", **layer_params)(cm)
+            io = layers.Dense(1, name=consumption_group + "_entry", **layer_params)(cm)
             #io = layers.BatchNormalization(name=consumption_group + "_entry_batchnorm")(io)
             io = layers.LeakyReLU(name=consumption_group + "_entry_leakyrelu")(io)
-            io = layers.Dense(2, name=consumption_group + "_mid", **layer_params)(io)
+            io = layers.Dense(1, name=consumption_group + "_mid", **layer_params)(io)
             #io = layers.BatchNormalization(name=consumption_group + "_mid_batchnorm")(io)
             io = layers.LeakyReLU(name=consumption_group + "_mid_leakyrelu")(io)
             io = layers.Dense(1, name=consumption_group, **final_layer_params)(io)

@@ -368,7 +368,7 @@ if not DEBUG:
 # DBTITLE 1,Read in bucketed aggregated results
 # bring in bucketed metrics
 bucket_metrics = pd.read_csv(
-    "gs://the-cube/export/surrogate_model_metrics/bucketed_sf_hvac.csv",
+    "gs://the-cube/export/surrogate_model_metrics/bucketed_sf.csv",
     keep_default_na=False,
     dtype={"upgrade_id": "double"},
 )
@@ -382,7 +382,7 @@ bucket_metrics.replace({'Natural Gas': 'Methane Gas'}, inplace=True)
 cnn_metrics = cnn_evaluation_metrics.toPandas()
 
 bucket_metrics["Model"] = "Bucketed"
-cnn_metrics["Model"] = "CNN"
+cnn_metrics["Model"] = "SM"
 
 # rename metric columns to be more readable
 metric_rename_dict = {
