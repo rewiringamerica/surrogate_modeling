@@ -3,10 +3,6 @@
 
 # COMMAND ----------
 
-# MAGIC %pip install gcsfs==2023.5.0
-
-# COMMAND ----------
-
 from typing import List 
 
 import pandas as pd
@@ -31,7 +27,6 @@ predicted_bucketed_baseline_consumption = (
         "appliance_option",
         "insulation_option",
         "kwh_upgrade_median",
-        "kwh_upgrade_percentile",
         "cooling_type",
         "baseline_appliance_fuel",
     )
@@ -45,32 +40,29 @@ predicted_bucketed_upgrade_consumption = (
         "appliance_option",
         "insulation_option",
         "kwh_upgrade_median",
-        "kwh_upgrade_percentile",
         "kwh_delta_median",
-        "kwh_delta_percentile",
         "cooling_type",
         "baseline_appliance_fuel",
     )
 ).alias("pred_upgrade")
 
-# baseline energy consumption by building for single family homes in upgrade scenarios
+# baseline energy consumption by building for single family homes
 actual_baseline_consumption_by_building_bucket = spark.sql(
     f"""
     SELECT building_id, bucket_id, SUM(kwh_upgrade) AS kwh_upgrade, SUM(kwh_delta) AS kwh_delta
     FROM housing_profile.resstock_annual_baseline_consumption_by_building_geography_enduse_fuel_bucket
     WHERE acs_housing_type == 'Single-Family'
-        AND end_use IN ('heating', 'cooling')
     GROUP BY building_id, bucket_id
     """
 ).alias("true_baseline")
 
-# baseline energy consumption by building for single family homes in upgrade scenarios
+# upgrade energy consumption by building for single family homes
 actual_consumption_savings_by_building_bucket = spark.sql(
     f"""
     SELECT building_id, bucket_id, SUM(kwh_upgrade) AS kwh_upgrade, SUM(kwh_delta) AS kwh_delta
     FROM housing_profile.all_resstock_annual_project_savings_by_building_geography_enduse_fuel_bucket
     WHERE acs_housing_type == 'Single-Family'
-        AND upgrade_id IN (1, 3, 4)
+        AND upgrade_id IN (0, 1, 3, 4, 6, 8, 11.05, 11.06, 13.01)
     GROUP BY building_id, bucket_id
     """
 ).alias("true_upgrade")
@@ -84,8 +76,15 @@ building_metadata = spark.sql(
     """
 )
 
-pep_projects = spark.sql(
-    "SELECT DISTINCT appliance_option, insulation_option, upgrade_id_pep AS upgrade_id  FROM housing_profile.pep_projects@v11"
+# assign dryer and range to diff upgrade ids so they don't get grouped when summing over end use
+pep_projects = (
+    spark.table('housing_profile.pep_projects')
+    .withColumn('upgrade_id', 
+                F.when((F.col('upgrade_id_pep') == 8) & (F.col('end_use_pep') == 'dryer'), F.lit(8.1))
+                .when((F.col('upgrade_id_pep') == 8) & (F.col('end_use_pep') == 'range'), F.lit(8.2))
+                .otherwise(F.col('upgrade_id_pep'))
+    )
+    .select('appliance_option', 'insulation_option', 'upgrade_id').distinct()
 )
 
 # COMMAND ----------
@@ -119,7 +118,7 @@ prediction_actual_by_building_bucket_upgrade = (
 
 
 # combine upgrades and baseline predictions, join to projects to get upfrade id, and sum across heating and cooling
-hvac_prediction_actual_by_building_upgrade = (
+prediction_actual_by_building_upgrade = (
     prediction_actual_by_building_bucket_baseline.unionByName(
         prediction_actual_by_building_bucket_upgrade, allowMissingColumns=True
     )
@@ -157,11 +156,11 @@ hvac_prediction_actual_by_building_upgrade = (
             ]
         ]
     )
-)
+).replace('Natural Gas', 'Methane Gas')
 
 # compute various metrics
 error_by_building_upgrade = (
-    hvac_prediction_actual_by_building_upgrade.withColumn(
+    prediction_actual_by_building_upgrade.withColumn(
         "absolute_percentage_error",
         absolute_percentage_error(F.col("kwh_upgrade_median"), F.col("kwh_upgrade")),
     )
@@ -186,7 +185,7 @@ error_by_building_upgrade = (
     error_by_building_upgrade.write.format("delta")
     .mode("overwrite")
     .option("overwriteSchema", "true")
-    .saveAsTable("ml.surrogate_model.bucketed_sf_hvac_predictions")
+    .saveAsTable("ml.surrogate_model.bucketed_sf_predictions")
 )
 
 # COMMAND ----------
@@ -250,9 +249,5 @@ metrics_buckets.display()
 
 # write out aggegated metrics
 metrics_buckets.toPandas().to_csv(
-    "gs://the-cube/export/surrogate_model_metrics/bucketed_sf_hvac.csv", index=None
+    "gs://the-cube/export/surrogate_model_metrics/bucketed_sf.csv", index=None
 )
-
-# COMMAND ----------
-
-
