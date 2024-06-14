@@ -143,13 +143,13 @@ class DataGenerator(tf.keras.utils.Sequence):
         "weekend",
     ]
 
-    # # consumption by fuel
-    # consumption_group_dict = {
-    #     "electricity": ["electricity__total"],
-    #     "methane_gas": ["methane_gas__total"],
-    #     "fuel_oil": ["fuel_oil__total"],
-    #     "propane": ["propane__total"],
-    # }
+    # consumption by fuel
+    consumption_group_dict = {
+        "electricity": ["electricity__total"],
+        "methane_gas": ["methane_gas__total"],
+        "fuel_oil": ["fuel_oil__total"],
+        "propane": ["propane__total"],
+    }
 
     # consumption by fuel and end use
     consumption_group_dict = {
@@ -180,14 +180,24 @@ class DataGenerator(tf.keras.utils.Sequence):
             'electricity__refrigerator',
             'electricity__well_pump'
         ],
-        'methane_gas__hvac': [
+        'fossil_fuel__hvac': [
             'methane_gas__heating_hp_bkup',
-            'methane_gas__heating'
+            'methane_gas__heating',
+            'fuel_oil__heating_hp_bkup',
+            'fuel_oil__heating',
+            'propane__heating_hp_bkup',
+            'propane__heating'
         ],
-        'methane_gas__water_heater': ['methane_gas__hot_water'],
-        'methane_gas__dryer': ['methane_gas__clothes_dryer'],
-        'methane_gas__range': ['methane_gas__range_oven'],
-
+        'fossil_fuel__water_heater': [
+            'methane_gas__hot_water',
+            'fuel_oil__hot_water',
+            'propane__hot_water'],
+        'fossil_fuel__dryer': [
+            'methane_gas__clothes_dryer',
+            'propane__clothes_dryer'],
+        'fossil_fuel__range': [
+            'methane_gas__range_oven',
+            'propane__range_oven'],
         'methane_gas__other': [
             'methane_gas__fireplace',
             'methane_gas__grill',
@@ -195,18 +205,6 @@ class DataGenerator(tf.keras.utils.Sequence):
             'methane_gas__lighting',
             'methane_gas__pool_heater'
         ],
-        'fuel_oil__hvac': [
-            'fuel_oil__heating_hp_bkup',
-            'fuel_oil__heating'
-        ],
-        'fuel_oil__water_heater': ['fuel_oil__hot_water'],
-        'propane__hvac': [
-            'propane__heating_hp_bkup',
-            'propane__heating'
-        ],
-        'propane__water_heater': ['propane__hot_water'],
-        'propane__dryer': ['propane__clothes_dryer'],
-        'propane__range': ['propane__range_oven'],
     }
     # baseline and HVAC upgrades
     upgrade_ids = ["0", "1", "3", "4"]

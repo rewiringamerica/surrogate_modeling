@@ -188,7 +188,7 @@ class SurrogateModel:
         final_model.compile(
             loss=masked_mae,
             optimizer="adam",
-            metrics=[mape],
+            #metrics=[mape],
         )
         return final_model
     
