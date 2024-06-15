@@ -258,7 +258,7 @@ with mlflow.start_run() as run:
     history = keras_model.fit(
         train_gen,
         validation_data=val_gen,
-        epochs=2 if DEBUG else 120,
+        epochs=2 if DEBUG else 250,
         batch_size=train_gen.batch_size,
         verbose=2,
         callbacks=[keras.callbacks.EarlyStopping(monitor="val_loss", patience=20)],
