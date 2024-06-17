@@ -170,10 +170,16 @@ pred_by_building_upgrade_fuel = (
 
 # DBTITLE 1,Add and transform metadata
 # add metadata that we will want to cut up results by
-keep_features = ["heating_fuel", "heating_appliance_type", "ac_type"]
+baseline_appliance_features = [
+    "heating_fuel",
+    "heating_appliance_type",
+    "ac_type", 
+    "water_heater_fuel",
+    "clothes_dryer_fuel",
+    "cooking_range_fuel",]
 pred_by_building_upgrade_fuel_with_metadata = (
     test_set
-    .select(*sample_pkeys, *keep_features)
+    .select(*sample_pkeys, *baseline_appliance_features)
     .join(pred_by_building_upgrade_fuel, on=sample_pkeys)
 )
 
@@ -228,8 +234,13 @@ w = Window().partitionBy("building_id", "fuel").orderBy(F.asc("upgrade_id"))
 
 # calculate baseline appliances, predicted and actual savings, and metrics (absolute error and APE) on upgrades and savings
 pred_df_savings = (
-    pred_by_building_upgrade_fuel_with_metadata.withColumn(
-        "baseline_heating_fuel", F.first(F.col("heating_fuel")).over(w)
+    pred_by_building_upgrade_fuel_with_metadata
+    .withColumn(
+        "baseline_appliance",
+        F.when(F.col('upgrade_id') == 6, F.first(F.col("water_heater_fuel")).over(w))
+        .when(F.col('upgrade_id') == 8.1, F.first(F.col("clothes_dryer_fuel")).over(w))
+        .when(F.col('upgrade_id') == 8.2, F.first(F.col("cooking_range_fuel")).over(w))
+        .otherwise(F.first(F.col("heating_fuel")).over(w))
     )
     .withColumn("baseline_ac_type", F.first(F.col("ac_type")).over(w))
     .withColumn("prediction_baseline", F.first(F.col("prediction")).over(w))
@@ -248,10 +259,6 @@ pred_df_savings = (
     .withColumn("absolute_percentage_error", APE(F.col("prediction"), F.col("actual")))
     .withColumn("absolute_percentage_error_savings", APE(F.col("prediction_savings"), F.col("actual_savings")))
 )
-
-# COMMAND ----------
-
-pred_df_savings.display()
 
 # COMMAND ----------
 
@@ -306,8 +313,8 @@ cooling_metrics_by_type_upgrade = aggregate_metrics(
 # calculate metrics by upgrade and baseline heating fuel
 heating_metrics_by_type_upgrade = aggregate_metrics(
     pred_df_savings=pred_df_savings.where(F.col("fuel") == "total"),
-    groupby_cols=["baseline_heating_fuel", "upgrade_id"],
-).withColumnRenamed("baseline_heating_fuel", "type")
+    groupby_cols=["baseline_appliance", "upgrade_id"],
+).withColumnRenamed("baseline_appliance", "type")
 
 # calculate metrics by upgrade over all baseline types
 total_metrics_by_upgrade = aggregate_metrics(
@@ -373,8 +380,7 @@ bucket_metrics = pd.read_csv(
     dtype={"upgrade_id": "double"},
 )
 bucket_metrics["upgrade_id"] = bucket_metrics["upgrade_id"].astype("str")
-bucket_metrics.replace({'Natural Gas': 'Methane Gas'}, inplace=True)
-# bucket_metrics[bucket_metrics.ac]
+# bucket_metrics.replace({'Natural Gas': 'Methane Gas'}, inplace=True)
 
 # COMMAND ----------
 
@@ -415,6 +421,7 @@ metrics_combined_by_upgrade_type_model["Type"] = pd.Categorical(
         "Fuel Oil",
         "Shared Heating",
         "No Heating",
+        "None",
         "Heat Pump",
         "AC",
         "Room AC",
@@ -448,7 +455,7 @@ metrics_combined_by_upgrade_type = metrics_combined_by_upgrade_type_model_metric
 # COMMAND ----------
 
 # DBTITLE 1,Display results
-metrics_combined_by_upgrade_type
+metrics_combined_by_upgrade_type.reset_index().display()
 
 # COMMAND ----------
 
@@ -468,7 +475,7 @@ if not DEBUG:
 # read in data and
 # set the metric to savings APE on upgrade rows and baseline APE for baseline
 bucketed_pred = (
-    spark.table("ml.surrogate_model.bucketed_sf_hvac_predictions")
+    spark.table("ml.surrogate_model.bucketed_sf_predictions")
     .withColumn(
         "absolute_percentage_error",
         F.when(F.col("upgrade_id") == 0, F.col("absolute_percentage_error"))
@@ -476,7 +483,7 @@ bucketed_pred = (
     )
     .select(
         "upgrade_id",
-        F.col("baseline_appliance_fuel").alias("baseline_heating_fuel"),
+        F.col("baseline_appliance_type").alias("baseline_appliance"),
         "absolute_percentage_error",
     )
 )
@@ -493,7 +500,7 @@ pred_df_savings_total = (
         F.when(F.col("upgrade_id") == 0, F.col("absolute_percentage_error"))
         .otherwise(F.col("absolute_percentage_error_savings")),
     )
-    .select("upgrade_id", "baseline_heating_fuel", "absolute_percentage_error")
+    .select("upgrade_id", "baseline_appliance", "absolute_percentage_error")
 )
 
 # COMMAND ----------
@@ -503,16 +510,17 @@ pred_df_savings_total = (
 # do some cleanup to amke labels more presentable, including removing baseline hps for the sake of space
 # convert to pandas
 pred_df_savings_pd = (
-    pred_df_savings_total.withColumn("Model", F.lit("CNN"))
+    pred_df_savings_total.withColumn("Model", F.lit("SM"))
     .unionByName(bucketed_pred.withColumn("Model", F.lit("Bucketed")))
     .replace(
-        {"Shared Heating": "Shared", "No Heating": "None"},
-        subset="baseline_heating_fuel",
+        {"No Heating": "None", "Electric Resistance": "Electricity"},
+        subset="baseline_appliance",
     )
-    .where(F.col("baseline_heating_fuel") != "Heat Pump")
+    .where(~F.col("baseline_appliance").isin(["Heat Pump", "Shared Heating"]))
+    .where(F.col('upgrade_id').isin([0,1,4,6, 8.1, 8.2]))
     .withColumnsRenamed(
         {
-            "baseline_heating_fuel": "Baseline Heating Fuel",
+            "baseline_appliance": "Baseline Fuel",
             "absolute_percentage_error": "Absolute Percentage Error",
             "upgrade_id": "Upgrade ID",
         }
@@ -531,14 +539,13 @@ with sns.axes_style("whitegrid"):
 
     g = sns.catplot(
         data=pred_df_savings_pd_clip,
-        x="Baseline Heating Fuel",
+        x="Baseline Fuel",
         y="Absolute Percentage Error",
         order=[
             "Fuel Oil",
             "Propane",
-            "Natural Gas",
-            "Electric Resistance",
-            "Shared",
+            "Methane Gas",
+            "Electricity",
             "None",
         ],
         hue="Model",
@@ -561,7 +568,7 @@ with sns.axes_style("whitegrid"):
         },
     )
 g.fig.subplots_adjust(top=0.93)
-g.fig.suptitle("Prediction Metric Comparison for Total Energy Savings")
+g.fig.suptitle("Prediction Comparison for Total Energy Savings")
 
 # COMMAND ----------
 

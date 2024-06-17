@@ -206,8 +206,9 @@ class DataGenerator(tf.keras.utils.Sequence):
     #         'methane_gas__pool_heater'
     #     ],
     # }
-    # baseline and HVAC upgrades
-    upgrade_ids = ["0", "1", "3", "4"]
+    #TODO: actually filter based on these...
+    # upgrades to train on
+    upgrade_ids = [0, 1, 3, 4, 6, 8.1, 8.2, 9]
 
     def __init__(
         self,

@@ -69,7 +69,15 @@ actual_consumption_savings_by_building_bucket = spark.sql(
 
 building_metadata = spark.sql(
     """
-    SELECT building_id, in_heating_fuel, in_hvac_cooling_type, in_hvac_cooling_efficiency, in_hvac_heating_efficiency
+    SELECT
+        building_id,
+        in_heating_fuel,
+        in_hvac_cooling_type, 
+        in_hvac_cooling_efficiency, 
+        in_hvac_heating_efficiency, 
+        in_water_heater_fuel,
+        in_clothes_dryer_fuel, 
+        in_cooking_range_fuel
     FROM building_model.resstock_metadata
     WHERE in_geometry_building_type_acs IN ('Single-Family Detached', 'Single-Family Attached')
     AND in_heating_fuel != 'Other Fuel'
@@ -133,7 +141,7 @@ prediction_actual_by_building_upgrade = (
         .otherwise(F.col("in_hvac_cooling_type")),
     )
     .withColumn(
-        "baseline_appliance_fuel",
+        "heating_type",
         F.when(F.col("cooling_type") == "Heat Pump", F.lit("Heat Pump"))
         .when(F.col("in_heating_fuel") == "Electricity", F.lit("Electric Resistance"))
         .when(F.col("in_heating_fuel") == "None", F.lit("No Heating"))
@@ -144,7 +152,14 @@ prediction_actual_by_building_upgrade = (
         .otherwise(F.col("in_heating_fuel")),
     )
     .join(pep_projects, on=["appliance_option", "insulation_option"])
-    .groupby("building_id", "upgrade_id", "baseline_appliance_fuel", "cooling_type")
+    .withColumn(
+        "baseline_appliance_type",
+        F.when(F.col('upgrade_id') == 6, F.col("in_water_heater_fuel"))
+        .when(F.col('upgrade_id') == 8.1, F.col("in_clothes_dryer_fuel"))
+        .when(F.col('upgrade_id') == 8.2, F.col("in_cooking_range_fuel"))
+        .otherwise(F.col("heating_type"))
+    )
+    .groupby("building_id", "upgrade_id", "baseline_appliance_type", "cooling_type")
     .agg(
         *[
             F.sum(c).alias(c)
@@ -219,8 +234,8 @@ def aggregate_metrics(df: DataFrame, groupby_cols: List[str]):
 # aggregate hvac prediction metrics by upgrade and heating type
 metrics_by_heating_fuel_upgrade = aggregate_metrics(
     df=error_by_building_upgrade,
-    groupby_cols=["baseline_appliance_fuel", "upgrade_id"],
-).withColumnRenamed("baseline_appliance_fuel", "type")
+    groupby_cols=["baseline_appliance_type", "upgrade_id"],
+).withColumnRenamed("baseline_appliance_type", "type")
 
 # aggregate hvac prediction metrics by upgrade and cooling type for baseline only
 # where heat pumps are already covered by the heating rows above
@@ -243,11 +258,11 @@ metrics_buckets = metrics_by_heating_fuel_upgrade.unionByName(
 
 # COMMAND ----------
 
-metrics_buckets.display()
-
-# COMMAND ----------
-
 # write out aggegated metrics
 metrics_buckets.toPandas().to_csv(
     "gs://the-cube/export/surrogate_model_metrics/bucketed_sf.csv", index=None
 )
+
+# COMMAND ----------
+
+
