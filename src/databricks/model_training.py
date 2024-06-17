@@ -165,17 +165,17 @@ class SurrogateModelingWrapper(mlflow.pyfunc.PythonModel):
         - The model predictions floored at 0: np.ndarray of shape [N, M]
 
         """
-        # for fuel in self.targets:
-        #     if fuel == 'electricity':
-        #         results[fuel] = results[fuel].flatten()
-        #     else:
-        #         # null out fuel target if fuel is not present in any appliance in the home
-        #         results[fuel] = np.where(~feature_df[f"has_{fuel}_appliance"], np.nan, results[fuel].flatten())
-        # #stack into N x M array and clip at 0
-        # return np.clip(np.vstack(list(results.values())).T, a_min=0, a_max=None)
-        return np.clip(
-            np.hstack([results[c] for c in self.targets]), a_min=0, a_max=None
-        )
+        for fuel in self.targets:
+            if fuel == 'electricity':
+                results[fuel] = results[fuel].flatten()
+            else:
+                # null out fuel target if fuel is not present in any appliance in the home
+                results[fuel] = np.where(~feature_df[f"has_{fuel}_appliance"], np.nan, results[fuel].flatten())
+        #stack into N x M array and clip at 0
+        return np.clip(np.vstack(list(results.values())).T, a_min=0, a_max=None)
+        # return np.clip(
+        #     np.hstack([results[c] for c in self.targets]), a_min=0, a_max=None
+        # )
 
     def predict(self, context, model_input: pd.DataFrame) -> np.ndarray:
         """
@@ -261,7 +261,7 @@ with mlflow.start_run() as run:
         epochs=2 if DEBUG else 250,
         batch_size=train_gen.batch_size,
         verbose=2,
-        callbacks=[keras.callbacks.EarlyStopping(monitor="val_loss", patience=20)],
+        callbacks=[keras.callbacks.EarlyStopping(monitor="val_loss", patience=15)],
     )
 
     # wrap in custom class that defines pre and post processing steps to be applied when called at inference time
@@ -314,4 +314,3 @@ print(model_loaded.predict(input_data))
 # DBTITLE 1,Pass Run ID to next notebook if running in job
 if not DEBUG:
     dbutils.jobs.taskValues.set(key = "run_id", value = run_id)
-

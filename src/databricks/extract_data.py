@@ -19,7 +19,7 @@
 # MAGIC
 # MAGIC ##### Outputs: 
 # MAGIC - `ml.surrogate_model.building_metadata`: Building metadata indexed by (building_id)
-# MAGIC - `ml.surrogate_model.building_upgrade_simulation_outputs_annual`: Annual building model simulation outputs indexed by (building_id, upgrade_id)
+# MAGIC - `ml.surrogate_model.building_simulation_outputs_annual`: Annual building model simulation outputs indexed by (building_id, upgrade_id)
 # MAGIC - `ml.surrogate_model.weather_data_hourly`: Hourly weather data indexed by (weather_file_city, hour datetime)
 # MAGIC
 # MAGIC ### TODOs:
@@ -266,7 +266,7 @@ spark.sql(f"OPTIMIZE {table_name}")
 # COMMAND ----------
 
 # DBTITLE 1,Write out annual outputs
-table_name = "ml.surrogate_model.building_upgrade_simulation_outputs_annual"
+table_name = "ml.surrogate_model.building_simulation_outputs_annual"
 annual_outputs.write.saveAsTable(
     table_name, mode="overwrite", overwriteSchema=True, partitionBy=["upgrade_id"]
 )

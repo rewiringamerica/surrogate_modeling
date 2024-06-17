@@ -100,9 +100,9 @@ class SurrogateModel:
         bm = layers.Dense(16, name="fourth_dense", **layer_params)(bm)
         bm = layers.BatchNormalization(name = 'fourth_batchnorm')(bm)
         bm = layers.LeakyReLU(name = 'fourth_leakyrelu')(bm)
-        # bm = layers.Dense(8, name="fifth_dense", **layer_params)(bm)
-        # bm = layers.BatchNormalization(name = 'fifth_batchnorm')(bm)
-        # bm = layers.LeakyReLU(name = 'fifth_leakyrelu')(bm)
+        bm = layers.Dense(8, name="fifth_dense", **layer_params)(bm)
+        bm = layers.BatchNormalization(name = 'fifth_batchnorm')(bm)
+        bm = layers.LeakyReLU(name = 'fifth_leakyrelu')(bm)
 
         bmo = models.Model(
             inputs=bmo_inputs_dict, outputs=bm, name="building_features_model"
@@ -160,10 +160,10 @@ class SurrogateModel:
 
         # Combined model and separate towers for output groups
         cm = layers.Concatenate(name="combine")([bmo.output, wmo.output])
-        cm = layers.Dense(24,name="combine_first_dense",  **layer_params)(cm)
+        cm = layers.Dense(16,name="combine_first_dense",  **layer_params)(cm)
         #cm = layers.BatchNormalization(name = 'first_combine_batchnorm')(cm)
         cm = layers.LeakyReLU(name = 'first_combine_leakyrelu')(cm)
-        cm = layers.Dense(24, name="combine_second_dense", **layer_params)(cm)
+        cm = layers.Dense(16, name="combine_second_dense", **layer_params)(cm)
         #cm = layers.BatchNormalization(name = 'second_combine_batchnorm')(cm)
         cm = layers.LeakyReLU(name = 'second_combine_leakyrelu')(cm)
 
@@ -172,10 +172,10 @@ class SurrogateModel:
         final_layer_params['activation'] = 'leaky_relu'
         final_outputs = {}
         for consumption_group in train_gen.targets:
-            io = layers.Dense(2, name=consumption_group + "_entry", **layer_params)(cm)
+            io = layers.Dense(4, name=consumption_group + "_entry", **layer_params)(cm)
             #io = layers.BatchNormalization(name=consumption_group + "_entry_batchnorm")(io)
             io = layers.LeakyReLU(name=consumption_group + "_entry_leakyrelu")(io)
-            io = layers.Dense(1, name=consumption_group + "_mid", **layer_params)(io)
+            io = layers.Dense(2, name=consumption_group + "_mid", **layer_params)(io)
             #io = layers.BatchNormalization(name=consumption_group + "_mid_batchnorm")(io)
             io = layers.LeakyReLU(name=consumption_group + "_mid_leakyrelu")(io)
             io = layers.Dense(1, name=consumption_group, **final_layer_params)(io)

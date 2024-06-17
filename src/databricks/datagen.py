@@ -151,61 +151,61 @@ class DataGenerator(tf.keras.utils.Sequence):
         "propane": ["propane__total"],
     }
 
-    # consumption by fuel and end use
-    consumption_group_dict = {
-        'electricity__hvac': [
-            'electricity__cooling_fans_pumps',
-            'electricity__cooling',
-            'electricity__heating_fans_pumps',
-            'electricity__heating_hp_bkup',
-            'electricity__heating'
-        ],
-        'electricity__water_heater': ['electricity__hot_water'],
-        'electricity__dryer': ['electricity__clothes_dryer'],
-        'electricity__range_oven': ['electricity__range_oven'],
-        'electricity__other': [
-            'electricity__ceiling_fan',
-            'electricity__clothes_washer',
-            'electricity__dishwasher',
-            'electricity__freezer',
-            'electricity__hot_tub_heater',
-            'electricity__hot_tub_pump',
-            'electricity__lighting_exterior',
-            'electricity__lighting_garage',
-            'electricity__lighting_interior',
-            'electricity__mech_vent',
-            'electricity__plug_loads',
-            'electricity__pool_heater',
-            'electricity__pool_pump',
-            'electricity__refrigerator',
-            'electricity__well_pump'
-        ],
-        'fossil_fuel__hvac': [
-            'methane_gas__heating_hp_bkup',
-            'methane_gas__heating',
-            'fuel_oil__heating_hp_bkup',
-            'fuel_oil__heating',
-            'propane__heating_hp_bkup',
-            'propane__heating'
-        ],
-        'fossil_fuel__water_heater': [
-            'methane_gas__hot_water',
-            'fuel_oil__hot_water',
-            'propane__hot_water'],
-        'fossil_fuel__dryer': [
-            'methane_gas__clothes_dryer',
-            'propane__clothes_dryer'],
-        'fossil_fuel__range': [
-            'methane_gas__range_oven',
-            'propane__range_oven'],
-        'methane_gas__other': [
-            'methane_gas__fireplace',
-            'methane_gas__grill',
-            'methane_gas__hot_tub_heater',
-            'methane_gas__lighting',
-            'methane_gas__pool_heater'
-        ],
-    }
+    # # consumption by fuel and end use
+    # consumption_group_dict = {
+    #     'electricity__hvac': [
+    #         'electricity__cooling_fans_pumps',
+    #         'electricity__cooling',
+    #         'electricity__heating_fans_pumps',
+    #         'electricity__heating_hp_bkup',
+    #         'electricity__heating'
+    #     ],
+    #     'electricity__water_heater': ['electricity__hot_water'],
+    #     'electricity__dryer': ['electricity__clothes_dryer'],
+    #     'electricity__range_oven': ['electricity__range_oven'],
+    #     'electricity__other': [
+    #         'electricity__ceiling_fan',
+    #         'electricity__clothes_washer',
+    #         'electricity__dishwasher',
+    #         'electricity__freezer',
+    #         'electricity__hot_tub_heater',
+    #         'electricity__hot_tub_pump',
+    #         'electricity__lighting_exterior',
+    #         'electricity__lighting_garage',
+    #         'electricity__lighting_interior',
+    #         'electricity__mech_vent',
+    #         'electricity__plug_loads',
+    #         'electricity__pool_heater',
+    #         'electricity__pool_pump',
+    #         'electricity__refrigerator',
+    #         'electricity__well_pump'
+    #     ],
+    #     'fossil_fuel__hvac': [
+    #         'methane_gas__heating_hp_bkup',
+    #         'methane_gas__heating',
+    #         'fuel_oil__heating_hp_bkup',
+    #         'fuel_oil__heating',
+    #         'propane__heating_hp_bkup',
+    #         'propane__heating'
+    #     ],
+    #     'fossil_fuel__water_heater': [
+    #         'methane_gas__hot_water',
+    #         'fuel_oil__hot_water',
+    #         'propane__hot_water'],
+    #     'fossil_fuel__dryer': [
+    #         'methane_gas__clothes_dryer',
+    #         'propane__clothes_dryer'],
+    #     'fossil_fuel__range': [
+    #         'methane_gas__range_oven',
+    #         'propane__range_oven'],
+    #     'methane_gas__other': [
+    #         'methane_gas__fireplace',
+    #         'methane_gas__grill',
+    #         'methane_gas__hot_tub_heater',
+    #         'methane_gas__lighting',
+    #         'methane_gas__pool_heater'
+    #     ],
+    # }
     # baseline and HVAC upgrades
     upgrade_ids = ["0", "1", "3", "4"]
 
@@ -502,7 +502,7 @@ def load_data(
     data = spark.sql(
         f"""
         SELECT B.building_id, B.upgrade_id, B.weather_file_city, {sum_str}
-        FROM ml.surrogate_model.building_upgrade_simulation_outputs_annual O
+        FROM ml.surrogate_model.building_simulation_outputs_annual_processed O
         INNER JOIN {building_feature_table_name} B 
             ON B.upgrade_id = O.upgrade_id AND B.building_id == O.building_id
         """

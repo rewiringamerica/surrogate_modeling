@@ -5,17 +5,21 @@
 # MAGIC Transform surrogate model features (building metadata and weather) and write to feature store.
 # MAGIC
 # MAGIC ### Process
+# MAGIC * Preprocess simulation outputs
 # MAGIC * Transform building metadata into features and subset to features of interest
+# MAGIC * Apply upgrade logic to building metadata features
 # MAGIC * Pivot weather data into wide vector format with pkey `weather_file_city` and a 8670-length timeseries vector for each weather feature column
 # MAGIC * Write building metadata features and weather features to feature store tables
 # MAGIC
 # MAGIC ### I/Os
 # MAGIC
 # MAGIC ##### Inputs:
+# MAGIC - `ml.surrogate_model.building_simulation_outputs_annual`: Building simulation outputs indexed by (building_id, upgrade_id)
 # MAGIC - `ml.surrogate_model.building_metadata`: Building metadata indexed by (building_id)
 # MAGIC - `ml.surrogate_model.weather_data_hourly`: Hourly weather data indexed by (weather_file_city, hour datetime)
 # MAGIC
 # MAGIC ##### Outputs:
+# MAGIC - `ml.surrogate_model.building_simulation_outputs_annual`: Processed building simulation outputs indexed by (building_id, upgrade_id)
 # MAGIC - `ml.surrogate_model.building_features`: Building metadata features indexed by (building_id)
 # MAGIC - `ml.surrogate_model.weather_features_hourly`: Weather features indexed by (weather_file_city) with a 8670-length timeseries vector for each weather feature column
 # MAGIC
@@ -52,6 +56,61 @@ from pyspark.sql.types import (
     StructField,
 )
 from pyspark.sql.window import Window
+
+# COMMAND ----------
+
+# MAGIC %md ## Output Tranformation
+
+# COMMAND ----------
+
+# DBTITLE 1,Read in outputs
+#read in outputs and drop items related to solar
+annual_outputs = spark.table("ml.surrogate_model.building_simulation_outputs_annual").drop('site_energy__net', 'electricity__net', 'electricity__pv')
+
+# COMMAND ----------
+
+# DBTITLE 1,Build versons of upgrade 8 with only range and dryer upgrades
+# Build range and dryer upgrades by selecting the baseline outputs for all end uses except for the upgraded end use
+# note that applicability can still just be true for all since all homes get an induction range and hp dryer
+w = Window.partitionBy('building_id').orderBy(F.desc('upgrade_id'))
+hp_dryer_upgrade = (
+    annual_outputs
+        .where(F.col('upgrade_id').isin([0,8]))
+        .withColumn('electricity__clothes_dryer', F.first('electricity__clothes_dryer').over(w))
+        .withColumn('propane__clothes_dryer', F.first('propane__clothes_dryer').over(w))
+        .withColumn('methane_gas__clothes_dryer', F.first('methane_gas__clothes_dryer').over(w))
+        .where(F.col('upgrade_id') == 0)
+        .withColumn('upgrade_id', F.lit(8.1))
+)
+
+induction_range_upgrade = (
+    annual_outputs
+        .where(F.col('upgrade_id').isin([0,8]))
+        .withColumn('electricity__range_oven', F.first('electricity__range_oven').over(w))
+        .withColumn('propane__range_oven', F.first('propane__range_oven').over(w))
+        .withColumn('methane_gas__range_oven', F.first('methane_gas__range_oven').over(w))
+        .where(F.col('upgrade_id') == 0)
+        .withColumn('upgrade_id', F.lit(8.2))
+)
+# union these together and recalculate fuel totals
+upgrade_8_split = (
+    hp_dryer_upgrade
+        .unionByName(induction_range_upgrade)
+        .withColumn('electricity__total', 
+                    F.expr('+'.join([c for c in annual_outputs.columns if c.startswith("electricity") and not c.endswith("total")])))
+        .withColumn('methane_gas__total', 
+                    F.expr('+'.join([c for c in annual_outputs.columns if c.startswith("methane_gas") and not c.endswith("total")])))
+        .withColumn('propane__total', 
+                    F.expr('+'.join([c for c in annual_outputs.columns if c.startswith("propane") and not c.endswith("total")])))
+)
+
+# add these to the 
+annual_outputs_processed = annual_outputs.unionByName(upgrade_8_split).drop('weather_file_city')
+
+# COMMAND ----------
+
+# DBTITLE 1,Add
+
 
 # COMMAND ----------
 
@@ -611,6 +670,8 @@ def transform_building_features() -> DataFrame:
         .where(F.col("water_heater_fuel") != "Other Fuel")
         # not interested in vacant homes
         .where(F.col("vacancy_status") == "Occupied")
+        # filter out rare edge case where efficiency and upgrade logic is super unclear
+        .where(~((F.col("hvac_cooling_efficiency") == "Heat Pump") & (F.col("hvac_heating_efficiency") == "Shared Heating")))
         # -- structure transformations -- #
         .withColumn("n_bedrooms", F.col("bedrooms").cast("int"))
         .withColumn("n_bathrooms", F.col("n_bedrooms") / 2 + 0.5)  # based on docs
@@ -683,12 +744,7 @@ def transform_building_features() -> DataFrame:
         .withColumn(
             "cooling_efficiency_eer_str",
             F.when(
-                F.col("hvac_cooling_efficiency") == "Heat Pump",
-                # cannot get spec from heating if shared... so just use spec for shared cooling :shrug:
-                F.when(
-                    F.col("hvac_heating_efficiency") == "Shared Heating",
-                    F.lit("Shared Cooling"),
-                ).otherwise(F.col("hvac_heating_efficiency")),
+                F.col("hvac_cooling_efficiency") == "Heat Pump", F.col("hvac_heating_efficiency")
             ).otherwise(F.col("hvac_cooling_efficiency")),
         )
         .withColumn(
@@ -864,6 +920,7 @@ def transform_building_features() -> DataFrame:
             "cooling_setpoint_degrees_f",
             "cooling_setpoint_offset_magnitude_degrees_f",
             # water heater
+            "water_heater_efficiency", # only used for applying upgrades, gets dropped later
             "water_heater_fuel",
             "water_heater_type",
             "water_heater_tank_volume_gal",
@@ -871,6 +928,7 @@ def transform_building_features() -> DataFrame:
             "water_heater_recovery_efficiency_ef",
             "has_water_heater_in_unit",
             # ducts
+            "ducts", # only used for applying upgrades, gets dropped later
             "has_ducts",
             "duct_insulation_r_value",
             "duct_leakage_percentage",
@@ -924,10 +982,6 @@ building_metadata_transformed = transform_building_features()
 
 # COMMAND ----------
 
-building_metadata_transformed.display()
-
-# COMMAND ----------
-
 # MAGIC %md #### Upgrades
 # MAGIC
 # MAGIC Refer to [Notion Page](https://www.notion.so/rewiringamerica/Features-Upgrades-c8239f52a100427fbf445878663d7135?pvs=4#3141dfeeb07144da9fe983b2db13b6d3), [ResStock docs](https://oedi-data-lake.s3.amazonaws.com/nrel-pds-building-stock/end-use-load-profiles-for-us-building-stock/2022/EUSS_ResRound1_Technical_Documentation.pdf), and [upgrade.yml](https://github.com/NREL/resstock/blob/run/euss/EUSS-project-file_2018_10k.yml).
@@ -970,15 +1024,9 @@ def upgrade_to_hp(
         DataFrame: The upgraded building features DataFrame with the heat pump.
     """
     return (
-        baseline_building_features.withColumn("heating_appliance_type", F.lit("ASHP"))
+        baseline_building_features
+        .withColumn("heating_appliance_type", F.lit("ASHP"))
         .withColumn("heating_fuel", F.lit("Electricity"))
-        .withColumn(
-            "cooling_efficiency_eer",
-            F.when(
-                F.col("has_ducts"),
-                extract_cooling_efficiency(F.lit(ducted_efficiency)),
-            ).otherwise(extract_cooling_efficiency(F.lit(non_ducted_efficiency))),
-        )
         .withColumn(
             "heating_efficiency_nominal_percentage",
             F.when(
@@ -987,10 +1035,16 @@ def upgrade_to_hp(
             ).otherwise(extract_heating_efficiency(F.lit(non_ducted_efficiency))),
         )
         .withColumn("has_ducted_heating", F.col("has_ducts"))
+        .withColumn(
+            "cooling_efficiency_eer",
+            F.when(
+                F.col("has_ducts"),
+                extract_cooling_efficiency(F.lit(ducted_efficiency)),
+            ).otherwise(extract_cooling_efficiency(F.lit(non_ducted_efficiency))),
+        )
         .withColumn("ac_type", F.lit("Heat Pump"))
         .withColumn("cooled_space_percentage", F.lit(1.0))
     )
-
 
 def apply_upgrades(baseline_building_features: DataFrame, upgrade_id: int) -> DataFrame:
     """
@@ -1005,17 +1059,23 @@ def apply_upgrades(baseline_building_features: DataFrame, upgrade_id: int) -> Da
     Returns:
           DataFrame: building_features, augmented to reflect the upgrade.
     """
-    # TODO: implement upgrades 5, 6, 8, 9
-    baseline_building_features = baseline_building_features.withColumn(
-        "upgrade_id", F.lit(upgrade_id)
+    # Raise an error if an unsupported upgrade ID is provided
+    if upgrade_id not in [0, 1, 3, 4, 6, 8.1, 8.2, 9]:
+        raise ValueError(f"Upgrade id={upgrade_id} is not yet supported")
+
+    upgrade_building_features = (
+        baseline_building_features
+            .withColumn("upgrade_id", F.lit(upgrade_id))
+            .withColumn("has_heat_pump_dryer", F.lit(False))
+            .withColumn("has_induction_range", F.lit(False))
     )
 
     if upgrade_id == 0:  # baseline: return as is
-        upgrade_building_features = baseline_building_features
-
-    elif upgrade_id == 1:  # basic enclosure
+        pass
+        
+    if upgrade_id in [1, 9]:  # basic enclosure
         upgrade_building_features = (
-            baseline_building_features
+            upgrade_building_features
             # Upgrade insulation of ceiling
             # Map the climate zone number to the insulation params for the upgrade
             .join(BASIC_ENCLOSURE_INSULATION, on="climate_zone_temp")
@@ -1039,18 +1099,19 @@ def apply_upgrades(baseline_building_features: DataFrame, upgrade_id: int) -> Da
                     F.col("infiltration_ach50") >= 15, F.col("infiltration_ach50") * 0.7
                 ).otherwise(F.col("infiltration_ach50")),
             )
-            # Duct sealing: update duct leakage rate to at most 10% and insulation to at least R-8
+            # Duct sealing: update duct leakage rate to at most 10% and insulation to at least R-8, 
+            # with the exeption of "0% or 30% Leakage, Uninsulated" which does not get upgrade applied
             .withColumn(
                 "duct_leakage_percentage",
                 F.when(
-                    F.col("has_ducts"),
+                       ((F.col("has_ducts")) & ~(F.col("ducts").isin(['0% Leakage, Uninsulated', '30% Leakage, Uninsulated']))),
                      F.least(F.col("duct_leakage_percentage"), F.lit(0.1)),
                 ).otherwise(F.col("duct_leakage_percentage")),
             )
             .withColumn(
                 "duct_insulation_r_value",
                 F.when(
-                    F.col("has_ducts"),
+                    ((F.col("has_ducts")) & ~(F.col("ducts").isin(['0% Leakage, Uninsulated', '30% Leakage, Uninsulated']))),
                      F.greatest(F.col("duct_insulation_r_value"), F.lit(8.0)),
                 ).otherwise(F.col("duct_insulation_r_value")),
             )
@@ -1064,25 +1125,43 @@ def apply_upgrades(baseline_building_features: DataFrame, upgrade_id: int) -> Da
             )
         )
 
-    elif upgrade_id == 3:  # heat pump: min efficiency, electric backup
-        upgrade_building_features = baseline_building_features.transform(
+    if upgrade_id == 3:  # heat pump: min efficiency, electric backup
+        upgrade_building_features = upgrade_building_features.transform(
             upgrade_to_hp, "Heat Pump, SEER 15, 9 HSPF", "Heat Pump, SEER 15, 9 HSPF"
         )
 
-    elif upgrade_id == 4:  # heat pump: high efficiency, electric backup
-        upgrade_building_features = baseline_building_features.transform(
+    if upgrade_id in [4, 9]:  # heat pump: high efficiency, electric backup
+        upgrade_building_features = upgrade_building_features.transform(
             upgrade_to_hp,
             "Heat Pump, SEER 24, 13 HSPF",
             "Heat Pump, SEER 29.3, 14 HSPF",
         )
-    elif upgrade_id == 6:
+    if upgrade_id in [6, 9]:
          upgrade_building_features = (
-            baseline_building_features
-                .withColumn()
+            upgrade_building_features
+                .withColumn("water_heater_efficiency", 
+                            F.when( # electric tankless don't get upgraded due to likely size constraints 
+                                F.col("water_heater_efficiency") == "Electric Tankless",
+                                F.col("water_heater_efficiency")) 
+                            .when(F.col('n_bedrooms') <= 3, F.lit("Electric Heat Pump, 50 gal, 3.45 UEF"))
+                            .when(F.col('n_bedrooms') == 4, F.lit("Electric Heat Pump, 66 gal, 3.35 UEF"))
+                            .otherwise(F.lit("Electric Heat Pump, 80 gal, 3.45 UEF"))
+                )
+                .transform(add_water_heater_features)
          )
-    else:
-        # Raise an error if an unsupported upgrade ID is provided
-        raise ValueError(f"Upgrade id={upgrade_id} is not yet supported")
+
+    if upgrade_id in [8.1, 9]:
+         upgrade_building_features = (
+            upgrade_building_features
+                .withColumn("clothes_dryer_fuel", F.lit("Electricity"))
+                .withColumn("has_heat_pump_dryer", F.lit(True))
+         )
+    if upgrade_id in [8.2, 9]:
+         upgrade_building_features = (
+            upgrade_building_features
+                .withColumn("cooking_range_fuel", F.lit("Electricity"))
+                .withColumn("has_induction_range", F.lit(True))
+         )
 
     # add indicator features for presence of fuels (not including electricity)
     upgrade_building_features = (
@@ -1105,8 +1184,8 @@ def apply_upgrades(baseline_building_features: DataFrame, upgrade_id: int) -> Da
         .withColumn(
             "has_propane_appliance", F.array_contains("appliance_fuel_arr", "Propane")
         )
-        .drop(
-            "appliance_fuel_arr", "gas_misc_appliance_indicator_arr", "insulation_wall"
+        .drop( #drop columns that were only used for upgrade lookups
+            "insulation_wall", "ducts", "water_heater_efficiency", "appliance_fuel_arr", "gas_misc_appliance_indicator_arr", 
         )
     )
 
@@ -1116,8 +1195,8 @@ def apply_upgrades(baseline_building_features: DataFrame, upgrade_id: int) -> Da
 
 # DBTITLE 1,Apply upgrade logic to baseline features
 # create a metadata df for baseline and each HVAC upgrade
-upgrade_ids = [0.0, 1.0, 3.0, 4.0]
-building_metadata_hvac_upgrades = reduce(
+upgrade_ids = [0.0, 1.0, 3.0, 4.0, 6.0, 8.1, 8.2, 9.0]
+building_metadata_upgrades = reduce(
     DataFrame.unionByName,
     [
         apply_upgrades(
@@ -1132,33 +1211,60 @@ building_metadata_hvac_upgrades = reduce(
 
 # COMMAND ----------
 
-# DBTITLE 1,Drop rows where upgrade was not applied
 # drop upgrades that had no unchanged features and therefore weren't upgraded
-partition_cols = building_metadata_hvac_upgrades.drop("upgrade_id").columns
+partition_cols = building_metadata_upgrades.drop("upgrade_id").columns
 w = Window.partitionBy(partition_cols).orderBy(F.asc("upgrade_id"))
 
-# partition by features-- if more them one row is in the partition, then it is a duplicate,
+# partition by features-- if more them one row is in the partition, 
+# then it is a duplicate, meaning an upgrade was not applied, so mark it as such
 # so mark any upgrade rows (upgrade > 0) as duplicate
-building_metadata_hvac_upgrades_ranked = (
-    building_metadata_hvac_upgrades.withColumn("rank", F.rank().over(w))
-    .withColumn("is_duplicate", F.col("rank") > 1)
+building_metadata_upgrades_applicability_flag = (
+    building_metadata_upgrades.withColumn("rank", F.rank().over(w))
+    .withColumn("applicability", F.col("rank") == 1)
     .drop("rank")
 )
 
-building_metadata_hvac_upgrades_dedup = building_metadata_hvac_upgrades_ranked.where(
-    ~F.col("is_duplicate")
-).drop("is_duplicate")
+#test that the applicability logic matches between the features and targets 
+applicability_compare = building_metadata_upgrades_applicability_flag.alias('features').join(annual_targets_processed.select('upgrade_id', 'building_id','applicability').alias('targets'), on = ['upgrade_id', 'building_id'])
+assert applicability_compare.where(F.col('features.applicability') != F.col('targets.applicability')).count() == 0
+#display mismatching cases if assert fails
+#applicability_compare.where(F.col('features.applicability') != F.col('targets.applicability')).display()
 
-# print out how many dups were dropped by upgrade id
-(
-    building_metadata_hvac_upgrades_ranked.where(F.col("is_duplicate"))
-    .groupby("upgrade_id")
-    .count()
-    .display()
+# drop feature rows where upgrade was not applied
+building_metadata_applicable_upgrades = (
+    building_metadata_upgrades_applicability_flag
+    .where(F.col("applicability"))
+    .drop("applicability")
 )
 
-# # Look at those that weren't upgraded
-# building_metadata_hvac_upgrades_ranked.where(F.col('is_duplicate')).display()
+# COMMAND ----------
+
+# DBTITLE 1,Drop rows where upgrade was not applied
+# drop upgrades that had no unchanged features and therefore weren't upgraded
+partition_cols = building_metadata_upgrades.drop("upgrade_id").columns
+w = Window.partitionBy(partition_cols).orderBy(F.asc("upgrade_id"))
+
+# partition by features-- if more them one row is in the partition, 
+# then it is a duplicate, meaning an upgrade was not applied, so mark it as such
+# so mark any upgrade rows (upgrade > 0) as duplicate
+building_metadata_upgrades_applicability_flag = (
+    building_metadata_upgrades.withColumn("rank", F.rank().over(w))
+    .withColumn("applicability", F.col("rank") == 1)
+    .drop("rank")
+)
+
+#test that the applicability logic matches between the features and targets 
+applicability_compare = building_metadata_upgrades_applicability_flag.alias('features').join(annual_targets_processed.select('upgrade_id', 'building_id','applicability').alias('targets'), on = ['upgrade_id', 'building_id'])
+#assert applicability_compare.where(F.col('features.applicability') != F.col('targets.applicability')).count() == 0
+#display mismatching cases if assert fails
+applicability_compare.where(F.col('features.applicability') != F.col('targets.applicability')).display()
+
+# drop feature rows where upgrade was not applied
+building_metadata_applicable_upgrades = (
+    building_metadata_upgrades_applicability_flag
+    .where(F.col("features.applicability"))
+    .drop("applicability")
+)
 
 # COMMAND ----------
 
@@ -1168,10 +1274,10 @@ building_metadata_hvac_upgrades_dedup = building_metadata_hvac_upgrades_ranked.w
 
 # DBTITLE 1,Check if there are any Null Features
 # count how many null vals are in each column
-null_counts = building_metadata_hvac_upgrades.select(
+null_counts = building_metadata_upgrades.select(
     [
         F.sum(F.when(F.col(c).isNull(), 1).otherwise(0)).alias(c)
-        for c in building_metadata_hvac_upgrades.columns
+        for c in building_metadata_upgrades.columns
     ]
 )
 # Collect the results as a dictionary
@@ -1186,16 +1292,16 @@ assert len(null_count_items) == 0, f"Columns with null values: {null_count_items
 pkey_cols = ["weather_file_city", "upgrade_id", "building_id"]
 string_columns = [
     field.name
-    for field in building_metadata_hvac_upgrades.schema.fields
+    for field in building_metadata_upgrades.schema.fields
     if isinstance(field.dataType, StringType) and field.name not in pkey_cols
 ]
 non_string_columns = [
     field.name
-    for field in building_metadata_hvac_upgrades.schema.fields
+    for field in building_metadata_upgrades.schema.fields
     if not isinstance(field.dataType, StringType) and field.name not in pkey_cols
 ]
 # count how many distinct vals there are for each categorical feature
-distinct_string_counts = building_metadata_hvac_upgrades.select(
+distinct_string_counts = building_metadata_upgrades.select(
     [F.countDistinct(c).alias(c) for c in string_columns]
 )
 # Collect the results as a dictionary
@@ -1290,7 +1396,7 @@ fe = FeatureEngineeringClient()
 
 # DBTITLE 1,Write out building metadata feature store
 table_name = "ml.surrogate_model.building_features"
-df = building_metadata_hvac_upgrades_dedup
+df = building_metadata_applicable_upgrades
 if spark.catalog.tableExists(table_name):
     fe.write_table(name=table_name, df=df, mode="merge")
 else:
@@ -1321,3 +1427,13 @@ else:
         schema=df.schema,
         description="hourly weather timeseries array features",
     )
+
+# COMMAND ----------
+
+# DBTITLE 1,Write out processed simulation outputs
+# Note that this is NOT a feature table
+table_name = "ml.surrogate_model.building_simulation_outputs_annual_processed"
+annual_outputs_processed.write.saveAsTable(
+    table_name, mode="overwrite", overwriteSchema=True, partitionBy=["upgrade_id"]
+)
+spark.sql(f"OPTIMIZE {table_name}")
