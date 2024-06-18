@@ -64,6 +64,7 @@ os.environ["TF_FORCE_GPU_ALLOW_GROWTH"] = "true"
 # MAGIC import pandas as pd
 # MAGIC import pyspark.sql.functions as F
 # MAGIC import tensorflow as tf
+# MAGIC import shutil
 # MAGIC from databricks.feature_engineering import FeatureEngineeringClient
 # MAGIC from pyspark.sql import DataFrame
 # MAGIC from pyspark.sql.types import DoubleType
@@ -216,7 +217,7 @@ class SurrogateModelingWrapper(mlflow.pyfunc.PythonModel):
 # COMMAND ----------
 
 # DBTITLE 1,Initialize model
-sm = SurrogateModel(name="test" if DEBUG else "mvp_hvac_upgrades")
+sm = SurrogateModel(name="test" if DEBUG else "mvp")
 
 # COMMAND ----------
 
@@ -233,18 +234,15 @@ layer_params = {
     "kernel_initializer": "he_normal",
 }
 
+
 # signature_df = train_gen.training_set.load_df().select(train_gen.building_features + train_gen.targets + train_gen.weather_features).limit(1).toPandas()
 # signature=mlflow.models.infer_signature(model_input = signature_df[train_gen.building_features + train_gen.weather_features], model_output = signature_df[train_gen.targets])
-
-# turn on tf logging but without model checkpointing since this slows down training 2x
-mlflow.tensorflow.autolog(
-    log_every_epoch=True, log_models=False, log_datasets=False, checkpoint=False
-)
 
 # if production, log to shared experiment space, otherwise just log at notebook level by default
 if not DEBUG:
     mlflow.set_experiment(EXPERIMENT_LOCATION)
 
+best_model_path = sm.artifact_path + '_best'
 # Starts an MLflow experiment to track training parameters and results.
 with mlflow.start_run() as run:
 
@@ -258,10 +256,12 @@ with mlflow.start_run() as run:
     history = keras_model.fit(
         train_gen,
         validation_data=val_gen,
-        epochs=2 if DEBUG else 250,
+        epochs=2 if DEBUG else 200,
         batch_size=train_gen.batch_size,
         verbose=2,
-        callbacks=[keras.callbacks.EarlyStopping(monitor="val_loss", patience=15)],
+        callbacks=[
+            keras.callbacks.EarlyStopping(monitor="val_loss", patience=15),
+            keras.callbacks.ModelCheckpoint(sm.artifact_path, save_best_only=True, monitor='val_loss', mode='min', save_format="keras")],
     )
 
     # wrap in custom class that defines pre and post processing steps to be applied when called at inference time
@@ -278,6 +278,11 @@ with mlflow.start_run() as run:
         code_paths=["surrogate_model.py"],
         #signature=signature
     )
+    #log the best model as an artifact
+    mlflow.log_artifact(sm.artifact_path)
+    #delete it from local directory
+    shutil.rmtree(sm.artifact_path)
+
     #mlflow.register_model(f"runs:/{run_id}/{sm.artifact_path}", str(sm))
 
 # COMMAND ----------
