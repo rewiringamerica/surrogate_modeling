@@ -70,47 +70,47 @@ annual_outputs = spark.table("ml.surrogate_model.building_simulation_outputs_ann
 # COMMAND ----------
 
 # DBTITLE 1,Build versons of upgrade 8 with only range and dryer upgrades
-# Build range and dryer upgrades by selecting the baseline outputs for all end uses except for the upgraded end use
-# note that applicability can still just be true for all since all homes get an induction range and hp dryer
-w = Window.partitionBy('building_id').orderBy(F.desc('upgrade_id'))
-hp_dryer_upgrade = (
-    annual_outputs
-        .where(F.col('upgrade_id').isin([0,8]))
-        .withColumn('electricity__clothes_dryer', F.first('electricity__clothes_dryer').over(w))
-        .withColumn('propane__clothes_dryer', F.first('propane__clothes_dryer').over(w))
-        .withColumn('methane_gas__clothes_dryer', F.first('methane_gas__clothes_dryer').over(w))
-        .where(F.col('upgrade_id') == 0)
-        .withColumn('upgrade_id', F.lit(8.1))
-)
+# # Build range and dryer upgrades by selecting the baseline outputs for all end uses except for the upgraded end use
+# # note that applicability can still just be true for all since all homes get an induction range and hp dryer
+# w = Window.partitionBy('building_id').orderBy(F.desc('upgrade_id'))
+# hp_dryer_upgrade = (
+#     annual_outputs
+#         .where(F.col('upgrade_id').isin([0,8]))
+#         .withColumn('electricity__clothes_dryer', F.first('electricity__clothes_dryer').over(w))
+#         .withColumn('propane__clothes_dryer', F.first('propane__clothes_dryer').over(w))
+#         .withColumn('methane_gas__clothes_dryer', F.first('methane_gas__clothes_dryer').over(w))
+#         .where(F.col('upgrade_id') == 0)
+#         .withColumn('upgrade_id', F.lit(8.1))
+# )
 
-induction_range_upgrade = (
-    annual_outputs
-        .where(F.col('upgrade_id').isin([0,8]))
-        .withColumn('electricity__range_oven', F.first('electricity__range_oven').over(w))
-        .withColumn('propane__range_oven', F.first('propane__range_oven').over(w))
-        .withColumn('methane_gas__range_oven', F.first('methane_gas__range_oven').over(w))
-        .where(F.col('upgrade_id') == 0)
-        .withColumn('upgrade_id', F.lit(8.2))
-)
-# union these together and recalculate fuel totals
-upgrade_8_split = (
-    hp_dryer_upgrade
-        .unionByName(induction_range_upgrade)
-        .withColumn('electricity__total', 
-                    F.expr('+'.join([c for c in annual_outputs.columns if c.startswith("electricity") and not c.endswith("total")])))
-        .withColumn('methane_gas__total', 
-                    F.expr('+'.join([c for c in annual_outputs.columns if c.startswith("methane_gas") and not c.endswith("total")])))
-        .withColumn('propane__total', 
-                    F.expr('+'.join([c for c in annual_outputs.columns if c.startswith("propane") and not c.endswith("total")])))
-)
+# induction_range_upgrade = (
+#     annual_outputs
+#         .where(F.col('upgrade_id').isin([0,8]))
+#         .withColumn('electricity__range_oven', F.first('electricity__range_oven').over(w))
+#         .withColumn('propane__range_oven', F.first('propane__range_oven').over(w))
+#         .withColumn('methane_gas__range_oven', F.first('methane_gas__range_oven').over(w))
+#         .where(F.col('upgrade_id') == 0)
+#         .withColumn('upgrade_id', F.lit(8.2))
+# )
+# # union these together and recalculate fuel totals
+# upgrade_8_split = (
+#     hp_dryer_upgrade
+#         .unionByName(induction_range_upgrade)
+#         .withColumn('electricity__total', 
+#                     F.expr('+'.join([c for c in annual_outputs.columns if c.startswith("electricity") and not c.endswith("total")])))
+#         .withColumn('methane_gas__total', 
+#                     F.expr('+'.join([c for c in annual_outputs.columns if c.startswith("methane_gas") and not c.endswith("total")])))
+#         .withColumn('propane__total', 
+#                     F.expr('+'.join([c for c in annual_outputs.columns if c.startswith("propane") and not c.endswith("total")])))
+# )
 
-# add these to the 
-annual_outputs_processed = annual_outputs.unionByName(upgrade_8_split).drop('weather_file_city')
+
 
 # COMMAND ----------
 
 # DBTITLE 1,Add
-
+# # add these to the 
+# annual_outputs_processed = annual_outputs.drop('weather_file_city')
 
 # COMMAND ----------
 
@@ -1195,7 +1195,7 @@ def apply_upgrades(baseline_building_features: DataFrame, upgrade_id: int) -> Da
 
 # DBTITLE 1,Apply upgrade logic to baseline features
 # create a metadata df for baseline and each HVAC upgrade
-upgrade_ids = [0.0, 1.0, 3.0, 4.0, 6.0, 8.1, 8.2, 9.0]
+upgrade_ids = [0.0, 1.0, 3.0, 4.0, 6.0, 9.0]
 building_metadata_upgrades = reduce(
     DataFrame.unionByName,
     [
@@ -1208,34 +1208,6 @@ building_metadata_upgrades = reduce(
 
 # w = Window.partitionBy('building_id').orderBy(F.asc("upgrade_id"))
 # building_metadata_hvac_upgrades.withColumn('diff', F.col('has_methane_gas_appliance') != F.first('has_methane_gas_appliance').over(w)).where(F.col('diff'))
-
-# COMMAND ----------
-
-# drop upgrades that had no unchanged features and therefore weren't upgraded
-partition_cols = building_metadata_upgrades.drop("upgrade_id").columns
-w = Window.partitionBy(partition_cols).orderBy(F.asc("upgrade_id"))
-
-# partition by features-- if more them one row is in the partition, 
-# then it is a duplicate, meaning an upgrade was not applied, so mark it as such
-# so mark any upgrade rows (upgrade > 0) as duplicate
-building_metadata_upgrades_applicability_flag = (
-    building_metadata_upgrades.withColumn("rank", F.rank().over(w))
-    .withColumn("applicability", F.col("rank") == 1)
-    .drop("rank")
-)
-
-#test that the applicability logic matches between the features and targets 
-applicability_compare = building_metadata_upgrades_applicability_flag.alias('features').join(annual_targets_processed.select('upgrade_id', 'building_id','applicability').alias('targets'), on = ['upgrade_id', 'building_id'])
-assert applicability_compare.where(F.col('features.applicability') != F.col('targets.applicability')).count() == 0
-#display mismatching cases if assert fails
-#applicability_compare.where(F.col('features.applicability') != F.col('targets.applicability')).display()
-
-# drop feature rows where upgrade was not applied
-building_metadata_applicable_upgrades = (
-    building_metadata_upgrades_applicability_flag
-    .where(F.col("applicability"))
-    .drop("applicability")
-)
 
 # COMMAND ----------
 
@@ -1254,15 +1226,15 @@ building_metadata_upgrades_applicability_flag = (
 )
 
 #test that the applicability logic matches between the features and targets 
-applicability_compare = building_metadata_upgrades_applicability_flag.alias('features').join(annual_targets_processed.select('upgrade_id', 'building_id','applicability').alias('targets'), on = ['upgrade_id', 'building_id'])
-#assert applicability_compare.where(F.col('features.applicability') != F.col('targets.applicability')).count() == 0
-#display mismatching cases if assert fails
-applicability_compare.where(F.col('features.applicability') != F.col('targets.applicability')).display()
+applicability_compare = building_metadata_upgrades_applicability_flag.alias('features').join(annual_outputs.select('upgrade_id', 'building_id','applicability').alias('targets'), on = ['upgrade_id', 'building_id'])
+assert applicability_compare.where(F.col('features.applicability') != F.col('targets.applicability')).count() == 0
+# #display mismatching cases if assert fails
+# applicability_compare.where(F.col('features.applicability') != F.col('targets.applicability')).display()
 
 # drop feature rows where upgrade was not applied
 building_metadata_applicable_upgrades = (
     building_metadata_upgrades_applicability_flag
-    .where(F.col("features.applicability"))
+    .where(F.col("applicability"))
     .drop("applicability")
 )
 

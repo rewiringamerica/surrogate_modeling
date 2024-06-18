@@ -296,11 +296,17 @@ def mape(y_true, y_pred):
 @keras.saving.register_keras_serializable(package="my_package", name="masked_mae")
 def masked_mae(y_true, y_pred):
     # # Create a mask where targets are not zero
-    mask = tf.cast(tf.not_equal(y_true, 0), tf.float32)
-
+    #mask = tf.cast(tf.not_equal(y_true, 0), tf.float32)
+    mask = tf.not_equal(y_true, 0)
+    
     # # Apply the mask to remove zero-target influence
-    y_true_masked = y_true * mask
-    y_pred_masked = y_pred * mask
+    y_true_masked = tf.boolean_mask(y_true, mask)
+    y_pred_masked = tf.boolean_mask(y_pred, mask)
 
-    # Calculate the mean abs error
-    return tf.reduce_mean(tf.math.abs(y_true_masked - y_pred_masked))
+   # Check if the filtered tensor is empty
+    if tf.size(y_true_masked) == 0:
+        # Return a small positive value or zero as the loss if no elements to process
+        return tf.constant(0.0)
+    else:
+        # Calculate the mean absolute error on the filtered data
+        return tf.reduce_mean(tf.abs(y_true_masked - y_pred_masked))
