@@ -380,12 +380,12 @@ bucket_metrics = pd.read_csv(
     dtype={"upgrade_id": "double"},
 )
 bucket_metrics["upgrade_id"] = bucket_metrics["upgrade_id"].astype("str")
-# bucket_metrics.replace({'Natural Gas': 'Methane Gas'}, inplace=True)
 
 # COMMAND ----------
 
 # DBTITLE 1,Combine results from both methods
 cnn_metrics = cnn_evaluation_metrics.toPandas()
+bucket_metrics = bucket_metrics[bucket_metrics.upgrade_id.isin(cnn_metrics.upgrade_id.unique())]
 
 bucket_metrics["Model"] = "Bucketed"
 cnn_metrics["Model"] = "SM"
@@ -476,6 +476,7 @@ if not DEBUG:
 # set the metric to savings APE on upgrade rows and baseline APE for baseline
 bucketed_pred = (
     spark.table("ml.surrogate_model.bucketed_sf_predictions")
+    .where(F.col('upgrade_id').isin(pred_df_savings.select('upgrade_id').distinct().rdd.map(lambda x: x["upgrade_id"]).collect()))
     .withColumn(
         "absolute_percentage_error",
         F.when(F.col("upgrade_id") == 0, F.col("absolute_percentage_error"))
