@@ -91,18 +91,23 @@ class SurrogateModel:
         bm = layers.Dense(128, name="first_dense", **layer_params)(bm)
         bm = layers.BatchNormalization(name = 'first_batchnorm')(bm)
         bm = layers.LeakyReLU(name = 'first_leakyrelu')(bm)
+        bm = layers.Dropout(0.2, name="first_dropout")(bm)
         bm = layers.Dense(64, name="second_dense", **layer_params)(bm)
         bm = layers.BatchNormalization(name = 'second_batchnorm')(bm)
         bm = layers.LeakyReLU(name = 'second_leakyrelu')(bm)
+        bm = layers.Dropout(0.2, name="second_dropout")(bm)
         bm = layers.Dense(32, name="third_dense", **layer_params)(bm)
         bm = layers.BatchNormalization(name = 'third_batchnorm')(bm)
         bm = layers.LeakyReLU(name = 'third_leakyrelu')(bm)
+        bm = layers.Dropout(0.2, name="third_dropout")(bm)
         bm = layers.Dense(16, name="fourth_dense", **layer_params)(bm)
         bm = layers.BatchNormalization(name = 'fourth_batchnorm')(bm)
         bm = layers.LeakyReLU(name = 'fourth_leakyrelu')(bm)
+        bm = layers.Dropout(0.2, name="fourth_dropout")(bm)
         bm = layers.Dense(8, name="fifth_dense", **layer_params)(bm)
         bm = layers.BatchNormalization(name = 'fifth_batchnorm')(bm)
         bm = layers.LeakyReLU(name = 'fifth_leakyrelu')(bm)
+        bm = layers.Dropout(0.2, name="fifth_dropout")(bm)
 
         bmo = models.Model(
             inputs=bmo_inputs_dict, outputs=bm, name="building_features_model"
