@@ -184,8 +184,8 @@ class SurrogateModel:
             io = layers.Dense(2, name=consumption_group + "_mid", **layer_params)(io)
             #io = layers.BatchNormalization(name=consumption_group + "_mid_batchnorm")(io)
             io = layers.LeakyReLU(name=consumption_group + "_mid_leakyrelu")(io)
-            io = layers.Dense(1, name=consumption_group, **layer_params)(io)
-            io = layers.LeakyReLU(name=consumption_group + "_final_leakyrelu")(io)
+            io = layers.Dense(1, name=name=consumption_group + "_final" **layer_params)(io)
+            io = layers.LeakyReLU(name=consumption_group)(io)
             final_outputs[consumption_group] = io
 
         final_model = models.Model(
@@ -299,33 +299,33 @@ def mape(y_true, y_pred):
     diff = tf.keras.backend.abs((y_true - y_pred) / y_true)
     return 100.0 * tf.keras.backend.mean(diff[y_true != 0], axis=-1)
     
-# @keras.saving.register_keras_serializable(package="my_package", name="masked_mae")
-# def masked_mae(y_true, y_pred):
-#     # Create a mask where targets are not zero
-#     mask = tf.not_equal(y_true, 0)
-    
-#     # # Apply the mask to remove zero-target influence
-#     y_true_masked = tf.boolean_mask(y_true, mask)
-#     y_pred_masked = tf.boolean_mask(y_pred, mask)
-
-#    # Check if the filtered tensor is empty
-#     if tf.size(y_true_masked) == 0:
-#         # Return a small positive value or zero as the loss if no elements to process
-#         return tf.constant(0.0)
-#     else:
-#         # Calculate the mean absolute error on the filtered data
-#         return tf.reduce_mean(tf.abs(y_true_masked - y_pred_masked))
-
-
 @keras.saving.register_keras_serializable(package="my_package", name="masked_mae")
 def masked_mae(y_true, y_pred):
-    # # Create a mask where targets are not zero
-    mask = tf.cast(tf.not_equal(y_true, 0), tf.float32)
-    #mask = tf.not_equal(y_true, 0)
+    # Create a mask where targets are not zero
+    mask = tf.not_equal(y_true, 0)
     
     # # Apply the mask to remove zero-target influence
-    y_true_masked = y_true * mask
-    y_pred_masked = y_pred * mask
+    y_true_masked = tf.boolean_mask(y_true, mask)
+    y_pred_masked = tf.boolean_mask(y_pred, mask)
 
-    # Calculate the mean absolute error on the filtered data
-    return tf.reduce_mean(tf.abs(y_true_masked - y_pred_masked))
+   # Check if the filtered tensor is empty
+    if tf.size(y_true_masked) == 0:
+        # Return a small positive value or zero as the loss if no elements to process
+        return tf.constant(0.0)
+    else:
+        # Calculate the mean absolute error on the filtered data
+        return tf.reduce_mean(tf.abs(y_true_masked - y_pred_masked))
+
+
+# @keras.saving.register_keras_serializable(package="my_package", name="masked_mae")
+# def masked_mae(y_true, y_pred):
+#     # # Create a mask where targets are not zero
+#     mask = tf.cast(tf.not_equal(y_true, 0), tf.float32)
+#     #mask = tf.not_equal(y_true, 0)
+    
+#     # # Apply the mask to remove zero-target influence
+#     y_true_masked = y_true * mask
+#     y_pred_masked = y_pred * mask
+
+#     # Calculate the mean absolute error on the filtered data
+#     return tf.reduce_mean(tf.abs(y_true_masked - y_pred_masked))
