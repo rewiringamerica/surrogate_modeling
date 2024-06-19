@@ -184,7 +184,7 @@ class SurrogateModel:
             io = layers.Dense(2, name=consumption_group + "_mid", **layer_params)(io)
             #io = layers.BatchNormalization(name=consumption_group + "_mid_batchnorm")(io)
             io = layers.LeakyReLU(name=consumption_group + "_mid_leakyrelu")(io)
-            io = layers.Dense(1, name=name=consumption_group + "_final", **layer_params)(io)
+            io = layers.Dense(1, name=consumption_group + "_final", **layer_params)(io)
             io = layers.LeakyReLU(name=consumption_group)(io)
             final_outputs[consumption_group] = io
 
