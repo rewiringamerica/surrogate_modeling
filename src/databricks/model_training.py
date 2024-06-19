@@ -237,9 +237,8 @@ layer_params = {
 # signature_df = train_gen.training_set.load_df().select(train_gen.building_features + train_gen.targets + train_gen.weather_features).limit(1).toPandas()
 # signature=mlflow.models.infer_signature(model_input = signature_df[train_gen.building_features + train_gen.weather_features], model_output = signature_df[train_gen.targets])
 
-# turn on tf logging but without model checkpointing since this slows down training 2x
 mlflow.tensorflow.autolog(
-    log_every_epoch=True, log_models=False, log_datasets=False, checkpoint=True
+    log_every_epoch=True, log_models=False, log_datasets=False, checkpoint=False
 )
 
 # if production, log to shared experiment space, otherwise just log at notebook level by default

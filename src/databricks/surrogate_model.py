@@ -250,9 +250,8 @@ class SurrogateModel:
         if run_id is None:
             return self.get_latest_registered_model_uri(verbose=verbose)
         else:
-             return f'runs:/{run_id}/{self.artifact_path}'
+            return f'runs:/{run_id}/{self.artifact_path}'
          
-    
     def score_batch(self, test_data:DataFrame, run_id:str = None, version:int = None, targets:List[str] = None) -> DataFrame:
         """
         Runs inference on the test data using the specified model, using:

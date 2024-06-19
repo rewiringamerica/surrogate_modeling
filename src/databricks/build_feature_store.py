@@ -5,7 +5,6 @@
 # MAGIC Transform surrogate model features (building metadata and weather) and write to feature store.
 # MAGIC
 # MAGIC ### Process
-# MAGIC * Preprocess simulation outputs
 # MAGIC * Transform building metadata into features and subset to features of interest
 # MAGIC * Apply upgrade logic to building metadata features
 # MAGIC * Pivot weather data into wide vector format with pkey `weather_file_city` and a 8670-length timeseries vector for each weather feature column
@@ -19,7 +18,6 @@
 # MAGIC - `ml.surrogate_model.weather_data_hourly`: Hourly weather data indexed by (weather_file_city, hour datetime)
 # MAGIC
 # MAGIC ##### Outputs:
-# MAGIC - `ml.surrogate_model.building_simulation_outputs_annual`: Processed building simulation outputs indexed by (building_id, upgrade_id)
 # MAGIC - `ml.surrogate_model.building_features`: Building metadata features indexed by (building_id)
 # MAGIC - `ml.surrogate_model.weather_features_hourly`: Weather features indexed by (weather_file_city) with a 8670-length timeseries vector for each weather feature column
 # MAGIC
@@ -56,61 +54,6 @@ from pyspark.sql.types import (
     StructField,
 )
 from pyspark.sql.window import Window
-
-# COMMAND ----------
-
-# MAGIC %md ## Output Tranformation
-
-# COMMAND ----------
-
-# DBTITLE 1,Read in outputs
-#read in outputs and drop items related to solar
-annual_outputs = spark.table("ml.surrogate_model.building_simulation_outputs_annual").drop('site_energy__net', 'electricity__net', 'electricity__pv')
-
-# COMMAND ----------
-
-# DBTITLE 1,Build versons of upgrade 8 with only range and dryer upgrades
-# # Build range and dryer upgrades by selecting the baseline outputs for all end uses except for the upgraded end use
-# # note that applicability can still just be true for all since all homes get an induction range and hp dryer
-# w = Window.partitionBy('building_id').orderBy(F.desc('upgrade_id'))
-# hp_dryer_upgrade = (
-#     annual_outputs
-#         .where(F.col('upgrade_id').isin([0,8]))
-#         .withColumn('electricity__clothes_dryer', F.first('electricity__clothes_dryer').over(w))
-#         .withColumn('propane__clothes_dryer', F.first('propane__clothes_dryer').over(w))
-#         .withColumn('methane_gas__clothes_dryer', F.first('methane_gas__clothes_dryer').over(w))
-#         .where(F.col('upgrade_id') == 0)
-#         .withColumn('upgrade_id', F.lit(8.1))
-# )
-
-# induction_range_upgrade = (
-#     annual_outputs
-#         .where(F.col('upgrade_id').isin([0,8]))
-#         .withColumn('electricity__range_oven', F.first('electricity__range_oven').over(w))
-#         .withColumn('propane__range_oven', F.first('propane__range_oven').over(w))
-#         .withColumn('methane_gas__range_oven', F.first('methane_gas__range_oven').over(w))
-#         .where(F.col('upgrade_id') == 0)
-#         .withColumn('upgrade_id', F.lit(8.2))
-# )
-# # union these together and recalculate fuel totals
-# upgrade_8_split = (
-#     hp_dryer_upgrade
-#         .unionByName(induction_range_upgrade)
-#         .withColumn('electricity__total', 
-#                     F.expr('+'.join([c for c in annual_outputs.columns if c.startswith("electricity") and not c.endswith("total")])))
-#         .withColumn('methane_gas__total', 
-#                     F.expr('+'.join([c for c in annual_outputs.columns if c.startswith("methane_gas") and not c.endswith("total")])))
-#         .withColumn('propane__total', 
-#                     F.expr('+'.join([c for c in annual_outputs.columns if c.startswith("propane") and not c.endswith("total")])))
-# )
-
-
-
-# COMMAND ----------
-
-# DBTITLE 1,Add
-# # add these to the 
-# annual_outputs_processed = annual_outputs.drop('weather_file_city')
 
 # COMMAND ----------
 
@@ -1212,6 +1155,9 @@ building_metadata_upgrades = reduce(
 # COMMAND ----------
 
 # DBTITLE 1,Drop rows where upgrade was not applied
+#read in outputs so that we can test applicability logic
+annual_outputs = spark.table("ml.surrogate_model.building_simulation_outputs_annual")
+
 # drop upgrades that had no unchanged features and therefore weren't upgraded
 partition_cols = building_metadata_upgrades.drop("upgrade_id").columns
 w = Window.partitionBy(partition_cols).orderBy(F.asc("upgrade_id"))
@@ -1347,6 +1293,10 @@ weather_data_transformed = transform_weather_features()
 
 # COMMAND ----------
 
+# MAGIC %sql DROP TABLE ml.surrogate_model.building_features
+
+# COMMAND ----------
+
 # DBTITLE 1,Set up catalog and schema
 # MAGIC %sql
 # MAGIC -- Use existing catalog:
@@ -1399,13 +1349,3 @@ else:
         schema=df.schema,
         description="hourly weather timeseries array features",
     )
-
-# COMMAND ----------
-
-# DBTITLE 1,Write out processed simulation outputs
-# Note that this is NOT a feature table
-table_name = "ml.surrogate_model.building_simulation_outputs_annual_processed"
-annual_outputs_processed.write.saveAsTable(
-    table_name, mode="overwrite", overwriteSchema=True, partitionBy=["upgrade_id"]
-)
-spark.sql(f"OPTIMIZE {table_name}")
