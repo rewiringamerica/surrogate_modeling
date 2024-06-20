@@ -12,6 +12,124 @@ from databricks.sdk.runtime import spark
 
 from pyspark.sql import DataFrame
 
+consumption_by_fuel_dict = {
+    "electricity": ["electricity__total"],
+    "methane_gas": ["methane_gas__total"],
+    "fuel_oil": ["fuel_oil__total"],
+    "propane": ["propane__total"],
+}
+
+consumption_by_electric_fossil_end_use_dict = {
+    'electricity__hvac': [
+        'electricity__cooling_fans_pumps',
+        'electricity__cooling',
+        'electricity__heating_fans_pumps',
+        'electricity__heating_hp_bkup',
+        'electricity__heating'
+    ],
+    'electricity__water_heater': ['electricity__hot_water'],
+    'electricity__clothes_dryer': ['electricity__clothes_dryer'],
+    'electricity__range_oven': ['electricity__range_oven'],
+    'electricity__other': [
+        'electricity__ceiling_fan',
+        'electricity__clothes_washer',
+        'electricity__dishwasher',
+        'electricity__freezer',
+        'electricity__hot_tub_heater',
+        'electricity__hot_tub_pump',
+        'electricity__lighting_exterior',
+        'electricity__lighting_garage',
+        'electricity__lighting_interior',
+        'electricity__mech_vent',
+        'electricity__plug_loads',
+        'electricity__pool_heater',
+        'electricity__pool_pump',
+        'electricity__refrigerator',
+        'electricity__well_pump'
+    ],
+    'fossil_fuel__hvac': [
+        'methane_gas__heating_hp_bkup',
+        'methane_gas__heating',
+        'propane__heating_hp_bkup',
+        'propane__heating'
+        'fuel_oil__heating_hp_bkup',
+        'fuel_oil__heating',
+    ],
+    'fossil_fuel__water_heater': [
+        'methane_gas__hot_water',
+        'propane__hot_water'
+        'fuel_oil__hot_water',
+        ],
+    'fossil_fuel__clothes_dryer': [
+        'methane_gas__clothes_dryer',
+        'propane__clothes_dryer'],
+    'fossil_fuel__range_oven': [
+        'methane_gas__range_oven',
+        'propane__range_oven'],
+    'methane_gas__other': [
+        'methane_gas__fireplace',
+        'methane_gas__grill',
+        'methane_gas__hot_tub_heater',
+        'methane_gas__lighting',
+        'methane_gas__pool_heater'
+    ],
+}
+
+consumption_by_fuel_end_use_dict = {
+    'electricity__hvac': [
+        'electricity__cooling_fans_pumps',
+        'electricity__cooling',
+        'electricity__heating_fans_pumps',
+        'electricity__heating_hp_bkup',
+        'electricity__heating'
+    ],
+    'electricity__water_heater': ['electricity__hot_water'],
+    'electricity__clothes_dryer': ['electricity__clothes_dryer'],
+    'electricity__range_oven': ['electricity__range_oven'],
+    'electricity__other': [
+        'electricity__ceiling_fan',
+        'electricity__clothes_washer',
+        'electricity__dishwasher',
+        'electricity__freezer',
+        'electricity__hot_tub_heater',
+        'electricity__hot_tub_pump',
+        'electricity__lighting_exterior',
+        'electricity__lighting_garage',
+        'electricity__lighting_interior',
+        'electricity__mech_vent',
+        'electricity__plug_loads',
+        'electricity__pool_heater',
+        'electricity__pool_pump',
+        'electricity__refrigerator',
+        'electricity__well_pump'
+    ],
+    'methane_gas__hvac': [
+        'methane_gas__heating_hp_bkup',
+        'methane_gas__heating'
+    ],
+    'methane_gas__water_heater': ['methane_gas__hot_water'],
+    'methane_gas__clothes_dryer': ['methane_gas__clothes_dryer'],
+    'methane_gas__range_oven': ['methane_gas__range_oven'],
+    'methane_gas__other': [
+        'methane_gas__fireplace',
+        'methane_gas__grill',
+        'methane_gas__hot_tub_heater',
+        'methane_gas__lighting',
+        'methane_gas__pool_heater'
+    ],
+    'fuel_oil__hvac': [
+        'fuel_oil__heating_hp_bkup',
+        'fuel_oil__heating',
+    ],
+    'fuel_oil__water_heater': ['fuel_oil__hot_water'],
+    'propane__hvac': [
+        'propane__heating_hp_bkup',
+        'propane__heating'
+    ],
+    'propane__water_heater': ['propane__hot_water'],
+    'propane__clothes_dryer': ['propane__clothes_dryer'],
+    'propane__range_oven': ['propane__range_oven'],
+}
 
 class DataGenerator(tf.keras.utils.Sequence):
     """
@@ -39,7 +157,7 @@ class DataGenerator(tf.keras.utils.Sequence):
                                         of all possible features if string feature else empty}}.
     - fe (databricks.feature_engineering.client.FeatureEngineeringClient: client for interacting with the
                                                                             Databricks Feature Engineering in Unity Catalog
-    
+
     TODO: modify this be more flexible to use this at inference time only (e.g, don't load various feature tables into mem)
     """
 
@@ -51,49 +169,86 @@ class DataGenerator(tf.keras.utils.Sequence):
     weather_feature_table_name = "ml.surrogate_model.weather_features_hourly"
 
     building_features = [
+        # structure
+        "n_bedrooms",
+        "n_bathrooms",
+        "attic_type",
+        "sqft",
+        "foundation_type",
+        "garage_size_n_car",
+        "n_stories",
+        "orientation_degrees",
+        "roof_material",
+        "window_wall_ratio",
+        "window_ufactor",
+        "window_shgc",
         # heating
         "heating_fuel",
         "heating_appliance_type",
-        "heating_efficiency",
-        "has_ductless_heating",
-        "heating_setpoint",
-        "heating_setpoint_offset_magnitude",
+        "has_ducted_heating",
+        "heating_efficiency_nominal_percentage",
+        "heating_setpoint_degrees_f",
+        "heating_setpoint_offset_magnitude_degrees_f",
         # cooling
         "ac_type",
-        "has_ac",
-        "cooled_space_proportion",
+        "cooled_space_percentage",
         "cooling_efficiency_eer",
-        "cooling_setpoint",
-        "cooling_setpoint_offset_magnitude",
+        "cooling_setpoint_degrees_f",
+        "cooling_setpoint_offset_magnitude_degrees_f",
+        # water heater
+        "water_heater_fuel",
+        "water_heater_type",
+        "water_heater_tank_volume_gal",
+        "water_heater_efficiency_ef",
+        "water_heater_recovery_efficiency_ef",
+        "has_water_heater_in_unit",
         # ducts
         "has_ducts",
-        "ducts_insulation",
-        "ducts_leakage",
+        "duct_insulation_r_value",
+        "duct_leakage_percentage",
         "infiltration_ach50",
         # insulalation
         "wall_material",
-        "insulation_wall",
-        "insulation_slab",
-        "insulation_rim_joist",
-        "insulation_floor",
-        "insulation_ceiling_roof",
+        "insulation_wall_r_value",
+        "insulation_foundation_wall_r_value",
+        "insulation_slab_r_value",
+        "insulation_rim_joist_r_value",
+        "insulation_floor_r_value",
+        "insulation_ceiling_r_value",
+        "insulation_roof_r_value",
         # attached home
         "is_attached",
-        "num_building_units",
+        "n_building_units",
         "is_middle_unit",
+        # other appliances
+        "has_ceiling_fan",
+        "clothes_dryer_fuel",
+        "clothes_washer_efficiency",
+        "cooking_range_fuel",
+        "dishwasher_efficiency_kwh",
+        "lighting_efficiency",
+        "refrigerator_extra_efficiency_ef",
+        "has_standalone_freezer",
+        "has_gas_fireplace",
+        "has_gas_grill",
+        "has_gas_lighting",
+        "has_well_pump",
+        "hot_tub_spa_fuel",
+        "pool_heater_fuel",
+        "refrigerator_efficiency_ef",
+        "plug_load_percentage",
+        "usage_level_appliances",
         # misc
-        "bedrooms",
-        "stories",
-        "foundation_type",
-        "attic_type",
         "climate_zone_temp",
         "climate_zone_moisture",
-        "sqft",
+        "neighbor_distance_ft",
+        "n_occupants",
         "vintage",
-        "num_occupants",
-        "orientation",
-        "window_area",
-    ]
+        # fuel indicators -- these must be present for post-processing to work!!
+        "has_methane_gas_appliance",
+        "has_fuel_oil_appliance",
+        "has_propane_appliance",
+]
 
     weather_features = [
         "temp_air",
@@ -106,30 +261,16 @@ class DataGenerator(tf.keras.utils.Sequence):
         "weekend",
     ]
 
-    # HVAC consumption by fuel
-    consumption_group_dict = {
-        "electricity": [
-            "electricity__heating_fans_pumps",
-            "electricity__heating_hp_bkup",
-            "electricity__heating",
-            "electricity__cooling_fans_pumps",
-            "electricity__cooling",
-        ],
-        "natural_gas": ["natural_gas__heating_hp_bkup", "natural_gas__heating"],
-        "fuel_oil": ["fuel_oil__heating_hp_bkup", "fuel_oil__heating"],
-        "propane": ["propane__heating_hp_bkup", "propane__heating"],
-    }
-
-    # baseline and HVAC upgrades
-    upgrade_ids = ["0", "1", "3", "4"]
+    # # upgrades to train on
+    # upgrade_ids = [0, 1, 3, 4, 6, 8.1, 8.2, 9]
 
     def __init__(
         self,
         train_data: DataFrame,
         building_features: List[str] = None,
         weather_features: List[str] = None,
-        upgrade_ids: List[str] = None,
-        consumption_group_dict: Dict[str, str] = None,
+        #upgrade_ids: List[str] = None,
+        consumption_group_dict: Dict[str, str] = consumption_by_fuel_dict,
         building_feature_table_name: str = None,
         weather_feature_table_name: str = None,
         batch_size: int = 64,
@@ -143,7 +284,7 @@ class DataGenerator(tf.keras.utils.Sequence):
         See class docstring for all other parameters.
         """
 
-        self.upgrades = upgrade_ids or self.upgrade_ids
+        #self.upgrades = upgrade_ids or self.upgrade_ids
         self.building_features = building_features or self.building_features
         self.weather_features = weather_features or self.weather_features
 
@@ -166,6 +307,7 @@ class DataGenerator(tf.keras.utils.Sequence):
         self.training_df = self.init_building_features_and_targets(
             train_data=train_data
         )
+        
         self.weather_features_df = self.init_weather_features()
         self.building_feature_vocab_dict = self.init_building_feature_vocab_dict()
 
@@ -211,7 +353,7 @@ class DataGenerator(tf.keras.utils.Sequence):
 
         Parameters:
             - train_data (DataFrame): the training data containing the targets and keys to join to the feature tables.
-            - exclude_columns (list of str): columns to be excluded from the output training set. 
+            - exclude_columns (list of str): columns to be excluded from the output training set.
                                              Defaults to the join keys: ["building_id", "upgrade_id", "weather_file_city"].
 
         Returns:
@@ -264,7 +406,8 @@ class DataGenerator(tf.keras.utils.Sequence):
 
     def feature_dtype(self, feature_name: str) -> Any:
         """
-        Returns the dtype of the feature.
+        Returns the dtype of the feature, which is tf.string
+        if object, otherwise self.dtype
 
         Parameters:
         - feature_name (str): the name of the feature.
@@ -369,10 +512,10 @@ class DataGenerator(tf.keras.utils.Sequence):
         """
         self.training_df = self.training_df.sample(frac=1.0)
 
-
 def load_data(
-    consumption_group_dict=DataGenerator.consumption_group_dict,
+    consumption_group_dict=consumption_by_fuel_dict,
     building_feature_table_name=DataGenerator.building_feature_table_name,
+    upgrade_ids: List[str] = None,
     p_val=0.2,
     p_test=0.1,
     n_train=None,
@@ -386,7 +529,7 @@ def load_data(
 
     Parameters:
         consumption_group_dict (dict): Dictionary mapping consumption categories (e.g., 'heating') to columns.
-            Default is DataGenerator.consumption_group_dict (too long to write out)
+            Default is DataGenerator.consumption_by_fuel_dict (too long to write out)
         building_feature_table_name (str): Name of the building feature table.
             Default is "ml.surrogate_model.building_features"
         p_val (float): Proportion of data to use for validation. Default is 0.2.
@@ -414,11 +557,14 @@ def load_data(
     data = spark.sql(
         f"""
         SELECT B.building_id, B.upgrade_id, B.weather_file_city, {sum_str}
-        FROM ml.surrogate_model.building_upgrade_simulation_outputs_annual O
+        FROM ml.surrogate_model.building_simulation_outputs_annual O
         INNER JOIN {building_feature_table_name} B 
             ON B.upgrade_id = O.upgrade_id AND B.building_id == O.building_id
+        --WHERE B.upgrade_id IN (0,1,3,4)
         """
     )
+    if upgrade_ids is not None:
+        data = data.where(F.col('upgrade_id').isin(upgrade_ids))
 
     # get list of unique building ids, which will be the basis for the dataset split
     unique_building_ids = data.where(F.col("upgrade_id") == 0).select("building_id")

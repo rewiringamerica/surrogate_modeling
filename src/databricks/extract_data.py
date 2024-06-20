@@ -19,7 +19,7 @@
 # MAGIC
 # MAGIC ##### Outputs: 
 # MAGIC - `ml.surrogate_model.building_metadata`: Building metadata indexed by (building_id)
-# MAGIC - `ml.surrogate_model.building_upgrade_simulation_outputs_annual`: Annual building model simulation outputs indexed by (building_id, upgrade_id)
+# MAGIC - `ml.surrogate_model.building_simulation_outputs_annual`: Annual building model simulation outputs indexed by (building_id, upgrade_id)
 # MAGIC - `ml.surrogate_model.weather_data_hourly`: Hourly weather data indexed by (weather_file_city, hour datetime)
 # MAGIC
 # MAGIC ### TODOs:
@@ -77,37 +77,55 @@ def transform_pkeys(df):
 
 
 def clean_resstock_columns(
-    df: DataFrame,
-    remove_substrings_from_columns: List[str] = [],
-    remove_columns_with_substrings: List[str] = [],
-) -> DataFrame:
+    df,
+    remove_columns_with_substrings=[],
+    remove_substrings_from_columns=[],
+    replace_column_substrings_dict= {},
+):
     """
-    Clean ResStock columns by replacing '.' with an empty string in column names.
-    Also remove specified substrings from column names and drop columns that contain specified substrings.
+    Clean ResStock columns by doing the following in order
+    1. Replace '.' with an empty string in column names so that string manipulation works
+    2. Drop columns that contain strings in `remove_columns_with_strings`. 
+    3. Remove remove strings in `remove_strings_from_columns` from column names
+    4. Replace strings that occur within column names based on `replace_strings_dict`
+    It is important to note the order of operations here when constructing input arguments!
 
     Args:
       df (DataFrame): Input DataFrame
-      remove_substrings_from_columns (list of str, optional): List of substrings to remove from column names. Defaults to [].
-      remove_columns_with_substrings (list of str, , optional): Remove columns that contain any of the substrings in this list. Defaults to [].
-
+      remove_substrings_from_columns (list, optional): List of strings to remove from column names. Defaults to [].
+      remove_columns_with_substrings (list, , optional): Remove columns that contain any of the strings in this list. 
+                                                         Defaults to [].
+      replace_substrings_dict (dict, optional): Replace any occurances of strings within column names based on dict
+                                                in format {to_replace: replace_value}. 
     Returns:
       DataFrame: Cleaned DataFrame
     """
-    # Replace '.' with an empty string in column names so that we don't have to deal with backticks
+    #replace these with an empty string
+    remove_str_dict = {c: '' for c in remove_substrings_from_columns}
+    #combine the two replacement lookups
+    combined_replace_dict = {**replace_column_substrings_dict, **remove_str_dict}
+
+    # Replace '.' with an '__' string in column names so that we don't have to deal with backticks
     df = df.selectExpr(
         *[f" `{col}` as `{col.replace('.', '__')}`" for col in df.columns]
     )
 
-    df = df.selectExpr(
-        *[
-            f"{col} as {re.sub('|'.join(remove_substrings_from_columns), '', col)}"
-            for col in df.columns
-            if len(remove_columns_with_substrings) == 0
-            or not re.search("|".join(remove_columns_with_substrings), col)
-        ]
-    )
-    return df
+    # Iterate through the columns and replace dict to construct column mapping
+    new_col_dict = {}
+    for col in df.columns:
+        #skip if in ignore list
+        if len(remove_columns_with_substrings) > 0 and re.search("|".join(remove_columns_with_substrings), col): 
+            continue
+        new_col = col
+        for pattern, replacement in combined_replace_dict.items():
+            new_col = re.sub(pattern, replacement, new_col)
+        new_col_dict[col] = new_col
 
+    # Replace column names according to constructed replace dict 
+    df_clean = df.selectExpr(
+        *[f" `{old_col}` as `{new_col}`" for old_col, new_col in new_col_dict.items()]
+    )
+    return df_clean
 
 def extract_building_metadata() -> DataFrame:
     """
@@ -160,7 +178,11 @@ def extract_annual_outputs() -> DataFrame:
             "emissions",
             "weight",
         ],
+        replace_column_substrings_dict = {
+            'natural_gas': 'methane_gas'
+        }
     )
+
     return annual_energy_consumption_cleaned
 
 
@@ -244,7 +266,7 @@ spark.sql(f"OPTIMIZE {table_name}")
 # COMMAND ----------
 
 # DBTITLE 1,Write out annual outputs
-table_name = "ml.surrogate_model.building_upgrade_simulation_outputs_annual"
+table_name = "ml.surrogate_model.building_simulation_outputs_annual"
 annual_outputs.write.saveAsTable(
     table_name, mode="overwrite", overwriteSchema=True, partitionBy=["upgrade_id"]
 )

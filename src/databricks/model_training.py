@@ -44,11 +44,7 @@
 # DBTITLE 1,Set debug mode
 # this controls the training parameters, with test mode on a much smaller training set for fewer epochs
 dbutils.widgets.dropdown("mode", "test", ["test", "production"])
-
-if dbutils.widgets.get("mode") == "test":
-    DEBUG = True
-else:
-    DEBUG = False
+DEBUG = dbutils.widgets.get("mode") == "test"
 print(DEBUG)
 
 # COMMAND ----------
@@ -68,6 +64,7 @@ os.environ["TF_FORCE_GPU_ALLOW_GROWTH"] = "true"
 # MAGIC import pandas as pd
 # MAGIC import pyspark.sql.functions as F
 # MAGIC import tensorflow as tf
+# MAGIC import shutil
 # MAGIC from databricks.feature_engineering import FeatureEngineeringClient
 # MAGIC from pyspark.sql import DataFrame
 # MAGIC from pyspark.sql.types import DoubleType
@@ -158,7 +155,7 @@ class SurrogateModelingWrapper(mlflow.pyfunc.PythonModel):
         """
         return self.convert_feature_dataframe_to_dict(model_input)
 
-    def postprocess_result(self, results: Dict[str, np.ndarray]) -> np.ndarray:
+    def postprocess_result(self, results: Dict[str, np.ndarray], feature_df: pd.DataFrame) -> np.ndarray:
         """
         Postprocesses the model results for N samples over M targets.
 
@@ -169,9 +166,17 @@ class SurrogateModelingWrapper(mlflow.pyfunc.PythonModel):
         - The model predictions floored at 0: np.ndarray of shape [N, M]
 
         """
-        return np.clip(
-            np.hstack([results[c] for c in self.targets]), a_min=0, a_max=None
-        )
+        for fuel in self.targets:
+            if fuel == 'electricity':
+                results[fuel] = results[fuel].flatten()
+            else:
+                # null out fuel target if fuel is not present in any appliance in the home
+                results[fuel] = np.where(~feature_df[f"has_{fuel}_appliance"], np.nan, results[fuel].flatten())
+        #stack into N x M array and clip at 0
+        return np.clip(np.vstack(list(results.values())).T, a_min=0, a_max=None)
+        # return np.clip(
+        #     np.hstack([results[c] for c in self.targets]), a_min=0, a_max=None
+        # )
 
     def predict(self, context, model_input: pd.DataFrame) -> np.ndarray:
         """
@@ -186,7 +191,7 @@ class SurrogateModelingWrapper(mlflow.pyfunc.PythonModel):
         """
         processed_df = self.preprocess_input(model_input)
         predictions_df = self.model.predict(processed_df)
-        return self.postprocess_result(predictions_df)
+        return self.postprocess_result(predictions_df, model_input)
 
     def convert_feature_dataframe_to_dict(
         self, feature_df: pd.DataFrame
@@ -212,11 +217,11 @@ class SurrogateModelingWrapper(mlflow.pyfunc.PythonModel):
 # COMMAND ----------
 
 # DBTITLE 1,Initialize model
-sm = SurrogateModel(name="test" if DEBUG else "sf_hvac_by_fuel")
+sm = SurrogateModel(name="test" if DEBUG else "mvp")
 
 # COMMAND ----------
 
-# DBTITLE 1,Fit model
+# DBTITLE 1,Train model
 # Train keras model and log the model with the Feature Engineering in UC. Note that right we are skipping registering the model in the UC-- this requires storing the signature, which for unclear reasons, is slowing down inference more than 10x.
 
 # Init FeatureEngineering client
@@ -224,15 +229,14 @@ fe = FeatureEngineeringClient()
 
 # Set the activation function and numeric data type for the model's layers
 layer_params = {
-    "activation": "leaky_relu",
-    "dtype": np.float32,
+    "activation": "linear",
+    "dtype": train_gen.dtype,
     "kernel_initializer": "he_normal",
 }
 
 # signature_df = train_gen.training_set.load_df().select(train_gen.building_features + train_gen.targets + train_gen.weather_features).limit(1).toPandas()
 # signature=mlflow.models.infer_signature(model_input = signature_df[train_gen.building_features + train_gen.weather_features], model_output = signature_df[train_gen.targets])
 
-# turn on tf logging but without model checkpointing since this slows down training 2x
 mlflow.tensorflow.autolog(
     log_every_epoch=True, log_models=False, log_datasets=False, checkpoint=False
 )
@@ -254,10 +258,11 @@ with mlflow.start_run() as run:
     history = keras_model.fit(
         train_gen,
         validation_data=val_gen,
-        epochs=2 if DEBUG else 100,
+        epochs=2 if DEBUG else 200,
         batch_size=train_gen.batch_size,
         verbose=2,
-        callbacks=[keras.callbacks.EarlyStopping(monitor="val_loss", patience=10)],
+        callbacks=[
+            keras.callbacks.EarlyStopping(monitor="val_loss", patience=15)],
     )
 
     # wrap in custom class that defines pre and post processing steps to be applied when called at inference time
@@ -288,21 +293,25 @@ with mlflow.start_run() as run:
 
 # DBTITLE 1,Inspect predictions for one batch
 # print out model predictions just to make sure everything worked
-if DEBUG:
-    results = keras_model.predict(val_gen[0][0])
-    print(np.hstack([results[c] for c in train_gen.targets]))
+results = keras_model.predict(val_gen[0][0])
+print(np.hstack([results[c] for c in train_gen.targets]))
 
 # COMMAND ----------
 
 # DBTITLE 1,Inspect predictions using logged model
 # evaluate the unregistered model we just logged and make sure everything runs
-if DEBUG:
-    print(run_id)
-    #mlflow.pyfunc.get_model_dependencies(model_uri=sm.get_model_uri(run_id=run_id))
-    # Load the model using its registered name and version/stage from the MLflow model registry
-    model_loaded = mlflow.pyfunc.load_model(model_uri=sm.get_model_uri(run_id=run_id))
-    test_gen = DataGenerator(train_data=test_data)
-    # load input data table as a Spark DataFrame
-    input_data = test_gen.training_set.load_df().toPandas()
-    #run prediction and output a N x M matrix of predictions where N is the number of rows in the input data table and M is the number of target columns
-    print(model_loaded.predict(input_data))
+print(run_id)
+#mlflow.pyfunc.get_model_dependencies(model_uri=sm.get_model_uri(run_id=run_id))
+# Load the model using its registered name and version/stage from the MLflow model registry
+model_loaded = mlflow.pyfunc.load_model(model_uri=sm.get_model_uri(run_id=run_id))
+test_gen = DataGenerator(train_data=test_data.limit(10))
+# load input data table as a Spark DataFrame
+input_data = test_gen.training_set.load_df().toPandas()
+#run prediction and output a N x M matrix of predictions where N is the number of rows in the input data table and M is the number of target columns
+print(model_loaded.predict(input_data))
+
+# COMMAND ----------
+
+# DBTITLE 1,Pass Run ID to next notebook if running in job
+if not DEBUG:
+    dbutils.jobs.taskValues.set(key = "run_id", value = run_id)
