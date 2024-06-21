@@ -2,7 +2,7 @@
 # MAGIC %md # Model Training
 # MAGIC
 # MAGIC ### Goal
-# MAGIC Train deep learning model to predict a building's HVAC energy consumption
+# MAGIC Train deep learning model to predict a homes total energy consumption
 # MAGIC
 # MAGIC ### Process
 # MAGIC * Load in train/val/test sets containing targets and feature keys
