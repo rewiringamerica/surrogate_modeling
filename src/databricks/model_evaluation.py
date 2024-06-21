@@ -19,7 +19,7 @@ MODEL_NAME = dbutils.widgets.get("model_name")
 # run ID of the model to test. If passed in by prior task in job, then overrride the input value
 input_run_id = dbutils.widgets.get("run_id")
 RUN_ID = dbutils.jobs.taskValues.get(taskKey = "model_training", key = "run_id", debugValue=input_run_id, default=input_run_id)
-assert RUN_ID != "" "Must pass in run id-- if running in notebook, insert run id in widget text box"
+assert RUN_ID != "", "Must pass in run id-- if running in notebook, insert run id in widget text box"
 # number of samples from test set to to run inference on (takes too long to run on all)
 TEST_SIZE = int(dbutils.widgets.get("test_size"))
 print(DEBUG)
@@ -164,10 +164,6 @@ pred_by_building_upgrade_fuel = (
     .pivot(pivot_col="target_type", values=["actual", "prediction"])
     .agg(F.first("value"))  # vacuous agg
 )
-
-# COMMAND ----------
-
-# MAGIC %md 
 
 # COMMAND ----------
 
@@ -552,7 +548,14 @@ pred_df_savings_pd = (
         subset="baseline_appliance",
     )
     .where(~F.col("baseline_appliance").isin(["Heat Pump", "Shared Heating"]))
-    #.where(F.col('upgrade_id').isin([0,1,3, 4,6, 8.1, 8.2]))
+    .where(F.col('upgrade_id').isin([0,1,3,4,6]))
+    .withColumn("Upgrade", 
+                F.when(F.col('upgrade_id') == 0, F.lit("Baseline (Not Savings)"))
+                .when(F.col('upgrade_id') == 1, F.lit("Basic Enclosure"))
+                .when(F.col('upgrade_id') == 3, F.lit("HP (Min Efficiency)"))
+                .when(F.col('upgrade_id') == 4, F.lit("HP (Max Efficiency)"))
+                .when(F.col('upgrade_id') == 6, F.lit("HPWH"))
+    )
     .withColumnsRenamed(
         {
             "baseline_appliance": "Baseline Fuel",
@@ -566,7 +569,7 @@ pred_df_savings_pd = (
 
 # DBTITLE 1,Draw boxplot of comparison
 pred_df_savings_pd_clip = pred_df_savings_pd.copy()
-pred_df_savings_pd_clip["Absolute Error (kWh)"] = pred_df_savings_pd_clip["Absolute Error (kWh)"].clip(upper=20000)
+#pred_df_savings_pd_clip["Absolute Error (kWh)"] = pred_df_savings_pd_clip["Absolute Error (kWh)"].clip(upper=25000)
 
 with sns.axes_style("whitegrid"):
 
@@ -581,12 +584,18 @@ with sns.axes_style("whitegrid"):
             "Electricity",
             "None",
         ],
+        row_order = ['Baseline (Not Savings)', 
+                     "Basic Enclosure", 
+                     "HP (Min Efficiency)", 
+                     "HP (Max Efficiency)", 
+                     "HPWH"
+                     ],
         hue="Model",
         palette="viridis",
         fill=False,
         linewidth=1.25,
         kind="box",
-        row="Upgrade ID",
+        row="Upgrade",
         height=2.5,
         aspect=3.25,
         sharey=False,
@@ -643,8 +652,4 @@ def save_figure_to_gcfs(fig, gcspath, figure_format="png", dpi=200, transparent=
 
 # DBTITLE 1,Write out figure
 if not DEBUG:
-    save_figure_to_gcfs(g.fig, EXPORT_FPATH / "surrogate_model_metrics" / "comparison" / f"{MODEL_RUN_NAME}_vs_bucketed.png")
-
-# COMMAND ----------
-
-
+    save_figure_to_gcfs(g.fig, EXPORT_FPATH / "surrogate_model_metrics" / "comparison" / f"{MODEL_RUN_NAME}_vs_bucketed_display.png")
