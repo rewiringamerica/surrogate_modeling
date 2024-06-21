@@ -260,8 +260,67 @@ Windows:
 
 `window_shgc` (double): The Solar Heat Gain Coefficient (SHGC) in [0, 1] ,which measures how much of the sun’s heat comes through the window.
 
+### Additional Features
+
+Fuel type indicator columns: which may help the model predict specific fuel consumptions more accurately. While the various appliance fuel columns will be one hot encoded , the model would have to learn the relationships between one hot encodings and targets: e.g, one hot encoding for  `heating_fuel = 'Methane Gas'` OHE for`clothes_dryer_fuel = 'Methane Gas'` , `has_gas_grill=True` and the target `methane gas`. This also just helps facilitate post-processing, wherein a fuel prediction is set to 0 if no appliance uses that fuel. 
+
+`has_methane_gas_appliance`
+
+`has_fuel_oil_appliance`
+
+`has_propane_appliance`
+
+Heat Pump tech upgrade indicator columns: while these columns are not used for any of the baseline appliances, we need a way to distinguish these heat pump appliances from electric resistance in the upgrade metadata. Rather than just adding another category to `cooking_range_fuel` and `clothes_dryer_fuel`, we chose to represent this as a boolean indicator so that electric resistance and heat pumps would still have a common feature value, which may be useful for predicting the `electricity` target. 
+
+`has_heat_pump_dryer`
+
+`has_induction_range`
+
 ## Upgrades
 
-**UNDER CONSTRUCTION**
+The upgrades are implemented by modifying the baseline surrogate model features to match the upgrade specification. This upgrade logic is determined by consulting the [EUSS Round 1 Technical Documentation and Measure Applicability Logic](https://oedi-data-lake.s3.amazonaws.com/nrel-pds-building-stock/end-use-load-profiles-for-us-building-stock/2022/EUSS_ResRound1_Technical_Documentation.pdf), as well as the [upgrade yaml file](https://github.com/NREL/resstock/blob/run/euss/EUSS-project-file_2018_550k.yml) that is used to define the upgrades is ResStock precisely by defining this kind of feature update logic. Note most cases, the YAML is much more specific, and covers many edge cases not described in the technical documentation.
 
-[https://github.com/NREL/resstock/blob/run/euss/EUSS-project-file_2018_550k.yml](https://github.com/NREL/resstock/blob/run/euss/EUSS-project-file_2018_550k.yml)
+- Example of how to parse the YAML
+    
+    The following excerpt from the YAML file
+    
+    > upgrade_name: Basic Enclosure
+    #Up01
+    options:
+    #Attic floor insulation up to IECC 2021 levels for homes with vented attics and less than R-30 existing insulation
+    > 
+    > - &attic_insulation_IECC_CZ1A
+    > option: Insulation Ceiling|R-30
+    > apply_logic:
+    >     - and:
+    >         - ASHRAE IECC Climate Zone 2004|1A
+    >         - Geometry Attic Type|Vented Attic
+    >         - or:
+    >             - Insulation Ceiling|Uninsulated
+    >             - Insulation Ceiling|R-7
+    >             - Insulation Ceiling|R-13
+    
+    is equivalent to the following psuedocode:
+    
+    ```python
+    #condition = attic_insulation_IECC_CZ1A
+    if "ASHRAE IECC Climate Zone 2004" = "1A" and "Geometry Attic Type" = "Vented Attic" and "Insulation Ceiling" in ["Uninsulated", "R-7", "R-13"]:
+    	"Insulation Ceiling" = "R-30"
+    ```
+    
+
+We have implemented the logic for upgrades:
+
+0. Baseline
+
+1. Basic Enclosure
+
+3. Heat Pumps, Min-Efficiency, Electric Backup 
+
+4. Heat Pumps, High-Efficiency, Electric Backup 
+
+6. Heat Pump Water Heaters 
+
+9.  Whole-Home Electrification, High Efficiency + Basic Enclosure Package (1 + 4 + 6 + heat pump dryers + induction ranges)
+
+Note that while we have implemented the logic for heat pump dryers and induction ranges as standalone upgrades, we have chosen to not use these in training due to terrible performance on predicting these tiny savings values, particularly compared to the good performance of the benchmark on these low variance end uses.
