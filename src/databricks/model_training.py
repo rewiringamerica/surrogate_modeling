@@ -23,11 +23,12 @@
 # MAGIC ### TODOs:
 # MAGIC
 # MAGIC #### Outstanding
+# MAGIC
+# MAGIC #### Future Work
 # MAGIC * Figure out how to register the model with a signature without slowing down inference
 # MAGIC * Handle retracing issues
 # MAGIC * Install model dependencies using the logged requirements.txt file
-# MAGIC
-# MAGIC #### Future Work
+# MAGIC * Get checkpointing to work
 # MAGIC
 # MAGIC ---
 # MAGIC #### Cluster/ User Requirements
@@ -51,6 +52,7 @@ print(DEBUG)
 
 # DBTITLE 1,Allow GPU growth
 import os
+
 os.environ["TF_FORCE_GPU_ALLOW_GROWTH"] = "true"
 
 # COMMAND ----------
@@ -155,28 +157,32 @@ class SurrogateModelingWrapper(mlflow.pyfunc.PythonModel):
         """
         return self.convert_feature_dataframe_to_dict(model_input)
 
-    def postprocess_result(self, results: Dict[str, np.ndarray], feature_df: pd.DataFrame) -> np.ndarray:
+    def postprocess_result(
+        self, results: Dict[str, np.ndarray], feature_df: pd.DataFrame
+    ) -> np.ndarray:
         """
-        Postprocesses the model results for N samples over M targets.
+        Postprocesses the model results for N samples over M targets by clipping at 0
+        and setting targets to 0 if the home does not have an applaince using that fuel.
 
         Parameters:
         - results (dict of {str: np.ndarray}): The outputs of the model in format {target_name (str) : np.ndarray [N,]}
 
         Returns:
-        - The model predictions floored at 0: np.ndarray of shape [N, M]
+        - np.ndarray of shape [N, M]
 
         """
         for fuel in self.targets:
-            if fuel == 'electricity':
+            if fuel == "electricity":
                 results[fuel] = results[fuel].flatten()
             else:
                 # null out fuel target if fuel is not present in any appliance in the home
-                results[fuel] = np.where(~feature_df[f"has_{fuel}_appliance"], np.nan, results[fuel].flatten())
-        #stack into N x M array and clip at 0
+                results[fuel] = np.where(
+                    ~feature_df[f"has_{fuel}_appliance"],
+                    np.nan,
+                    results[fuel].flatten(),
+                )
+        # stack into N x M array and clip at 0
         return np.clip(np.vstack(list(results.values())).T, a_min=0, a_max=None)
-        # return np.clip(
-        #     np.hstack([results[c] for c in self.targets]), a_min=0, a_max=None
-        # )
 
     def predict(self, context, model_input: pd.DataFrame) -> np.ndarray:
         """
@@ -187,7 +193,7 @@ class SurrogateModelingWrapper(mlflow.pyfunc.PythonModel):
         - model_input (pd.Dataframe): The input features for the model of shape [N, P]
 
         Returns:
-        - The model predictions floored at 0: np.ndarray of shape [N, M]
+        - np.ndarray of shape [N, M]
         """
         processed_df = self.preprocess_input(model_input)
         predictions_df = self.model.predict(processed_df)
@@ -234,6 +240,8 @@ layer_params = {
     "kernel_initializer": "he_normal",
 }
 
+
+# skip logging signatures for now...
 # signature_df = train_gen.training_set.load_df().select(train_gen.building_features + train_gen.targets + train_gen.weather_features).limit(1).toPandas()
 # signature=mlflow.models.infer_signature(model_input = signature_df[train_gen.building_features + train_gen.weather_features], model_output = signature_df[train_gen.targets])
 
@@ -261,8 +269,7 @@ with mlflow.start_run() as run:
         epochs=2 if DEBUG else 200,
         batch_size=train_gen.batch_size,
         verbose=2,
-        callbacks=[
-            keras.callbacks.EarlyStopping(monitor="val_loss", patience=15)],
+        callbacks=[keras.callbacks.EarlyStopping(monitor="val_loss", patience=15)],
     )
 
     # wrap in custom class that defines pre and post processing steps to be applied when called at inference time
@@ -277,9 +284,10 @@ with mlflow.start_run() as run:
         python_model=pyfunc_model,
         artifact_path=sm.artifact_path,
         code_paths=["surrogate_model.py"],
-        #signature=signature
+        # signature=signature
     )
-    #mlflow.register_model(f"runs:/{run_id}/{sm.artifact_path}", str(sm))
+    # skip registering model for now..
+    # mlflow.register_model(f"runs:/{run_id}/{sm.artifact_path}", str(sm))
 
 # COMMAND ----------
 
@@ -301,17 +309,17 @@ print(np.hstack([results[c] for c in train_gen.targets]))
 # DBTITLE 1,Inspect predictions using logged model
 # evaluate the unregistered model we just logged and make sure everything runs
 print(run_id)
-#mlflow.pyfunc.get_model_dependencies(model_uri=sm.get_model_uri(run_id=run_id))
+# mlflow.pyfunc.get_model_dependencies(model_uri=sm.get_model_uri(run_id=run_id))
 # Load the model using its registered name and version/stage from the MLflow model registry
 model_loaded = mlflow.pyfunc.load_model(model_uri=sm.get_model_uri(run_id=run_id))
 test_gen = DataGenerator(train_data=test_data.limit(10))
 # load input data table as a Spark DataFrame
 input_data = test_gen.training_set.load_df().toPandas()
-#run prediction and output a N x M matrix of predictions where N is the number of rows in the input data table and M is the number of target columns
+# run prediction and output a N x M matrix of predictions where N is the number of rows in the input data table and M is the number of target columns
 print(model_loaded.predict(input_data))
 
 # COMMAND ----------
 
 # DBTITLE 1,Pass Run ID to next notebook if running in job
 if not DEBUG:
-    dbutils.jobs.taskValues.set(key = "run_id", value = run_id)
+    dbutils.jobs.taskValues.set(key="run_id", value=run_id)

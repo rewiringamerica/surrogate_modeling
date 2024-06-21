@@ -67,7 +67,7 @@ from pyspark.sql.window import Window
 
 # MAGIC %md #### Baseline
 # MAGIC
-# MAGIC Refer to [Notion Page](https://www.notion.so/rewiringamerica/Features-Upgrades-c8239f52a100427fbf445878663d7135?pvs=4#086a1d050b8c4094ad10e2275324668b) and [options.tsv](https://github.com/NREL/resstock/blob/run/euss/resources/options_lookup.tsv) and 
+# MAGIC Refer to [Notion Page](https://www.notion.so/rewiringamerica/Features-Upgrades-c8239f52a100427fbf445878663d7135?pvs=4#086a1d050b8c4094ad10e2275324668b) and [options.tsv](https://github.com/NREL/resstock/blob/run/euss/resources/options_lookup.tsv).
 # MAGIC
 
 # COMMAND ----------
@@ -280,7 +280,7 @@ def extract_heating_efficiency(heating_efficiency: str) -> int:
     try:
         number = float(efficiency.strip().split(" ", 1)[0].strip("%"))
     except ValueError:
-        return "ERROR"
+        return None
         # raise ValueError(
         #     f"Cannot extract heating efficiency from: {heating_efficiency}"
         # )
@@ -312,14 +312,14 @@ def extract_temp(temperature_string) -> float:
 def extract_mean_wwr(value: str) -> int:
     """
     Return the average window to wall ratio (WWR) for front, back, left, and right walls.
-    >>> extract_window_area('F9 B9 L9 R9')
+    >>> extract_mean_wwr('F9 B9 L9 R9')
     9.0
-    >>> extract_window_area('F12 B12 L12 R12')
+    >>> extract_mean_wwr('F12 B12 L12 R12')
     12.0
-    >>> extract_window_area('Uninsulated')  # doctest: +IGNORE_EXCEPTION_DETAIL
+    >>> extract_mean_wwr('Uninsulated')  # doctest: +IGNORE_EXCEPTION_DETAIL
     Traceback (most recent call last):
         ...
-    ValueError: Cannot extract heating efficiency from: ...
+    ValueError: Unrecognized format of window area: ...
     """
     try:
         wwr_list = [int(side[1:]) for side in value.split()]
@@ -331,50 +331,16 @@ def extract_mean_wwr(value: str) -> int:
 @udf(returnType=DoubleType())
 def extract_energy_factor(ef_string: str) -> int:
     """
-    >>> extract_ef_value("EF 10.2, 100% Usage")
+    >>> extract_energy_factor("EF 10.2, 100% Usage")
     10.2
-    >>> extract_ef_value("EF 6.7")
+    >>> extract_energy_factor("EF 6.7")
     6.7
-    >>> extract_window_area("None")
+    >>> extract_energy_factor("None")
     99.
     """
     if ef_string == "None":
         return 99.0
     return float(ef_string.split(",")[0][3:])
-
-
-@udf(returnType=DoubleType())
-def extract_energy_factor(ef_string: str) -> int:
-    """
-    >>> extract_ef_value("EF 10.2, 100% Usage")
-    10.2
-    >>> extract_ef_value("EF 6.7")
-    6.7
-    >>> extract_window_area("None")
-    99.
-    """
-    if ef_string == "None":
-        return 99.0
-    return float(ef_string.split(",")[0][3:])
-
-
-# Define the schema for the output struct
-wh_schema = StructType(
-    [
-        StructField(
-            "water_heater_type", StringType(), True
-        ),  # "Storage", "Heat Pump", or "Instantaneous"
-        StructField(
-            "water_heater_tank_volume_gal", IntegerType(), True
-        ),  # Capacity of the tank in gallons
-        StructField(
-            "water_heater_efficiency_ef", DoubleType(), True
-        ),  # Efficiency Factor (EF)
-        StructField(
-            "water_heater_recovery_efficiency_ef", DoubleType(), True
-        ),  # Recovery Efficiency Factor (EF)
-    ]
-)
 
 
 @udf(IntegerType())
@@ -387,11 +353,11 @@ def get_water_heater_capacity_ashrae(
     Source: https://www.nrel.gov/docs/fy10osti/47246.pdf
     Table 8. Benchmark Domestic Hot Water Storage and Burner Capacity (ASHRAE 1999)
 
-    >>> get_water_heater_capacity(3, 4, False)
+    >>> get_water_heater_capacity_ashrae(3, 4, False)
     40
-    >>> get_water_heater_capacity(1, 1.5, True)
+    >>> get_water_heater_capacity_ashrae(1, 1.5, True)
     20
-    >> get_water_heater_capacity(6, 5, True)
+    >> get_water_heater_capacity_ashrae(6, 5, True)
     80
     """
     match n_bedrooms:
@@ -443,6 +409,25 @@ def get_water_heater_capacity_ashrae(
             else:
                 return 50
 
+# Define the schema for the output struct
+wh_schema = StructType(
+    [
+        StructField( # "Storage", "Heat Pump", or "Instantaneous"
+            "water_heater_type", StringType(), True
+        ),  
+        StructField( # Capacity of the tank in gallons
+            "water_heater_tank_volume_gal", IntegerType(), True
+        ),  
+        StructField( # Efficiency Factor (EF)
+            "water_heater_efficiency_ef", DoubleType(), True
+        ),
+        StructField(  # Recovery Efficiency Factor (EF)
+            "water_heater_recovery_efficiency_ef", DoubleType(), True
+        ), 
+    ]
+)
+
+# pulled from options.tsv
 @udf(wh_schema)
 def get_water_heater_specs(name: str) -> StructType:
     """
@@ -489,7 +474,7 @@ def get_water_heater_specs(name: str) -> StructType:
     elif fuel_and_type == "Electric Heat Pump":
         specs["water_heater_type"] = "Heat Pump"
 
-    # Extract the efficiency and recovery efficiency
+    # Set the efficiency and recovery efficiency
     match fuel_and_type:
         case "Natural Gas Standard" | "Propane Standard":
             specs["water_heater_efficiency_ef"] = 0.59
@@ -529,16 +514,16 @@ def get_water_heater_specs(name: str) -> StructType:
 
     return specs
 
+
 def add_water_heater_features(df):
     return (
-        df
-        .withColumn(
+        df.withColumn(
             "wh_struct", get_water_heater_specs(F.col("water_heater_efficiency"))
         )
         .withColumn("water_heater_type", F.col("wh_struct.water_heater_type"))
         .withColumn(
             "water_heater_tank_volume_gal",
-            F.col("wh_struct.water_heater_tank_volume_gal")
+            F.col("wh_struct.water_heater_tank_volume_gal"),
         )
         .withColumn(
             "water_heater_efficiency_ef", F.col("wh_struct.water_heater_efficiency_ef")
@@ -548,7 +533,7 @@ def add_water_heater_features(df):
             F.col("wh_struct.water_heater_recovery_efficiency_ef"),
         )
         .drop("wh_struct")
-)
+    )
 
 # COMMAND ----------
 
@@ -560,7 +545,6 @@ def make_map_type_from_dict(mapping: Dict) -> Column:
     https://stackoverflow.com/a/42983199
     """
     return F.create_map([F.lit(x) for x in chain(*mapping.items())])
-
 
 yes_no_mapping = make_map_type_from_dict({"Yes": True, "No": False})
 
@@ -614,7 +598,12 @@ def transform_building_features() -> DataFrame:
         # not interested in vacant homes
         .where(F.col("vacancy_status") == "Occupied")
         # filter out rare edge case where efficiency and upgrade logic is super unclear
-        .where(~((F.col("hvac_cooling_efficiency") == "Heat Pump") & (F.col("hvac_heating_efficiency") == "Shared Heating")))
+        .where(
+            ~(
+                (F.col("hvac_cooling_efficiency") == "Heat Pump")
+                & (F.col("hvac_heating_efficiency") == "Shared Heating")
+            )
+        )
         # -- structure transformations -- #
         .withColumn("n_bedrooms", F.col("bedrooms").cast("int"))
         .withColumn("n_bathrooms", F.col("n_bedrooms") / 2 + 0.5)  # based on docs
@@ -687,7 +676,8 @@ def transform_building_features() -> DataFrame:
         .withColumn(
             "cooling_efficiency_eer_str",
             F.when(
-                F.col("hvac_cooling_efficiency") == "Heat Pump", F.col("hvac_heating_efficiency")
+                F.col("hvac_cooling_efficiency") == "Heat Pump",
+                F.col("hvac_heating_efficiency"),
             ).otherwise(F.col("hvac_cooling_efficiency")),
         )
         .withColumn(
@@ -750,8 +740,12 @@ def transform_building_features() -> DataFrame:
         .withColumn(
             "insulation_floor_r_value", extract_r_value(F.col("insulation_floor"))
         )
-        .withColumn("insulation_ceiling_r_value",extract_r_value(F.col("insulation_ceiling")))
-        .withColumn("insulation_roof_r_value",extract_r_value(F.col("insulation_roof")))
+        .withColumn(
+            "insulation_ceiling_r_value", extract_r_value(F.col("insulation_ceiling"))
+        )
+        .withColumn(
+            "insulation_roof_r_value", extract_r_value(F.col("insulation_roof"))
+        )
         #  -- attached home transformations -- #
         .withColumn(
             "is_attached",
@@ -863,7 +857,7 @@ def transform_building_features() -> DataFrame:
             "cooling_setpoint_degrees_f",
             "cooling_setpoint_offset_magnitude_degrees_f",
             # water heater
-            "water_heater_efficiency", # only used for applying upgrades, gets dropped later
+            "water_heater_efficiency",  # only used for applying upgrades, gets dropped later
             "water_heater_fuel",
             "water_heater_type",
             "water_heater_tank_volume_gal",
@@ -871,7 +865,7 @@ def transform_building_features() -> DataFrame:
             "water_heater_recovery_efficiency_ef",
             "has_water_heater_in_unit",
             # ducts
-            "ducts", # only used for applying upgrades, gets dropped later
+            "ducts",  # only used for applying upgrades, gets dropped later
             "has_ducts",
             "duct_insulation_r_value",
             "duct_leakage_percentage",
@@ -967,8 +961,7 @@ def upgrade_to_hp(
         DataFrame: The upgraded building features DataFrame with the heat pump.
     """
     return (
-        baseline_building_features
-        .withColumn("heating_appliance_type", F.lit("ASHP"))
+        baseline_building_features.withColumn("heating_appliance_type", F.lit("ASHP"))
         .withColumn("heating_fuel", F.lit("Electricity"))
         .withColumn(
             "heating_efficiency_nominal_percentage",
@@ -989,6 +982,7 @@ def upgrade_to_hp(
         .withColumn("cooled_space_percentage", F.lit(1.0))
     )
 
+
 def apply_upgrades(baseline_building_features: DataFrame, upgrade_id: int) -> DataFrame:
     """
     Modify building features to reflect the upgrade. Source:
@@ -1007,15 +1001,14 @@ def apply_upgrades(baseline_building_features: DataFrame, upgrade_id: int) -> Da
         raise ValueError(f"Upgrade id={upgrade_id} is not yet supported")
 
     upgrade_building_features = (
-        baseline_building_features
-            .withColumn("upgrade_id", F.lit(upgrade_id))
-            .withColumn("has_heat_pump_dryer", F.lit(False))
-            .withColumn("has_induction_range", F.lit(False))
+        baseline_building_features.withColumn("upgrade_id", F.lit(upgrade_id))
+        .withColumn("has_heat_pump_dryer", F.lit(False))
+        .withColumn("has_induction_range", F.lit(False))
     )
 
     if upgrade_id == 0:  # baseline: return as is
         pass
-        
+
     if upgrade_id in [1, 9]:  # basic enclosure
         upgrade_building_features = (
             upgrade_building_features
@@ -1042,20 +1035,34 @@ def apply_upgrades(baseline_building_features: DataFrame, upgrade_id: int) -> Da
                     F.col("infiltration_ach50") >= 15, F.col("infiltration_ach50") * 0.7
                 ).otherwise(F.col("infiltration_ach50")),
             )
-            # Duct sealing: update duct leakage rate to at most 10% and insulation to at least R-8, 
+            # Duct sealing: update duct leakage rate to at most 10% and insulation to at least R-8,
             # with the exeption of "0% or 30% Leakage, Uninsulated" which does not get upgrade applied
             .withColumn(
                 "duct_leakage_percentage",
                 F.when(
-                       ((F.col("has_ducts")) & ~(F.col("ducts").isin(['0% Leakage, Uninsulated', '30% Leakage, Uninsulated']))),
-                     F.least(F.col("duct_leakage_percentage"), F.lit(0.1)),
+                    (
+                        (F.col("has_ducts"))
+                        & ~(
+                            F.col("ducts").isin(
+                                ["0% Leakage, Uninsulated", "30% Leakage, Uninsulated"]
+                            )
+                        )
+                    ),
+                    F.least(F.col("duct_leakage_percentage"), F.lit(0.1)),
                 ).otherwise(F.col("duct_leakage_percentage")),
             )
             .withColumn(
                 "duct_insulation_r_value",
                 F.when(
-                    ((F.col("has_ducts")) & ~(F.col("ducts").isin(['0% Leakage, Uninsulated', '30% Leakage, Uninsulated']))),
-                     F.greatest(F.col("duct_insulation_r_value"), F.lit(8.0)),
+                    (
+                        (F.col("has_ducts"))
+                        & ~(
+                            F.col("ducts").isin(
+                                ["0% Leakage, Uninsulated", "30% Leakage, Uninsulated"]
+                            )
+                        )
+                    ),
+                    F.greatest(F.col("duct_insulation_r_value"), F.lit(8.0)),
                 ).otherwise(F.col("duct_insulation_r_value")),
             )
             # Drill-and-fill wall insulation if the wall type is uninsulated
@@ -1080,31 +1087,29 @@ def apply_upgrades(baseline_building_features: DataFrame, upgrade_id: int) -> Da
             "Heat Pump, SEER 29.3, 14 HSPF",
         )
     if upgrade_id in [6, 9]:
-         upgrade_building_features = (
-            upgrade_building_features
-                .withColumn("water_heater_efficiency", 
-                            F.when( # electric tankless don't get upgraded due to likely size constraints 
-                                F.col("water_heater_efficiency") == "Electric Tankless",
-                                F.col("water_heater_efficiency")) 
-                            .when(F.col('n_bedrooms') <= 3, F.lit("Electric Heat Pump, 50 gal, 3.45 UEF"))
-                            .when(F.col('n_bedrooms') == 4, F.lit("Electric Heat Pump, 66 gal, 3.35 UEF"))
-                            .otherwise(F.lit("Electric Heat Pump, 80 gal, 3.45 UEF"))
-                )
-                .transform(add_water_heater_features)
-         )
+        upgrade_building_features = upgrade_building_features.withColumn(
+            "water_heater_efficiency",
+            F.when(  # electric tankless don't get upgraded due to likely size constraints
+                F.col("water_heater_efficiency") == "Electric Tankless",
+                F.col("water_heater_efficiency"),
+            )
+            .when(
+                F.col("n_bedrooms") <= 3, F.lit("Electric Heat Pump, 50 gal, 3.45 UEF")
+            )
+            .when(
+                F.col("n_bedrooms") == 4, F.lit("Electric Heat Pump, 66 gal, 3.35 UEF")
+            )
+            .otherwise(F.lit("Electric Heat Pump, 80 gal, 3.45 UEF")),
+        ).transform(add_water_heater_features)
 
     if upgrade_id in [8.1, 9]:
-         upgrade_building_features = (
-            upgrade_building_features
-                .withColumn("clothes_dryer_fuel", F.lit("Electricity"))
-                .withColumn("has_heat_pump_dryer", F.lit(True))
-         )
+        upgrade_building_features = upgrade_building_features.withColumn(
+            "clothes_dryer_fuel", F.lit("Electricity")
+        ).withColumn("has_heat_pump_dryer", F.lit(True))
     if upgrade_id in [8.2, 9]:
-         upgrade_building_features = (
-            upgrade_building_features
-                .withColumn("cooking_range_fuel", F.lit("Electricity"))
-                .withColumn("has_induction_range", F.lit(True))
-         )
+        upgrade_building_features = upgrade_building_features.withColumn(
+            "cooking_range_fuel", F.lit("Electricity")
+        ).withColumn("has_induction_range", F.lit(True))
 
     # add indicator features for presence of fuels (not including electricity)
     upgrade_building_features = (
@@ -1127,8 +1132,12 @@ def apply_upgrades(baseline_building_features: DataFrame, upgrade_id: int) -> Da
         .withColumn(
             "has_propane_appliance", F.array_contains("appliance_fuel_arr", "Propane")
         )
-        .drop( #drop columns that were only used for upgrade lookups
-            "insulation_wall", "ducts", "water_heater_efficiency", "appliance_fuel_arr", "gas_misc_appliance_indicator_arr", 
+        .drop(  # drop columns that were only used for upgrade lookups
+            "insulation_wall",
+            "ducts",
+            "water_heater_efficiency",
+            "appliance_fuel_arr",
+            "gas_misc_appliance_indicator_arr",
         )
     )
 
@@ -1149,20 +1158,17 @@ building_metadata_upgrades = reduce(
     ],
 )
 
-# w = Window.partitionBy('building_id').orderBy(F.asc("upgrade_id"))
-# building_metadata_hvac_upgrades.withColumn('diff', F.col('has_methane_gas_appliance') != F.first('has_methane_gas_appliance').over(w)).where(F.col('diff'))
-
 # COMMAND ----------
 
 # DBTITLE 1,Drop rows where upgrade was not applied
-#read in outputs so that we can test applicability logic
+# read in outputs so that we can test applicability logic
 annual_outputs = spark.table("ml.surrogate_model.building_simulation_outputs_annual")
 
 # drop upgrades that had no unchanged features and therefore weren't upgraded
 partition_cols = building_metadata_upgrades.drop("upgrade_id").columns
 w = Window.partitionBy(partition_cols).orderBy(F.asc("upgrade_id"))
 
-# partition by features-- if more them one row is in the partition, 
+# partition by features-- if more them one row is in the partition,
 # then it is a duplicate, meaning an upgrade was not applied, so mark it as such
 # so mark any upgrade rows (upgrade > 0) as duplicate
 building_metadata_upgrades_applicability_flag = (
@@ -1171,17 +1177,29 @@ building_metadata_upgrades_applicability_flag = (
     .drop("rank")
 )
 
-#test that the applicability logic matches between the features and targets 
-applicability_compare = building_metadata_upgrades_applicability_flag.alias('features').join(annual_outputs.select('upgrade_id', 'building_id','applicability').alias('targets'), on = ['upgrade_id', 'building_id'])
-assert applicability_compare.where(F.col('features.applicability') != F.col('targets.applicability')).count() == 0
+# test that the applicability logic matches between the features and targets
+applicability_compare = building_metadata_upgrades_applicability_flag.alias(
+    "features"
+).join(
+    annual_outputs.select("upgrade_id", "building_id", "applicability").alias(
+        "targets"
+    ),
+    on=["upgrade_id", "building_id"],
+)
+assert (
+    applicability_compare.where(
+        F.col("features.applicability") != F.col("targets.applicability")
+    ).count()
+    == 0
+)
 # #display mismatching cases if assert fails
 # applicability_compare.where(F.col('features.applicability') != F.col('targets.applicability')).display()
 
 # drop feature rows where upgrade was not applied
 building_metadata_applicable_upgrades = (
-    building_metadata_upgrades_applicability_flag
-    .where(F.col("applicability"))
-    .drop("applicability")
+    building_metadata_upgrades_applicability_flag.where(F.col("applicability")).drop(
+        "applicability"
+    )
 )
 
 # COMMAND ----------
@@ -1293,7 +1311,8 @@ weather_data_transformed = transform_weather_features()
 
 # COMMAND ----------
 
-# MAGIC %sql DROP TABLE ml.surrogate_model.building_features
+# MAGIC %sql
+# MAGIC DROP TABLE ml.surrogate_model.building_features
 
 # COMMAND ----------
 

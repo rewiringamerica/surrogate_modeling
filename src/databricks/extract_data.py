@@ -5,7 +5,10 @@
 # MAGIC Extract and collect the raw ResStock EUSS data required for surrogate modeling, do some light pre-processing to prep for feature engineering, and write to a Delta Table. 
 # MAGIC
 # MAGIC ### Process
-# MAGIC * Extract and lightly preprocess ResStock (1) building metadata, (2) annual outputs, and (3) hourly weather data
+# MAGIC * Extract and lightly preprocess various ResStock data
+# MAGIC     1. building metadata
+# MAGIC     2. annual outputs
+# MAGIC     3. hourly weather data
 # MAGIC * Write each to Delta Table
 # MAGIC
 # MAGIC ### I/Os
@@ -80,12 +83,12 @@ def clean_resstock_columns(
     df,
     remove_columns_with_substrings=[],
     remove_substrings_from_columns=[],
-    replace_column_substrings_dict= {},
+    replace_column_substrings_dict={},
 ):
     """
     Clean ResStock columns by doing the following in order
     1. Replace '.' with an empty string in column names so that string manipulation works
-    2. Drop columns that contain strings in `remove_columns_with_strings`. 
+    2. Drop columns that contain strings in `remove_columns_with_strings`.
     3. Remove remove strings in `remove_strings_from_columns` from column names
     4. Replace strings that occur within column names based on `replace_strings_dict`
     It is important to note the order of operations here when constructing input arguments!
@@ -93,16 +96,16 @@ def clean_resstock_columns(
     Args:
       df (DataFrame): Input DataFrame
       remove_substrings_from_columns (list, optional): List of strings to remove from column names. Defaults to [].
-      remove_columns_with_substrings (list, , optional): Remove columns that contain any of the strings in this list. 
+      remove_columns_with_substrings (list, , optional): Remove columns that contain any of the strings in this list.
                                                          Defaults to [].
       replace_substrings_dict (dict, optional): Replace any occurances of strings within column names based on dict
-                                                in format {to_replace: replace_value}. 
+                                                in format {to_replace: replace_value}.
     Returns:
       DataFrame: Cleaned DataFrame
     """
-    #replace these with an empty string
-    remove_str_dict = {c: '' for c in remove_substrings_from_columns}
-    #combine the two replacement lookups
+    # replace these with an empty string
+    remove_str_dict = {c: "" for c in remove_substrings_from_columns}
+    # combine the two replacement lookups
     combined_replace_dict = {**replace_column_substrings_dict, **remove_str_dict}
 
     # Replace '.' with an '__' string in column names so that we don't have to deal with backticks
@@ -113,19 +116,22 @@ def clean_resstock_columns(
     # Iterate through the columns and replace dict to construct column mapping
     new_col_dict = {}
     for col in df.columns:
-        #skip if in ignore list
-        if len(remove_columns_with_substrings) > 0 and re.search("|".join(remove_columns_with_substrings), col): 
+        # skip if in ignore list
+        if len(remove_columns_with_substrings) > 0 and re.search(
+            "|".join(remove_columns_with_substrings), col
+        ):
             continue
         new_col = col
         for pattern, replacement in combined_replace_dict.items():
             new_col = re.sub(pattern, replacement, new_col)
         new_col_dict[col] = new_col
 
-    # Replace column names according to constructed replace dict 
+    # Replace column names according to constructed replace dict
     df_clean = df.selectExpr(
         *[f" `{old_col}` as `{new_col}`" for old_col, new_col in new_col_dict.items()]
     )
     return df_clean
+
 
 def extract_building_metadata() -> DataFrame:
     """
@@ -173,14 +179,12 @@ def extract_annual_outputs() -> DataFrame:
         df=annual_energy_consumption_with_metadata,
         remove_substrings_from_columns=["in__", "out__", "__energy_consumption__kwh"],
         remove_columns_with_substrings=[
-            # remove all "in__*" columns except for "in__weather_file_city"
-            r"in__(?!weather_file_city)",
+            # remove all "in__*" columns
+            "in__",
             "emissions",
             "weight",
         ],
-        replace_column_substrings_dict = {
-            'natural_gas': 'methane_gas'
-        }
+        replace_column_substrings_dict={"natural_gas": "methane_gas"},
     )
 
     return annual_energy_consumption_cleaned
