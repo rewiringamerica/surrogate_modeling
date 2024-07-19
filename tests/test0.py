@@ -1,18 +1,20 @@
-"""Test cases for year shifting code."""
+"""Test cases to try out integration of VSCode and Databricks."""
 
 import unittest
 import sys
 import os
 
 class MyTestCase(unittest.TestCase):
-
+    """My test case."""
     def test_true(self):
+        """Test something that is true."""
         self.assertTrue(True)
 
 class MyOtherTestCase(unittest.TestCase):
-
-    def test_true(self):
-        self.assertTrue(True)
+    """My other test case."""
+    def test_equals(self):
+        """Test some other thing that is true."""
+        self.assertEqual(4, 2 + 2)
 
 
 if os.environ.get("DATABRICKS_RUNTIME_VERSION", None):

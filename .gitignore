@@ -86,3 +86,6 @@ exploratory/private
 # model files
 src/Yearly_model/test_model_with_preprocessing/
 
+
+.databricks
+.vscode
