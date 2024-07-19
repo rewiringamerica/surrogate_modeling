@@ -69,6 +69,46 @@ def day_of_week_offset(
         year_from: int,
         year_to: int        
 ) -> int:
+    """
+    Determing the offset in days between the same date in two
+    different years.
+
+    The idea is that if we take a date, say 02/14/2019 and shift it
+    to a different year, like 2006, producing 02/14/2006, the day
+    of the week may shift. In case, it moves from Thursday to Tuesday.
+    
+    If we want to maintain the same day of week, we would have to move
+    2 days forward to 02/16/2006, which is a Thursday, like the original
+    date of 02/14/2019 was. We call this number 2 the offset, and it is
+    what this function computes. So the call
+
+    .. code-block:: python
+
+        offset(year_from=2019, year_to=2006)
+
+    will return 2.
+
+    Note that if an offset of 2 would work, so would an offset of 9 or 
+    and offset of -5. Anything that adds or removes a multiple of 7 days
+    will preserve the day of week.
+
+    Since we would generally like the smallest maginitude offset possible,
+    we always return an offset in the range from -3 to 3. Instead of returning
+    -1, we could return 6, and it would produce the right day of the week,
+    but since we prefer smaller magnitudes we will return -1.
+
+    Parameters
+    ----------
+    year_from : int
+        The year we are offsetting from, e.g. 2019
+    year_to : int
+        The year we are offsetting to, e.g. 2006.
+
+    Returns
+    -------
+    int
+        The offset, in days, between -3 and 3.
+    """
     from_dow = pd.Timestamp(day=1, month=1, year=year_from).day_of_week
     to_dow = pd.Timestamp(day=1, month=1, year=year_to).day_of_week
 
@@ -93,7 +133,36 @@ def shift_year_preserve_dow(
         *,
         from_year: int,
         to_year: int
-):
+) -> pd.Series:
+    """
+    Shift a series of dates from one year to another, preserving day of 
+    week.
+
+    This builds upon :py:func:`~day_of_week_offset`. 
+    
+    There are two steps:
+    
+    First, we shift the dates by the number of years between `from_year` and `to_year`. 
+    Second, we compute the day of week offset between `from_year` and `to_year` and
+    shift the dates by that many days to correct for the fact that when we may have
+    altered the day of the week when we shifted the year.
+
+    Note that we do not check that the original `dates` are in `from_year`.
+
+    Parameters
+    ----------
+    dates : pd.Series
+        The dates we want to shift.
+    from_year : int
+        The year we are shifting from.
+    to_year : int
+        The year we are shifting to.
+
+    Returns
+    -------
+    pd.Series
+        The shifted dates, preserving day of week.
+    """
     dow_offset = day_of_week_offset(year_from=from_year, year_to=to_year)
 
     offset_by_days = dates + pd.DateOffset(days=dow_offset)
