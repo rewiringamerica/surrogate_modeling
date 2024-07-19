@@ -72,7 +72,7 @@ def day_of_week_offset(
     from_dow = pd.Timestamp(day=1, month=1, year=year_from).day_of_week
     to_dow = pd.Timestamp(day=1, month=1, year=year_to).day_of_week
 
-    offset = to_dow - from_dow
+    offset = from_dow - to_dow
 
     # Offset is now between -6 and -6. We want to 
     # normalize to between -3 and +3 so that we are
@@ -96,4 +96,8 @@ def shift_year_preserve_dow(
 ):
     dow_offset = day_of_week_offset(year_from=from_year, year_to=to_year)
 
-    pass
+    offset_by_days = dates + pd.DateOffset(days=dow_offset)
+
+    offset_by_days_and_years = offset_by_days + pd.DateOffset(years=to_year - from_year)
+
+    return offset_by_days_and_years
