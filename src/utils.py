@@ -39,7 +39,6 @@ def file_cache(cache_path=None):
             raise
 
     class Decorator:
-        f = None  # function to be cached
 
         def __init__(self, function):
             self.f = function
@@ -63,3 +62,38 @@ def file_cache(cache_path=None):
                 os.remove(fpath)
 
     return Decorator
+
+
+def day_of_week_offset(
+        *,
+        year_from: int,
+        year_to: int        
+) -> int:
+    from_dow = pd.Timestamp(day=1, month=1, year=year_from).day_of_week
+    to_dow = pd.Timestamp(day=1, month=1, year=year_to).day_of_week
+
+    offset = to_dow - from_dow
+
+    # Offset is now between -6 and -6. We want to 
+    # normalize to between -3 and +3 so that we are
+    # shifting days the minumum amount necessary to 
+    # align days of the week.
+
+    # Change the negative offsets to corresponding positive
+    # ones by adding a week.
+    offset = (offset + 7) % 7
+    # Change the rollover point so we get -3 to +3
+    offset = ((offset + 3) % 7) - 3
+
+    return offset
+
+
+def shift_year_preserve_dow(
+        dates: pd.Series,
+        *,
+        from_year: int,
+        to_year: int
+):
+    dow_offset = day_of_week_offset(year_from=from_year, year_to=to_year)
+
+    pass
