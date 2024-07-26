@@ -420,10 +420,10 @@ def load_data(
             Default is "ml.surrogate_model.building_features"
         p_val (float): Proportion of data to use for validation. Default is 0.2.
         p_test (float): Proportion of data to use for testing. Default is 0.1.
-        n_train (int): Number of training records to select, where the size of the val and tests sets will be adjusted accordingly to maintain the requested ratios.
-                       Default is None (select all).
-        n_train (int): Number of training records to select, where the size of the val and tests sets will be adjusted accordingly to maintain the requested ratios.
-                Default is None (select all).
+        n_train (int): Number of training records to select, where the size of the val and tests sets will be adjusted accordingly to   
+                    maintain the requested ratios. If number is passed that exceeds the size of p_train * all samples, then this will just be set to that max value. Default is None (select all)
+        n_test (int): Number of test records to select, where the size of the train and val sets will be adjusted accordingly to maintain 
+                    the requested ratios. If number is passed that exceeds the size of p_test * all_samples, then this will just be set to that max value. Default is None (select all).
         seed (int): Seed for random sampling. Default is 42.
 
     Returns:
@@ -468,9 +468,9 @@ def load_data(
         )
 
         if n_train:
-            frac = n_train * p_baseline / train_ids.count()
+            frac = np.clip(n_train * p_baseline / train_ids.count(), a_max = 1.0, a_min=0.0)
         elif n_test:
-            frac = n_test * p_baseline / test_ids.count()
+            frac = np.clip(n_test * p_baseline / test_ids.count(), a_max = 1.0, a_min=0.0)
     else:
         frac = 1.0
 

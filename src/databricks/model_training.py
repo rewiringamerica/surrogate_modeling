@@ -142,9 +142,6 @@ class SurrogateModelingWrapper(mlflow.pyfunc.PythonModel):
         self.weather_features = weather_features
         self.targets = targets
 
-    def load_context(self, context):
-        pass
-
     def preprocess_input(self, model_input: pd.DataFrame) -> Dict[str, np.ndarray]:
         """
         Preprocesses the model input of P features over N samples
@@ -166,6 +163,7 @@ class SurrogateModelingWrapper(mlflow.pyfunc.PythonModel):
 
         Parameters:
         - results (dict of {str: np.ndarray}): The outputs of the model in format {target_name (str) : np.ndarray [N,]}
+        - feature_df (pd.DataFrame): The features for the samples of shape [N, *]. Only the features flagging which fuels are present are used here. 
 
         Returns:
         - np.ndarray of shape [N, M]
@@ -235,7 +233,6 @@ fe = FeatureEngineeringClient()
 
 # Set the activation function and numeric data type for the model's layers
 layer_params = {
-    "activation": "linear",
     "dtype": train_gen.dtype,
     "kernel_initializer": "he_normal",
 }

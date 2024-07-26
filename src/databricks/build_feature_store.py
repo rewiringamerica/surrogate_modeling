@@ -1311,11 +1311,6 @@ weather_data_transformed = transform_weather_features()
 
 # COMMAND ----------
 
-# MAGIC %sql
-# MAGIC DROP TABLE ml.surrogate_model.building_features
-
-# COMMAND ----------
-
 # DBTITLE 1,Set up catalog and schema
 # MAGIC %sql
 # MAGIC -- Use existing catalog:

@@ -70,6 +70,27 @@ class SurrogateModel:
         - tensorflow.keras.src.engine.functional.Functional: the created keras model
 
         """
+        #Dense-BatchNorm-LeakyReLU block
+        def dense_batchnorm_leakyrelu(x:tf.keras.layers, n_units:int, name:str, **layer_params):
+            x = layers.Dense(n_units, name=f"{name}_dense", **layer_params)(x)
+            x = layers.BatchNormalization(name=f"{name}_batchnorm")(x)
+            x = layers.LeakyReLU(name=f"{name}_leakyrelu")(x)
+            return x
+        
+        #Conv-BatchNorm-LeakyReLU block
+        def conv_batchnorm_relu(x:tf.keras.layers, filters:int, kernel_size:int, name:str, **layer_params):
+            x = layers.Conv1D(
+                filters=filters,
+                kernel_size=kernel_size,
+                padding="same",
+                data_format="channels_last",
+                name=f"{name}_1dconv",
+                **layer_params,
+            )(x)
+            x = layers.BatchNormalization(name=f"{name}_conv_batchnorm")(x)
+            x = layers.LeakyReLU(name=f"{name}_conv_leakyrelu")(x)
+            return x
+        
         # Building metadata model
         bmo_inputs_dict = {
             building_feature: layers.Input(
@@ -96,19 +117,12 @@ class SurrogateModel:
         bm = layers.Concatenate(name="concat_layer", dtype=layer_params["dtype"])(
             bmo_inputs
         )
+
         bm = layers.BatchNormalization(name="init_batchnorm")(bm)
-        bm = layers.Dense(128, name="first_dense", **layer_params)(bm)
-        bm = layers.BatchNormalization(name="first_batchnorm")(bm)
-        bm = layers.LeakyReLU(name="first_leakyrelu")(bm)
-        bm = layers.Dense(64, name="second_dense", **layer_params)(bm)
-        bm = layers.BatchNormalization(name="second_batchnorm")(bm)
-        bm = layers.LeakyReLU(name="second_leakyrelu")(bm)
-        bm = layers.Dense(32, name="third_dense", **layer_params)(bm)
-        bm = layers.BatchNormalization(name="third_batchnorm")(bm)
-        bm = layers.LeakyReLU(name="third_leakyrelu")(bm)
-        bm = layers.Dense(16, name="fourth_dense", **layer_params)(bm)
-        bm = layers.BatchNormalization(name="fourth_batchnorm")(bm)
-        bm = layers.LeakyReLU(name="fourth_leakyrelu")(bm)
+        bm = dense_batchnorm_leakyrelu(bm, n_units = 128, name = "first")
+        bm = dense_batchnorm_leakyrelu(bm, n_units = 64, name = "second")
+        bm = dense_batchnorm_leakyrelu(bm, n_units = 32, name = "third")
+        bm = dense_batchnorm_leakyrelu(bm, n_units = 16, name = "fourth")
 
         bmo = models.Model(
             inputs=bmo_inputs_dict, outputs=bm, name="building_features_model"
@@ -132,26 +146,8 @@ class SurrogateModel:
             axis=-1, name="weather_concat_layer", dtype=layer_params["dtype"]
         )(weather_inputs)
         wm = layers.BatchNormalization(name="init_conv_batchnorm")(wm)
-        wm = layers.Conv1D(
-            filters=16,
-            kernel_size=8,
-            padding="same",
-            data_format="channels_last",
-            name="first_1dconv",
-            **layer_params,
-        )(wm)
-        wm = layers.BatchNormalization(name="first_conv_batchnorm")(wm)
-        wm = layers.LeakyReLU(name="first_conv_leakyrelu")(wm)
-        wm = layers.Conv1D(
-            filters=8,
-            kernel_size=8,
-            padding="same",
-            data_format="channels_last",
-            name="last_1dconv",
-            **layer_params,
-        )(wm)
-        wm = layers.BatchNormalization(name="second_conv_batchnorm")(wm)
-        wm = layers.LeakyReLU(name="second_conv_leakyrelu")(wm)
+        wm = conv_batchnorm_relu(wm, filters=16, kernel_size=8, name = "first")
+        wm = conv_batchnorm_relu(wm, filters=8, kernel_size=8, name = "second")
 
         # sum the time dimension
         wm = layers.Lambda(
@@ -166,22 +162,16 @@ class SurrogateModel:
 
         # Combined model and separate towers for output groups
         cm = layers.Concatenate(name="combine")([bmo.output, wmo.output])
-        cm = layers.Dense(24, name="combine_first_dense", **layer_params)(cm)
-        cm = layers.LeakyReLU(name="first_combine_leakyrelu")(cm)
-        cm = layers.Dense(24, name="combine_second_dense", **layer_params)(cm)
-        cm = layers.LeakyReLU(name="second_combine_leakyrelu")(cm)
-        cm = layers.Dense(16, name="third_second_dense", **layer_params)(cm)
-        cm = layers.LeakyReLU(name="third_combine_leakyrelu")(cm)
+        cm = layers.Dense(24, name="combine_first_dense", activation="leaky_relu", **layer_params)(cm)
+        cm = layers.Dense(24, name="combine_second_dense", activation="leaky_relu", **layer_params)(cm)
+        cm = layers.Dense(16, name="third_second_dense", activation="leaky_relu", **layer_params)(cm)
 
         # building a separate tower for each output group
         final_outputs = {}
         for consumption_group in train_gen.targets:
-            io = layers.Dense(4, name=consumption_group + "_entry", **layer_params)(cm)
-            io = layers.LeakyReLU(name=consumption_group + "_entry_leakyrelu")(io)
-            io = layers.Dense(2, name=consumption_group + "_mid", **layer_params)(io)
-            io = layers.LeakyReLU(name=consumption_group + "_mid_leakyrelu")(io)
-            io = layers.Dense(1, name=consumption_group + "_final", **layer_params)(io)
-            io = layers.LeakyReLU(name=consumption_group)(io)
+            io = layers.Dense(4, name=consumption_group + "_entry", activation="leaky_relu", **layer_params)(cm)
+            io = layers.Dense(2, name=consumption_group + "_mid", activation="leaky_relu", **layer_params)(io)
+            io = layers.Dense(1, name=consumption_group, activation="leaky_relu")(io)
             final_outputs[consumption_group] = io
 
         final_model = models.Model(
@@ -308,11 +298,23 @@ def mape(y_true, y_pred):
 
 
 @keras.saving.register_keras_serializable(package="my_package", name="masked_mae")
-def masked_mae(y_true, y_pred):
+def masked_mae(y_true:tf.Tensor, y_pred:tf.Tensor) -> tf.Tensor:
+    """
+    Calculate the Mean Absolute Error (MAE) between true and predicted values, ignoring those where y_true=0.
+
+    This custom loss function is designed for scenarios where zero values in the true values are considered to be irrelevant and should not contribute to the loss calculation. It applies a mask to both the true and predicted values to exclude these zero entries before computing the MAE. The decorator allows this function to be serialized and logged alongside the keras model. 
+
+    Args:
+    - y_true (tf.Tensor): The true values.
+    - y_pred (tf.Tensor): The predicted values.
+
+    Returns:
+    - tf.Tensor: The mean absolute error computed over non-zero true values. This is just a single scalar stored in a tensor. 
+    """
     # Create a mask where targets are not zero
     mask = tf.not_equal(y_true, 0)
 
-    # # Apply the mask to remove zero-target influence
+    # Apply the mask to remove zero-target influence
     y_true_masked = tf.boolean_mask(y_true, mask)
     y_pred_masked = tf.boolean_mask(y_pred, mask)
 
@@ -323,17 +325,3 @@ def masked_mae(y_true, y_pred):
     else:
         # Calculate the mean absolute error on the masked data
         return tf.reduce_mean(tf.abs(y_true_masked - y_pred_masked))
-
-
-# @keras.saving.register_keras_serializable(package="my_package", name="masked_mae")
-# def masked_mae(y_true, y_pred):
-#     # # Create a mask where targets are not zero
-#     mask = tf.cast(tf.not_equal(y_true, 0), tf.float32)
-#     #mask = tf.not_equal(y_true, 0)
-
-#     # # Apply the mask to remove zero-target influence
-#     y_true_masked = y_true * mask
-#     y_pred_masked = y_pred * mask
-
-#     # Calculate the mean absolute error on the filtered data
-#     return tf.reduce_mean(tf.abs(y_true_masked - y_pred_masked))
