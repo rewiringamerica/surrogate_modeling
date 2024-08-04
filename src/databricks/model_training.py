@@ -98,8 +98,8 @@ train_data, val_data, test_data = load_data(n_train=1000 if DEBUG else None)
 # COMMAND ----------
 
 # DBTITLE 1,Initialize train/val data generators
-train_gen = DataGenerator(train_data=train_data, batch_size=256)
-val_gen = DataGenerator(train_data=val_data, batch_size=256)
+train_gen = DataGenerator(train_data=train_data)
+val_gen = DataGenerator(train_data=val_data)
 
 # COMMAND ----------
 

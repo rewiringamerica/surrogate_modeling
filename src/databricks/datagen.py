@@ -158,7 +158,7 @@ class DataGenerator(tf.keras.utils.Sequence):
         consumption_group_dict: Dict[str, str] = None,
         building_feature_table_name: str = None,
         weather_feature_table_name: str = None,
-        batch_size: int = 64,
+        batch_size: int = 256,
         dtype: np.dtype = np.float32,
     ):
         """
