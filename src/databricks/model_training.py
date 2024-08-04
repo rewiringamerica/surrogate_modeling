@@ -2,13 +2,13 @@
 # MAGIC %md # Model Training
 # MAGIC
 # MAGIC ### Goal
-# MAGIC Train deep learning model to predict energy a building's HVAC energy consumption
+# MAGIC Train deep learning model to predict a homes total energy consumption
 # MAGIC
 # MAGIC ### Process
 # MAGIC * Load in train/val/test sets containing targets and feature keys
 # MAGIC * Initialize data generators on train/val sets which pulls in weather and building model features
-# MAGIC * Train model
-# MAGIC * Evaluate model and write out metrics
+# MAGIC * Train and log model
+# MAGIC * Test that the trained model works
 # MAGIC
 # MAGIC ### I/Os
 # MAGIC
@@ -18,42 +18,42 @@
 # MAGIC - `ml.surrogate_model.building_upgrade_simulation_outputs_annual`: Annual building model simulation outputs indexed by (building_id, upgrade_id)
 # MAGIC
 # MAGIC ##### Outputs: 
-# MAGIC - `gs://the-cube/export/surrogate_model_metrics/cnn/{model_name}_v{model_version_num}.csv'`: Aggregated evaluation metrics
-# MAGIC
+# MAGIC None. The model is logged to the unity catalog with the run id, but as of now is not registered due to issue with signature enforcement slowing down inference. 
 # MAGIC
 # MAGIC ### TODOs:
 # MAGIC
 # MAGIC #### Outstanding
 # MAGIC
 # MAGIC #### Future Work
+# MAGIC * Figure out how to register the model with a signature without slowing down inference
+# MAGIC * Handle retracing issues
+# MAGIC * Install model dependencies using the logged requirements.txt file
+# MAGIC * Get checkpointing to work
 # MAGIC
 # MAGIC ---
 # MAGIC #### Cluster/ User Requirements
 # MAGIC - Access Mode: Single User or Shared (Not No Isolation Shared)
 # MAGIC - Runtime: >= Databricks Runtime 14.3 ML (or >= Databricks Runtime 14.3 +  `%pip install databricks-feature-engineering`)
 # MAGIC - Node type: Single Node. Because of [this issue](https://kb.databricks.com/en_US/libraries/apache-spark-jobs-fail-with-environment-directory-not-found-error), worker nodes cannot access the directory needed to run inference on a keras trained model, meaning that the `score_batch()` function throws and OSError. 
+# MAGIC - Can be run on CPU or GPU, with 2x speedup on GPU
+# MAGIC - Cluster-level packages: `gcsfs==2023.5.0`, `mlflow==2.13.0` (newer than default, which is required to pass a `code_paths` in logging)
 # MAGIC - `USE CATALOG`, `CREATE SCHEMA` privleges on the `ml` Unity Catalog (Ask Miki if for access)
+# MAGIC
 
 # COMMAND ----------
 
-# install required packages: note that tensorflow must be installed at the notebook-level
-%pip install gcsfs==2023.5.0 tensorflow==2.15.0.post1
-
-# COMMAND ----------
-
+# DBTITLE 1,Set debug mode
 # this controls the training parameters, with test mode on a much smaller training set for fewer epochs
-dbutils.widgets.dropdown("Mode", "Test", ["Test", "Production"])
-
-if dbutils.widgets.get("Mode") == "Test":
-    DEBUG = True
-else:
-    DEBUG = False
+dbutils.widgets.dropdown("mode", "test", ["test", "production"])
+DEBUG = dbutils.widgets.get("mode") == "test"
 print(DEBUG)
 
 # COMMAND ----------
 
+# DBTITLE 1,Allow GPU growth
 import os
-os.environ['TF_FORCE_GPU_ALLOW_GROWTH'] = 'true'
+
+os.environ["TF_FORCE_GPU_ALLOW_GROWTH"] = "true"
 
 # COMMAND ----------
 
@@ -61,19 +61,19 @@ os.environ['TF_FORCE_GPU_ALLOW_GROWTH'] = 'true'
 # MAGIC %load_ext autoreload
 # MAGIC %autoreload 2
 # MAGIC
-# MAGIC from typing import Tuple, Dict
-# MAGIC
 # MAGIC import mlflow
 # MAGIC import numpy as np
 # MAGIC import pandas as pd
 # MAGIC import pyspark.sql.functions as F
 # MAGIC import tensorflow as tf
+# MAGIC import shutil
 # MAGIC from databricks.feature_engineering import FeatureEngineeringClient
 # MAGIC from pyspark.sql import DataFrame
 # MAGIC from pyspark.sql.types import DoubleType
 # MAGIC from tensorflow import keras
+# MAGIC from typing import Tuple, Dict
 # MAGIC
-# MAGIC from datagen import DataGenerator
+# MAGIC from datagen import DataGenerator, load_data
 # MAGIC from surrogate_model import SurrogateModel
 # MAGIC
 # MAGIC # list available GPUs
@@ -81,85 +81,19 @@ os.environ['TF_FORCE_GPU_ALLOW_GROWTH'] = 'true'
 
 # COMMAND ----------
 
+# DBTITLE 1,Set experiment location
+# location to store the experiment runs if in production mode:
+# specifying this allows for models trained in notebook or job to be written to same place
+EXPERIMENT_LOCATION = "/Shared/surrogate_model/"
+
+# COMMAND ----------
+
 # MAGIC %md ## Load Data
 
 # COMMAND ----------
 
-# DBTITLE 1,Data loading function
-def load_data(
-    consumption_group_dict=DataGenerator.consumption_group_dict,
-    building_feature_table_name=DataGenerator.building_feature_table_name,
-    n_subset=None,
-    p_val=0.2,
-    p_test=0.1,
-    seed=42,
-) -> Tuple[DataFrame, DataFrame, DataFrame]:
-    """
-    Load the data for model training prediction containing the targets and the keys needed to join to feature tables
-
-    Parameters:
-        consumption_group_dict (dict): Dictionary mapping consumption categories (e.g., 'heating') to columns.
-            Default is DataGenerator.consumption_group_dict.
-        building_feature_table_name (str): Name of the building feature table.
-            Default is DataGenerator.building_feature_table_name
-        n_subset (int): Number of subset records to select. Default is None (select all records).
-        p_val (float): Proportion of data to use for validation. Default is 0.2.
-        p_test (float): Proportion of data to use for testing. Default is 0.1.
-        seed (int): Seed for random sampling. Default is 42.
-
-    Returns:
-        train data (DataFrame)
-        val_data (DataFrame)
-        test_data (DataFrame)
-    """
-    # Read outputs table and sum over consumption columns within each consumption group
-    # join to the bm table to get required keys to join on and filter the building models based on charactaristics
-    sum_str = ", ".join(
-        [f"{'+'.join(v)} AS {k}" for k, v in consumption_group_dict.items()]
-    )
-    inference_data = spark.sql(
-        f"""
-        SELECT B.building_id, B.upgrade_id, B.weather_file_city, {sum_str}
-        FROM ml.surrogate_model.building_upgrade_simulation_outputs_annual O
-        INNER JOIN {building_feature_table_name} B 
-            ON B.upgrade_id = O.upgrade_id AND B.building_id == O.building_id
-        """
-    )
-
-    # get list of unique building ids, which will be the basis for the dataset split
-    unique_building_ids = inference_data.where(F.col("upgrade_id") == 0).select(
-        "building_id"
-    )
-
-    # Subset the data if n_subset is specified
-    if n_subset is not None:
-        n_total = unique_building_ids.count()
-        if n_subset > n_total:
-            print(
-                "'n_subset' is more than the total number of records, returning all records..."
-            )
-        else:
-            unique_building_ids = unique_building_ids.sample(
-                fraction=1.0, seed=seed
-            ).limit(n_subset)
-
-    # Split the building_ids into train, validation, and test sets (may not exactly match passed proportions)
-    p_train = 1 - p_val - p_test
-    train_ids, val_ids, test_ids = unique_building_ids.randomSplit(
-        weights=[p_train, p_val, p_test], seed=seed
-    )
-
-    # select train, val and test set based on building ids
-    train_df = train_ids.join(inference_data, on="building_id")
-    val_df = val_ids.join(inference_data, on="building_id")
-    test_df = test_ids.join(inference_data, on="building_id")
-
-    return train_df, val_df, test_df
-
-# COMMAND ----------
-
 # DBTITLE 1,Load data
-train_data, val_data, test_data = load_data(n_subset=100 if DEBUG else None)
+train_data, val_data, test_data = load_data(n_train=1000 if DEBUG else None)
 
 # COMMAND ----------
 
@@ -220,20 +154,33 @@ class SurrogateModelingWrapper(mlflow.pyfunc.PythonModel):
         """
         return self.convert_feature_dataframe_to_dict(model_input)
 
-    def postprocess_result(self, results: Dict[str, np.ndarray]) -> np.ndarray:
+    def postprocess_result(
+        self, results: Dict[str, np.ndarray], feature_df: pd.DataFrame
+    ) -> np.ndarray:
         """
-        Postprocesses the model results for N samples over M targets.
+        Postprocesses the model results for N samples over M targets by clipping at 0
+        and setting targets to 0 if the home does not have an applaince using that fuel.
 
         Parameters:
         - results (dict of {str: np.ndarray}): The outputs of the model in format {target_name (str) : np.ndarray [N,]}
+        - feature_df (pd.DataFrame): The features for the samples of shape [N, *]. Only the features flagging which fuels are present are used here. 
 
         Returns:
-        - The model predictions floored at 0: np.ndarray of shape [N, M]
+        - np.ndarray of shape [N, M]
 
         """
-        return np.clip(
-            np.hstack([results[c] for c in self.targets]), a_min=0, a_max=None
-        )
+        for fuel in self.targets:
+            if fuel == "electricity":
+                results[fuel] = results[fuel].flatten()
+            else:
+                # null out fuel target if fuel is not present in any appliance in the home
+                results[fuel] = np.where(
+                    ~feature_df[f"has_{fuel}_appliance"],
+                    np.nan,
+                    results[fuel].flatten(),
+                )
+        # stack into N x M array and clip at 0
+        return np.clip(np.vstack(list(results.values())).T, a_min=0, a_max=None)
 
     def predict(self, context, model_input: pd.DataFrame) -> np.ndarray:
         """
@@ -244,11 +191,11 @@ class SurrogateModelingWrapper(mlflow.pyfunc.PythonModel):
         - model_input (pd.Dataframe): The input features for the model of shape [N, P]
 
         Returns:
-        - The model predictions floored at 0: np.ndarray of shape [N, M]
+        - np.ndarray of shape [N, M]
         """
-        processed_df = self.preprocess_input(model_input.copy())
+        processed_df = self.preprocess_input(model_input)
         predictions_df = self.model.predict(processed_df)
-        return self.postprocess_result(predictions_df)
+        return self.postprocess_result(predictions_df, model_input)
 
     def convert_feature_dataframe_to_dict(
         self, feature_df: pd.DataFrame
@@ -274,21 +221,34 @@ class SurrogateModelingWrapper(mlflow.pyfunc.PythonModel):
 # COMMAND ----------
 
 # DBTITLE 1,Initialize model
-model = SurrogateModel(name="test" if DEBUG else "sf_hvac")
+sm = SurrogateModel(name="test" if DEBUG else "mvp")
 
 # COMMAND ----------
 
-# DBTITLE 1,Fit model
-# Train keras model and log the model with the Feature Engineering in UC.
+# DBTITLE 1,Train model
+# Train keras model and log the model with the Feature Engineering in UC. Note that right we are skipping registering the model in the UC-- this requires storing the signature, which for unclear reasons, is slowing down inference more than 10x.
 
-#Init FeatureEngineering client
+# Init FeatureEngineering client
 fe = FeatureEngineeringClient()
 
 # Set the activation function and numeric data type for the model's layers
-layer_params = {"activation": "leaky_relu", "dtype": np.float32}
+layer_params = {
+    "dtype": train_gen.dtype,
+    "kernel_initializer": "he_normal",
+}
 
-# Disable MLflow autologging and instead log the model using Feature Engineering in UC using `fe.log_model
-mlflow.tensorflow.autolog(log_models=False)
+
+# skip logging signatures for now...
+# signature_df = train_gen.training_set.load_df().select(train_gen.building_features + train_gen.targets + train_gen.weather_features).limit(1).toPandas()
+# signature=mlflow.models.infer_signature(model_input = signature_df[train_gen.building_features + train_gen.weather_features], model_output = signature_df[train_gen.targets])
+
+mlflow.tensorflow.autolog(
+    log_every_epoch=True, log_models=False, log_datasets=False, checkpoint=False
+)
+
+# if production, log to shared experiment space, otherwise just log at notebook level by default
+if not DEBUG:
+    mlflow.set_experiment(EXPERIMENT_LOCATION)
 
 # Starts an MLflow experiment to track training parameters and results.
 with mlflow.start_run() as run:
@@ -297,16 +257,16 @@ with mlflow.start_run() as run:
     run_id = mlflow.active_run().info.run_id
 
     # Create the keras model
-    keras_model = model.create_model(train_gen=train_gen, layer_params=layer_params)
+    keras_model = sm.create_model(train_gen=train_gen, layer_params=layer_params)
 
     # Fit the model
     history = keras_model.fit(
         train_gen,
         validation_data=val_gen,
-        epochs=2 if DEBUG else 100,
+        epochs=2 if DEBUG else 200,
         batch_size=train_gen.batch_size,
         verbose=2,
-        callbacks=[keras.callbacks.EarlyStopping(monitor="val_loss", patience=5)],
+        callbacks=[keras.callbacks.EarlyStopping(monitor="val_loss", patience=15)],
     )
 
     # wrap in custom class that defines pre and post processing steps to be applied when called at inference time
@@ -317,14 +277,14 @@ with mlflow.start_run() as run:
         targets=train_gen.targets,
     )
 
-    # If in test mode, don't register the model, just pull it based on run_id in evaluation testing
-    fe.log_model(
-        model=pyfunc_model,
-        artifact_path=model.artifact_path,
-        flavor=mlflow.pyfunc,  # since using custom pyfunc wrapper
-        training_set=train_gen.training_set,
-        registered_model_name= None if DEBUG else str(model),  # registered the model name if in DEBUG mode
+    mlflow.pyfunc.log_model(
+        python_model=pyfunc_model,
+        artifact_path=sm.artifact_path,
+        code_paths=["surrogate_model.py"],
+        # signature=signature
     )
+    # skip registering model for now..
+    # mlflow.register_model(f"runs:/{run_id}/{sm.artifact_path}", str(sm))
 
 # COMMAND ----------
 
@@ -338,55 +298,25 @@ with mlflow.start_run() as run:
 
 # DBTITLE 1,Inspect predictions for one batch
 # print out model predictions just to make sure everything worked
-if DEBUG:
-    results = keras_model.predict(val_gen[0][0])
-    print(np.hstack([results[c] for c in train_gen.targets]))
+results = keras_model.predict(val_gen[0][0])
+print(np.hstack([results[c] for c in train_gen.targets]))
 
 # COMMAND ----------
 
 # DBTITLE 1,Inspect predictions using logged model
 # evaluate the unregistered model we just logged and make sure everything runs
-if DEBUG: 
-    print(run_id)
-    pred_df = model.score_batch(test_data=test_data, run_id=run_id)
-    pred_df.display()
+print(run_id)
+# mlflow.pyfunc.get_model_dependencies(model_uri=sm.get_model_uri(run_id=run_id))
+# Load the model using its registered name and version/stage from the MLflow model registry
+model_loaded = mlflow.pyfunc.load_model(model_uri=sm.get_model_uri(run_id=run_id))
+test_gen = DataGenerator(train_data=test_data.limit(10))
+# load input data table as a Spark DataFrame
+input_data = test_gen.training_set.load_df().toPandas()
+# run prediction and output a N x M matrix of predictions where N is the number of rows in the input data table and M is the number of target columns
+print(model_loaded.predict(input_data))
 
 # COMMAND ----------
 
-# MAGIC %md #### Production Mode
-
-# COMMAND ----------
-
-# DBTITLE 1,Run inference on test set
+# DBTITLE 1,Pass Run ID to next notebook if running in job
 if not DEBUG:
-    # for right now have to limit the test set since driver seems to be running out of mem
-    target_test_size = 75000
-    target_n_building_frac = target_test_size / test_data.count()
-    test_building_id_subset = (
-        test_data.select("building_id").distinct().sample(target_n_building_frac)
-    )
-    test_data_sub = test_data.join(test_building_id_subset, on="building_id")
-    print(test_data_sub.count())
-    # score using  latest registered model
-    mlflow.pyfunc.get_model_dependencies(model.get_model_uri())
-    pred_df = model.score_batch(test_data=test_data_sub)
-
-# COMMAND ----------
-
-# DBTITLE 1,Write out predictions for evaluation
-# save the predictions to a delta table-- aggregating in eval without first writing to delta seems to often kill the driver
-if not DEBUG:
-    (
-        pred_df.select(
-            "building_id",
-            "upgrade_id",
-            "prediction",
-            *train_gen.targets,
-        ).write.saveAsTable(
-            f"{str(model)}_predictions",
-            format="delta",
-            mode="overwrite",
-            overwriteSchema=True,
-            userMetadata=model.get_latest_model_version(),
-        )
-    )
+    dbutils.jobs.taskValues.set(key="run_id", value=run_id)

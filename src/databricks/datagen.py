@@ -4,9 +4,12 @@ from typing import Any, Dict, List, Tuple
 import mlflow
 import numpy as np
 import pandas as pd
+import pyspark.sql.functions as F
 import tensorflow as tf
 from databricks.feature_engineering import FeatureEngineeringClient, FeatureLookup
 from databricks.ml_features.training_set import TrainingSet
+from databricks.sdk.runtime import spark
+
 from pyspark.sql import DataFrame
 
 
@@ -37,6 +40,7 @@ class DataGenerator(tf.keras.utils.Sequence):
     - fe (databricks.feature_engineering.client.FeatureEngineeringClient: client for interacting with the
                                                                             Databricks Feature Engineering in Unity Catalog
 
+    TODO: modify this be more flexible to use this at inference time only (e.g, don't load various feature tables into mem)
     """
 
     # init FeatureEngineering client
@@ -47,48 +51,85 @@ class DataGenerator(tf.keras.utils.Sequence):
     weather_feature_table_name = "ml.surrogate_model.weather_features_hourly"
 
     building_features = [
+        # structure
+        "n_bedrooms",
+        "n_bathrooms",
+        "attic_type",
+        "sqft",
+        "foundation_type",
+        "garage_size_n_car",
+        "n_stories",
+        "orientation_degrees",
+        "roof_material",
+        "window_wall_ratio",
+        "window_ufactor",
+        "window_shgc",
         # heating
         "heating_fuel",
         "heating_appliance_type",
-        "heating_efficiency",
-        "has_ductless_heating",
-        "heating_setpoint",
-        "heating_setpoint_offset_magnitude",
+        "has_ducted_heating",
+        "heating_efficiency_nominal_percentage",
+        "heating_setpoint_degrees_f",
+        "heating_setpoint_offset_magnitude_degrees_f",
         # cooling
         "ac_type",
-        "has_ac",
-        "cooled_space_proportion",
+        "cooled_space_percentage",
         "cooling_efficiency_eer",
-        "cooling_setpoint",
-        "cooling_setpoint_offset_magnitude",
+        "cooling_setpoint_degrees_f",
+        "cooling_setpoint_offset_magnitude_degrees_f",
+        # water heater
+        "water_heater_fuel",
+        "water_heater_type",
+        "water_heater_tank_volume_gal",
+        "water_heater_efficiency_ef",
+        "water_heater_recovery_efficiency_ef",
+        "has_water_heater_in_unit",
         # ducts
         "has_ducts",
-        "ducts_insulation",
-        "ducts_leakage",
+        "duct_insulation_r_value",
+        "duct_leakage_percentage",
         "infiltration_ach50",
         # insulalation
         "wall_material",
-        "insulation_wall",
-        "insulation_slab",
-        "insulation_rim_joist",
-        "insulation_floor",
-        "insulation_ceiling_roof",
+        "insulation_wall_r_value",
+        "insulation_foundation_wall_r_value",
+        "insulation_slab_r_value",
+        "insulation_rim_joist_r_value",
+        "insulation_floor_r_value",
+        "insulation_ceiling_r_value",
+        "insulation_roof_r_value",
         # attached home
         "is_attached",
-        "num_building_units",
+        "n_building_units",
         "is_middle_unit",
+        # other appliances
+        "has_ceiling_fan",
+        "clothes_dryer_fuel",
+        "clothes_washer_efficiency",
+        "cooking_range_fuel",
+        "dishwasher_efficiency_kwh",
+        "lighting_efficiency",
+        "refrigerator_extra_efficiency_ef",
+        "has_standalone_freezer",
+        "has_gas_fireplace",
+        "has_gas_grill",
+        "has_gas_lighting",
+        "has_well_pump",
+        "hot_tub_spa_fuel",
+        "pool_heater_fuel",
+        "refrigerator_efficiency_ef",
+        "plug_load_percentage",
+        "usage_level_appliances",
         # misc
-        "bedrooms",
-        "stories",
-        "foundation_type",
-        "attic_type",
         "climate_zone_temp",
         "climate_zone_moisture",
-        "sqft",
+        "neighbor_distance_ft",
+        "n_occupants",
         "vintage",
-        "num_occupants",
-        "orientation",
-        "window_area",
+        # fuel indicators -- these must be present for post-processing to work!!
+        "has_methane_gas_appliance",
+        "has_fuel_oil_appliance",
+        "has_propane_appliance",
     ]
 
     weather_features = [
@@ -102,35 +143,22 @@ class DataGenerator(tf.keras.utils.Sequence):
         "weekend",
     ]
 
-    # just hvac for now
     consumption_group_dict = {
-        "heating": [
-            "electricity__heating_fans_pumps",
-            "electricity__heating_hp_bkup",
-            "electricity__heating",
-            "fuel_oil__heating_hp_bkup",
-            "fuel_oil__heating",
-            "natural_gas__heating_hp_bkup",
-            "natural_gas__heating",
-            "propane__heating_hp_bkup",
-            "propane__heating",
-        ],
-        "cooling": ["electricity__cooling_fans_pumps", "electricity__cooling"],
+        "electricity": ["electricity__total"],
+        "methane_gas": ["methane_gas__total"],
+        "fuel_oil": ["fuel_oil__total"],
+        "propane": ["propane__total"],
     }
-
-    # baseline and HVAC upgrades
-    upgrade_ids = ["0", "1", "3", "4"]
 
     def __init__(
         self,
         train_data: DataFrame,
         building_features: List[str] = None,
         weather_features: List[str] = None,
-        upgrade_ids: List[str] = None,
         consumption_group_dict: Dict[str, str] = None,
         building_feature_table_name: str = None,
         weather_feature_table_name: str = None,
-        batch_size: int = 64,
+        batch_size: int = 256,
         dtype: np.dtype = np.float32,
     ):
         """
@@ -141,7 +169,7 @@ class DataGenerator(tf.keras.utils.Sequence):
         See class docstring for all other parameters.
         """
 
-        self.upgrades = upgrade_ids or self.upgrade_ids
+        # self.upgrades = upgrade_ids or self.upgrade_ids
         self.building_features = building_features or self.building_features
         self.weather_features = weather_features or self.weather_features
 
@@ -164,6 +192,7 @@ class DataGenerator(tf.keras.utils.Sequence):
         self.training_df = self.init_building_features_and_targets(
             train_data=train_data
         )
+
         self.weather_features_df = self.init_weather_features()
         self.building_feature_vocab_dict = self.init_building_feature_vocab_dict()
 
@@ -199,23 +228,29 @@ class DataGenerator(tf.keras.utils.Sequence):
             ),
         ]
 
-    def init_training_set(self, train_data: DataFrame) -> TrainingSet:
+    def init_training_set(
+        self,
+        train_data: DataFrame,
+        exclude_columns: List[str] = ["building_id", "upgrade_id", "weather_file_city"],
+    ) -> TrainingSet:
         """
         Initializes the Databricks TrainingSet object contaning targets, building feautres and weather features.
 
         Parameters:
             - train_data (DataFrame): the training data containing the targets and keys to join to the feature tables.
+            - exclude_columns (list of str): columns to be excluded from the output training set.
+                                             Defaults to the join keys: ["building_id", "upgrade_id", "weather_file_city"].
 
         Returns:
         - TrainingSet
         """
-        # Join to feature tables and drop join keys since these aren't features we wanna train on
+        # Join the feature tables
         training_set = self.fe.create_training_set(
             df=train_data,
             feature_lookups=self.get_building_feature_lookups()
             + self.get_weather_feature_lookups(),
             label=self.targets,
-            exclude_columns=["building_id", "upgrade_id", "weather_file_city"],
+            exclude_columns=exclude_columns,
         )
         return training_set
 
@@ -256,7 +291,8 @@ class DataGenerator(tf.keras.utils.Sequence):
 
     def feature_dtype(self, feature_name: str) -> Any:
         """
-        Returns the dtype of the feature.
+        Returns the dtype of the feature, which is tf.string
+        if object, otherwise self.dtype
 
         Parameters:
         - feature_name (str): the name of the feature.
@@ -360,3 +396,87 @@ class DataGenerator(tf.keras.utils.Sequence):
         Shuffles training set after each epoch.
         """
         self.training_df = self.training_df.sample(frac=1.0)
+
+
+def load_data(
+    consumption_group_dict=DataGenerator.consumption_group_dict,
+    building_feature_table_name=DataGenerator.building_feature_table_name,
+    upgrade_ids: List[str] = None,
+    p_val=0.2,
+    p_test=0.1,
+    n_train=None,
+    n_test=None,
+    seed=42,
+) -> Tuple[DataFrame, DataFrame, DataFrame]:
+    """
+    Load the data for model training prediction containing the targets and the keys needed to join to feature tables,
+    and split into train/val/test sets. The parameters n_train and n_test can be used to reduce the size of the data,
+    by subsetting from the existing train/val/test data, meaning that the same splits are preserved.
+
+    Parameters:
+        consumption_group_dict (dict): Dictionary mapping consumption categories (e.g., 'heating') to columns.
+            Default is DataGenerator.consumption_by_fuel_dict (too long to write out)
+        building_feature_table_name (str): Name of the building feature table.
+            Default is "ml.surrogate_model.building_features"
+        p_val (float): Proportion of data to use for validation. Default is 0.2.
+        p_test (float): Proportion of data to use for testing. Default is 0.1.
+        n_train (int): Number of training records to select, where the size of the val and tests sets will be adjusted accordingly to   
+                    maintain the requested ratios. If number is passed that exceeds the size of p_train * all samples, then this will just be set to that max value. Default is None (select all)
+        n_test (int): Number of test records to select, where the size of the train and val sets will be adjusted accordingly to maintain 
+                    the requested ratios. If number is passed that exceeds the size of p_test * all_samples, then this will just be set to that max value. Default is None (select all).
+        seed (int): Seed for random sampling. Default is 42.
+
+    Returns:
+        train data (DataFrame)
+        val_data (DataFrame)
+        test_data (DataFrame)
+
+    Note that both splitting and subsetting are done approximately, so returned dataframes may not be exactly the requested size/ratio.
+    """
+    if n_train and n_test:
+        raise ValueError("Cannot specify both n_train and n_test")
+    # Read outputs table and sum over consumption columns within each consumption group
+    # join to the bm table to get required keys to join on and filter the building models based on charactaristics
+    sum_str = ", ".join(
+        [f"{'+'.join(v)} AS {k}" for k, v in consumption_group_dict.items()]
+    )
+    data = spark.sql(
+        f"""
+        SELECT B.building_id, B.upgrade_id, B.weather_file_city, {sum_str}
+        FROM ml.surrogate_model.building_simulation_outputs_annual O
+        INNER JOIN {building_feature_table_name} B 
+            ON B.upgrade_id = O.upgrade_id AND B.building_id == O.building_id
+        --WHERE B.upgrade_id IN (0,1,3,4)
+        """
+    )
+    if upgrade_ids is not None:
+        data = data.where(F.col("upgrade_id").isin(upgrade_ids))
+
+    # get list of unique building ids, which will be the basis for the dataset split
+    unique_building_ids = data.where(F.col("upgrade_id") == 0).select("building_id")
+
+    # Split the building_ids into train, validation, and test sets (may not exactly match passed proportions)
+    p_train = 1 - p_val - p_test
+    train_ids, val_ids, test_ids = unique_building_ids.randomSplit(
+        weights=[p_train, p_val, p_test], seed=seed
+    )
+
+    # if n_train or n_test are passed, get the fraction of the train or test subset that this represents
+    if n_train or n_test:
+        p_baseline = (  # proportion of data that is the baseline upgrade
+            unique_building_ids.count() / data.count()
+        )
+
+        if n_train:
+            frac = np.clip(n_train * p_baseline / train_ids.count(), a_max = 1.0, a_min=0.0)
+        elif n_test:
+            frac = np.clip(n_test * p_baseline / test_ids.count(), a_max = 1.0, a_min=0.0)
+    else:
+        frac = 1.0
+
+    # select train, val and test set based on building ids, subsetting to smaller sets if specified
+    train_df = train_ids.sample(fraction=frac, seed=0).join(data, on="building_id")
+    val_df = val_ids.sample(fraction=frac, seed=0).join(data, on="building_id")
+    test_df = test_ids.sample(fraction=frac, seed=0).join(data, on="building_id")
+
+    return train_df, val_df, test_df
