@@ -12,6 +12,8 @@ from databricks.sdk.runtime import spark
 
 from pyspark.sql import DataFrame
 
+import random
+
 
 class DataGenerator(tf.keras.utils.Sequence):
     """
@@ -397,6 +399,70 @@ class DataGenerator(tf.keras.utils.Sequence):
         """
         self.training_df = self.training_df.sample(frac=1.0)
 
+
+class CachingDataGenerator(tf.keras.utils.Sequence):
+    """A data generator that caches, rather than regenerating every time."""
+
+    def __init__(self, data_generator: DataGenerator):        
+        self._data_generator = data_generator
+
+        self._cache = None
+
+        random.seed(17)
+
+    def __len__(self):
+        return len(self._data_generator)
+    
+    def __getitem__(
+        self, index: int
+    ) -> Tuple[Dict[str, np.ndarray], Dict[str, np.ndarray]]:
+        """Get an item."""
+        if self._cache is None:
+            self._fill_cache()
+
+        return self._cache[index]
+    
+    def on_epoch_end(self):
+        """
+        Process at the end of the epoch.
+
+        Technically, we should shuffle everything, not just the batches.
+        But that would require updating the representation of the cache a
+        bit, probably back to a whole data frame.
+        """
+        random.shuffle(self._cache)
+
+    @property
+    def batch_size(self) -> int:
+        return self._data_generator.batch_size
+    
+    @property
+    def dtype(self) -> np.dtype:
+        return self._data_generator.dtype
+
+    @property
+    def building_features(self) -> List[str]:
+        return self._data_generator.building_features
+    
+    @property
+    def weather_features(self) -> List[str]:
+        return self._data_generator.weather_features
+    
+    @property
+    def targets(self) -> List[str]:
+        return self._data_generator.targets
+
+    @property
+    def building_feature_vocab_dict(self) -> Dict[str, Dict[str, Any]]:
+        return self._data_generator.building_feature_vocab_dict
+
+    def _fill_cache(self):
+        """Fill the cache once."""
+        self._cache = [
+            self._data_generator[index] for index in range(len(self._data_generator))
+        ]
+
+        
 
 def load_data(
     consumption_group_dict=DataGenerator.consumption_group_dict,

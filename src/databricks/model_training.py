@@ -50,6 +50,18 @@ print(DEBUG)
 
 # COMMAND ----------
 
+DEBUG_TRAIN_SIZE = 128 * 1024
+DEBUG_EPOCHS = 50
+
+DEBUG_BATCH_SIZE = 1024
+
+_TESTING_SKIP_CONV = False
+_TESTING_SKIP_DENSE = False
+
+CACHE_GENERATED_DATA = False
+
+# COMMAND ----------
+
 # DBTITLE 1,Allow GPU growth
 import os
 
@@ -73,8 +85,10 @@ os.environ["TF_FORCE_GPU_ALLOW_GROWTH"] = "true"
 # MAGIC from tensorflow import keras
 # MAGIC from typing import Tuple, Dict
 # MAGIC
-# MAGIC from datagen import DataGenerator, load_data
+# MAGIC from datagen import DataGenerator, CachingDataGenerator, load_data
 # MAGIC from surrogate_model import SurrogateModel
+# MAGIC
+# MAGIC import cProfile
 # MAGIC
 # MAGIC # list available GPUs
 # MAGIC tf.config.list_physical_devices("GPU")
@@ -93,22 +107,71 @@ EXPERIMENT_LOCATION = "/Shared/surrogate_model/"
 # COMMAND ----------
 
 # DBTITLE 1,Load data
-train_data, val_data, test_data = load_data(n_train=1000 if DEBUG else None)
+train_data, val_data, test_data = load_data(n_train=DEBUG_TRAIN_SIZE if DEBUG else None)
+
+# COMMAND ----------
+
+train_data.count()
+
+# COMMAND ----------
+
+val_data.count()
+
+# COMMAND ----------
+
+test_data.count()
 
 # COMMAND ----------
 
 # DBTITLE 1,Initialize train/val data generators
-train_gen = DataGenerator(train_data=train_data)
-val_gen = DataGenerator(train_data=val_data)
+if DEBUG:
+    batch_size = DEBUG_BATCH_SIZE
+else:
+    batch_size = 256
+
+train_gen = DataGenerator(train_data=train_data, batch_size=batch_size)
+val_gen = DataGenerator(train_data=val_data, batch_size=batch_size)
+
+if CACHE_GENERATED_DATA:
+    train_gen = CachingDataGenerator(train_gen)
+    val_gen = CachingDataGenerator(val_gen)
+
+# COMMAND ----------
+
+# DBTITLE 1,What is the batch size?
+train_gen.batch_size
 
 # COMMAND ----------
 
 # DBTITLE 1,Inspect data gen output for one batch
+if DEBUG and CACHE_GENERATED_DATA:
+    print("Fill the cache the first time.")
+    print(len(train_gen), len(val_gen))
+    
+    with cProfile.Profile() as profile:
+        for ii in range(len(train_gen)):
+            X_train, y_train = train_gen[ii]
+    
+        for ii in range(len(val_gen)):
+            X_val, y_val = val_gen[ii]
+
+        profile.print_stats(sort="cumtime")
+
+# COMMAND ----------
+
+# DBTITLE 1,Iterate through data generation
 if DEBUG:
-    print("FEATURES:")
-    print(train_gen[0][0])
-    print("\n OUTPUTS:")
-    print(train_gen[0][1])
+    print(f"Walk the data; asked for caching = {CACHE_GENERATED_DATA}")
+    print(len(train_gen), len(val_gen))
+    
+    with cProfile.Profile() as profile:
+        for ii in range(len(train_gen)):
+            X_train, y_train = train_gen[ii]
+    
+        for ii in range(len(val_gen)):
+            X_val, y_val = val_gen[ii]
+
+        profile.print_stats(sort="cumtime")
 
 # COMMAND ----------
 
@@ -221,7 +284,11 @@ class SurrogateModelingWrapper(mlflow.pyfunc.PythonModel):
 # COMMAND ----------
 
 # DBTITLE 1,Initialize model
-sm = SurrogateModel(name="test" if DEBUG else "mvp")
+sm = SurrogateModel(
+    name="test" if DEBUG else "mvp", 
+    testing_skip_conv=_TESTING_SKIP_CONV,
+    testing_skip_dense=_TESTING_SKIP_DENSE
+)
 
 # COMMAND ----------
 
@@ -253,21 +320,28 @@ if not DEBUG:
 # Starts an MLflow experiment to track training parameters and results.
 with mlflow.start_run() as run:
 
+    mlflow.log_param("testing_skip_conv", _TESTING_SKIP_CONV)
+    mlflow.log_param("testing_skip_dense", _TESTING_SKIP_DENSE)
+    mlflow.log_param("cache_generated_data", CACHE_GENERATED_DATA)
+
     # Get the unique ID of the current run in case we aren't registering it
     run_id = mlflow.active_run().info.run_id
 
     # Create the keras model
     keras_model = sm.create_model(train_gen=train_gen, layer_params=layer_params)
 
-    # Fit the model
-    history = keras_model.fit(
-        train_gen,
-        validation_data=val_gen,
-        epochs=2 if DEBUG else 200,
-        batch_size=train_gen.batch_size,
-        verbose=2,
-        callbacks=[keras.callbacks.EarlyStopping(monitor="val_loss", patience=15)],
-    )
+    # Fit the model and profile fitting:
+    with cProfile.Profile() as pr:
+        history = keras_model.fit(
+            train_gen,
+            validation_data=val_gen,
+            epochs=DEBUG_EPOCHS if DEBUG else 200,
+            batch_size=train_gen.batch_size,
+            verbose=2,
+            callbacks=[keras.callbacks.EarlyStopping(monitor="val_loss", patience=15)],
+        )
+
+        pr.print_stats(sort="cumtime")
 
     # wrap in custom class that defines pre and post processing steps to be applied when called at inference time
     pyfunc_model = SurrogateModelingWrapper(
@@ -320,3 +394,7 @@ print(model_loaded.predict(input_data))
 # DBTITLE 1,Pass Run ID to next notebook if running in job
 if not DEBUG:
     dbutils.jobs.taskValues.set(key="run_id", value=run_id)
+
+# COMMAND ----------
+
+

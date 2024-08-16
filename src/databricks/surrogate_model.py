@@ -44,6 +44,9 @@ class SurrogateModel:
         batch_size: int = 64,
         dtype: np.dtype = np.float32,
         artifact_path="model",
+        *,
+        testing_skip_conv: bool = False,
+        testing_skip_dense: bool = False,
     ):
         """
         See class attributes for details on params.
@@ -52,6 +55,9 @@ class SurrogateModel:
         self.batch_size = batch_size
         self.dtype = dtype
         self.artifact_path = artifact_path
+
+        self._testing_skip_conv = testing_skip_conv
+        self._testing_skip_dense = testing_skip_dense
 
     def __str__(self):
         return f"{self.catalog}.{self.schema}.{self.name}"
@@ -118,11 +124,16 @@ class SurrogateModel:
             bmo_inputs
         )
 
-        bm = layers.BatchNormalization(name="init_batchnorm")(bm)
-        bm = dense_batchnorm_leakyrelu(bm, n_units = 128, name = "first")
-        bm = dense_batchnorm_leakyrelu(bm, n_units = 64, name = "second")
-        bm = dense_batchnorm_leakyrelu(bm, n_units = 32, name = "third")
-        bm = dense_batchnorm_leakyrelu(bm, n_units = 16, name = "fourth")
+        
+        if not self._testing_skip_dense:
+            bm = layers.BatchNormalization(name="init_batchnorm")(bm)
+            bm = dense_batchnorm_leakyrelu(bm, n_units = 128, name = "first")
+            bm = dense_batchnorm_leakyrelu(bm, n_units = 64, name = "second")
+            bm = dense_batchnorm_leakyrelu(bm, n_units = 32, name = "third")
+            bm = dense_batchnorm_leakyrelu(bm, n_units = 16, name = "fourth")
+        else:
+            # Just a single dense layer to get down to 16-wide.
+            bm = layers.Dense(16, name="single_dense")(bm)
 
         bmo = models.Model(
             inputs=bmo_inputs_dict, outputs=bm, name="building_features_model"
@@ -146,8 +157,9 @@ class SurrogateModel:
             axis=-1, name="weather_concat_layer", dtype=layer_params["dtype"]
         )(weather_inputs)
         wm = layers.BatchNormalization(name="init_conv_batchnorm")(wm)
-        wm = conv_batchnorm_relu(wm, filters=16, kernel_size=8, name = "first")
-        wm = conv_batchnorm_relu(wm, filters=8, kernel_size=8, name = "second")
+        if not self._testing_skip_conv:
+            wm = conv_batchnorm_relu(wm, filters=16, kernel_size=8, name = "first")
+            wm = conv_batchnorm_relu(wm, filters=8, kernel_size=8, name = "second")
 
         # sum the time dimension
         wm = layers.Lambda(
