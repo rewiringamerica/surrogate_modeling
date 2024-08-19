@@ -1,6 +1,9 @@
 """Utilities for measuring GPU performance."""
 
 from typing import Optional
+
+from logging import getLogger
+
 from pynvml import *
 import psutil
 
@@ -9,12 +12,15 @@ import pandas as pd
 import time
 
 
+logger = getLogger(__file__)
+
+
 def gather_cpu_gpu_metrics(
     interval: int | pd.Timedelta = 5,
     iterations: int = 12,
     *,
     gather_for_time: Optional[pd.Timedelta] = None,
-    report_interval: Optional[int] = None,
+    log_interval: Optional[int] = None,
 ):
     """Gather GPU performance at regular intervals."""
 
@@ -72,8 +78,8 @@ def gather_cpu_gpu_metrics(
 
         intervals_run += 1
 
-        if report_interval is not None and intervals_run % report_interval == 0:
-            print(
+        if log_interval is not None and intervals_run % log_interval == 0:
+            logger.info(
                 f"{intervals_run} intervals run in {pd.Timestamp.now() - start_time}."
             )
 
