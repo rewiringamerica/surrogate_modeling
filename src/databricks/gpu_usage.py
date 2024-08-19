@@ -38,7 +38,7 @@ ax.set_title("CPU, RAM, GPU and GPU Memory Utilization")
 lines = None
 
 for row in gpuutils.gather_cpu_gpu_metrics(
-    interval=pd.Timedelta(2, unit="seconds"), 
+    interval=pd.Timedelta(2, unit="seconds"),
     gather_for_time=pd.Timedelta(30, unit="minutes"),
     report_interval=10,
 ):
@@ -49,18 +49,28 @@ for row in gpuutils.gather_cpu_gpu_metrics(
             df_usage["timestamp"],
             df_usage[
                 [
-                    "cpu_utilization", "ram_utilization", 
-                    "gpu_utilization", "gpu_memory_utilization"
+                    "cpu_utilization",
+                    "ram_utilization",
+                    "gpu_utilization",
+                    "gpu_memory_utilization",
                 ]
             ],
-            label=["CPU", "RAM", "GPU", "GPU Memory"]
+            label=["CPU", "RAM", "GPU", "GPU Memory"],
         )
         ax.set_xlabel("Time")
         ax.set_ylabel("Utilization")
 
         ax.grid()
     else:
-        for line, col in zip(lines, ["cpu_utilization", "ram_utilization", "gpu_utilization", "gpu_memory_utilization"]):
+        for line, col in zip(
+            lines,
+            [
+                "cpu_utilization",
+                "ram_utilization",
+                "gpu_utilization",
+                "gpu_memory_utilization",
+            ],
+        ):
 
             line.set_xdata(df_usage["timestamp"])
             line.set_ydata(df_usage[col])
@@ -85,11 +95,13 @@ lines = ax.plot(
     df_usage["timestamp"],
     df_usage[
         [
-            "cpu_utilization", "ram_utilization", 
-            "gpu_utilization", "gpu_memory_utilization"
+            "cpu_utilization",
+            "ram_utilization",
+            "gpu_utilization",
+            "gpu_memory_utilization",
         ]
     ],
-    label=["CPU", "RAM", "GPU", "GPU Memory"]
+    label=["CPU", "RAM", "GPU", "GPU Memory"],
 )
 ax.set_xlabel("Time")
 ax.set_ylabel("Utilization")
@@ -100,5 +112,3 @@ ax.legend()
 ax.grid()
 
 # COMMAND ----------
-
-

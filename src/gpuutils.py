@@ -18,7 +18,7 @@ def gather_cpu_gpu_metrics(
 ):
     """Gather GPU performance at regular intervals."""
 
-    if not isinstance(interval, pd.Timedelta):        
+    if not isinstance(interval, pd.Timedelta):
         interval = pd.Timedelta(interval, unit="seconds")
 
     nvmlInit()
@@ -73,6 +73,8 @@ def gather_cpu_gpu_metrics(
         intervals_run += 1
 
         if report_interval is not None and intervals_run % report_interval == 0:
-            print(f"{intervals_run} intervals run in {pd.Timestamp.now() - start_time}.")
+            print(
+                f"{intervals_run} intervals run in {pd.Timestamp.now() - start_time}."
+            )
 
     nvmlShutdown()
