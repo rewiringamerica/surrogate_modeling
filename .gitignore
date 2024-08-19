@@ -84,5 +84,5 @@ target/
 exploratory/private
 
 # model files
-src/Yearly_model/test_model_with_preprocessing/
+deprecated/Yearly_model/test_model_with_preprocessing/
 
