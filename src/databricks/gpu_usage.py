@@ -18,6 +18,12 @@ import src.gpuutils as gpuutils
 
 # COMMAND ----------
 
+import logging
+
+logging.basicConfig(level=logging.INFO)
+
+# COMMAND ----------
+
 df_usage = pd.DataFrame()
 
 # COMMAND ----------
@@ -40,7 +46,7 @@ lines = None
 for row in gpuutils.gather_cpu_gpu_metrics(
     interval=pd.Timedelta(2, unit="seconds"),
     gather_for_time=pd.Timedelta(30, unit="minutes"),
-    report_interval=10,
+    log_interval=10,
 ):
     df_usage = pd.concat([df_usage, pd.DataFrame([row])])
 
@@ -110,5 +116,3 @@ ax.set_ylim(0.0, 100.0)
 
 ax.legend()
 ax.grid()
-
-# COMMAND ----------
