@@ -1,12 +1,2 @@
-numpy==1.26.3
-pandas==2.1.4
-pyarrow==13.0.0
-tensorflow==2.15.0.post1
-
-# Optional requirements:
-# fastparquet  # alternative parquet engine
-# gcsfs # Reading files from Google Cloud
-
-# Model visualization dependencies
-# graphviz
-# pydot
+mlflow==2.13.0
+gcsfs==2023.5.0
