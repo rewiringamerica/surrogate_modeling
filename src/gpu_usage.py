@@ -41,6 +41,13 @@ plt.ion()
 fig, ax = plt.subplots(figsize=(6, 4))
 ax.set_title("CPU, RAM, GPU and GPU Memory Utilization")
 
+label_map = {
+    "cpu_utilization": "CPU",
+    "ram_utilization": "RAM",
+    "gpu_utilization": "GPU",
+    "gpu_memory_utilization": "GPU Memory",
+}
+
 lines = None
 
 for row in gpuutils.gather_cpu_gpu_metrics(
@@ -50,18 +57,14 @@ for row in gpuutils.gather_cpu_gpu_metrics(
 ):
     df_usage = pd.concat([df_usage, pd.DataFrame([row])])
 
+    data_cols = [col for col in df_usage.columns if col != "timestamp"]
+    labels = [label_map[col] for col in data_cols]  
+
     if lines is None:
         lines = ax.plot(
             df_usage["timestamp"],
-            df_usage[
-                [
-                    "cpu_utilization",
-                    "ram_utilization",
-                    "gpu_utilization",
-                    "gpu_memory_utilization",
-                ]
-            ],
-            label=["CPU", "RAM", "GPU", "GPU Memory"],
+            df_usage[data_cols],
+            label=labels,
         )
         ax.set_xlabel("Time")
         ax.set_ylabel("Utilization")
@@ -70,14 +73,8 @@ for row in gpuutils.gather_cpu_gpu_metrics(
     else:
         for line, col in zip(
             lines,
-            [
-                "cpu_utilization",
-                "ram_utilization",
-                "gpu_utilization",
-                "gpu_memory_utilization",
-            ],
+            data_cols,
         ):
-
             line.set_xdata(df_usage["timestamp"])
             line.set_ydata(df_usage[col])
 
@@ -95,19 +92,12 @@ df_usage
 # COMMAND ----------
 
 fig, ax = plt.subplots(figsize=(6, 4))
-ax.set_title("CPU, RAM, GPU and GPU Memory Utilization")
-
+ax.set_title(", ".join(labels) + " Utilization")
+             
 lines = ax.plot(
     df_usage["timestamp"],
-    df_usage[
-        [
-            "cpu_utilization",
-            "ram_utilization",
-            "gpu_utilization",
-            "gpu_memory_utilization",
-        ]
-    ],
-    label=["CPU", "RAM", "GPU", "GPU Memory"],
+    df_usage[data_cols],
+    label=labels,
 )
 ax.set_xlabel("Time")
 ax.set_ylabel("Utilization")

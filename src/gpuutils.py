@@ -28,9 +28,13 @@ def gather_cpu_gpu_metrics(
         interval = pd.Timedelta(interval, unit="seconds")
 
     try:
-        nvmlInit()
+        has_gpu = True
 
-        handle = nvmlDeviceGetHandleByIndex(0)
+        try:
+            nvmlInit()
+            handle = nvmlDeviceGetHandleByIndex(0)
+        except NVMLError:
+            has_gpu = False
 
         start_time = pd.Timestamp.now()
 
@@ -48,23 +52,29 @@ def gather_cpu_gpu_metrics(
         while True:
             iteration_start_time = pd.Timestamp.now()
 
-            utilization = nvmlDeviceGetUtilizationRates(handle)
-
-            gpu_utilization = utilization.gpu
-            gpu_memory_utilization = utilization.memory
-
             cpu_utilization = psutil.cpu_percent()
             ram_utilization = psutil.virtual_memory().percent
 
-            yield (
-                {
-                    "timestamp": iteration_start_time,
-                    "cpu_utilization": cpu_utilization,
-                    "ram_utilization": ram_utilization,
-                    "gpu_utilization": gpu_utilization,
-                    "gpu_memory_utilization": gpu_memory_utilization,
-                }
-            )
+            utilization_dict = {
+                "timestamp": iteration_start_time,
+                "cpu_utilization": cpu_utilization,
+                "ram_utilization": ram_utilization,
+            }
+
+            if has_gpu:
+                utilization = nvmlDeviceGetUtilizationRates(handle)
+
+                gpu_utilization = utilization.gpu
+                gpu_memory_utilization = utilization.memory
+            
+                utilization_dict.update(
+                    {
+                        "gpu_utilization": gpu_utilization,
+                        "gpu_memory_utilization": gpu_memory_utilization,
+                    }
+                )
+
+            yield utilization_dict
 
             if end_time is not None:
                 if pd.Timestamp.now() >= end_time:
@@ -84,4 +94,5 @@ def gather_cpu_gpu_metrics(
                     f"{intervals_run} intervals run in {pd.Timestamp.now() - start_time}."
                 )
     finally:
-        nvmlShutdown()
+        if has_gpu:
+            nvmlShutdown()
