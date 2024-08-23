@@ -578,13 +578,12 @@ luminous_efficiency_mapping = make_map_type_from_dict(
 def transform_building_features() -> DataFrame:
     """
     Read and transform subset of building_metadata features for single family homes.
-    Adapted from _get_building_metadata() in datagen.py
     """
     building_metadata_transformed = (
         spark.read.table("ml.surrogate_model.building_metadata")
         # add upgrade id for baseline
         .withColumn("upgrade_id", F.lit(0.0))
-        # -- filter to occupied sf homes with modeled fuels -- #
+        # -- filter to occupied sf homes with modeled fuels and without shared HVAC systems -- #
         # sf homes only
         .where(
             F.col("geometry_building_type_acs").isin(
@@ -595,15 +594,10 @@ def transform_building_features() -> DataFrame:
         # and this filter is sufficienct to remove units that have other fuels for any applaince
         .where(F.col("heating_fuel") != "Other Fuel")
         .where(F.col("water_heater_fuel") != "Other Fuel")
-        # not interested in vacant homes
+        # filter out vacant homes
         .where(F.col("vacancy_status") == "Occupied")
-        # filter out rare edge case where efficiency and upgrade logic is super unclear
-        .where(
-            ~(
-                (F.col("hvac_cooling_efficiency") == "Heat Pump")
-                & (F.col("hvac_heating_efficiency") == "Shared Heating")
-            )
-        )
+        # filter out homes with shared HVAC systems
+        .where(F.col('hvac_has_shared_system') == 'None')
         # -- structure transformations -- #
         .withColumn("n_bedrooms", F.col("bedrooms").cast("int"))
         .withColumn("n_bathrooms", F.col("n_bedrooms") / 2 + 0.5)  # based on docs
@@ -637,10 +631,6 @@ def transform_building_features() -> DataFrame:
         .withColumn(
             "heating_appliance_type",
             F.when(
-                F.col("hvac_heating_efficiency") == "Shared Heating",
-                F.lit("Shared Heating"),
-            )
-            .when(
                 F.col("heating_appliance_type").contains("Wall Furnace"), "Wall Furnace"
             )
             .when(F.col("heating_appliance_type").contains("Furnace"), "Furnace")
@@ -650,10 +640,7 @@ def transform_building_features() -> DataFrame:
         )
         .withColumn(
             "heating_efficiency_nominal_percentage",
-            F.when(
-                F.col("hvac_heating_efficiency") == "Shared Heating",
-                extract_heating_efficiency(F.col("hvac_shared_efficiencies")),
-            ).otherwise(extract_heating_efficiency(F.col("hvac_heating_efficiency"))),
+            extract_heating_efficiency(F.col("hvac_heating_efficiency")),
         )
         .withColumn(
             "heating_setpoint_degrees_f",
