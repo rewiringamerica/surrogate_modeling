@@ -587,7 +587,7 @@ def transform_building_features() -> DataFrame:
         # sf homes only
         .where(
             F.col("geometry_building_type_acs").isin(
-                ["Single-Family Detached", "Single-Family Attached"]
+                ["Single-Family Detached", "Single-Family Attached", "Mobile Home"]
             )
         )
         # other fuels are not modeled in resstock,
