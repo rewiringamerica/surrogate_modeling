@@ -52,8 +52,8 @@ print(TEST_SIZE)
 # MAGIC from pyspark.sql import DataFrame, Column
 # MAGIC from pyspark.sql.window import Window
 # MAGIC
-# MAGIC from src.databricks.datagen import DataGenerator, load_data
-# MAGIC from src.databricks.surrogate_model import SurrogateModel
+# MAGIC from src.datagen import DataGenerator, load_data
+# MAGIC from src.surrogate_model import SurrogateModel
 
 # COMMAND ----------
 

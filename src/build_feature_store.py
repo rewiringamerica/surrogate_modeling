@@ -57,6 +57,19 @@ from pyspark.sql.window import Window
 
 # COMMAND ----------
 
+df = spark.table("real_estate.attom_resstock_features")
+df.select("geometry_building_number_units_sfa").distinct().display()
+df.select("geometry_building_horizontal_location_mf").distinct().display()
+df.select("geometry_building_level_mf").distinct().display()
+
+# COMMAND ----------
+
+df.groupby(
+    "geometry_building_horizontal_location_mf", "geometry_building_type_acs"
+).count().display()
+
+# COMMAND ----------
+
 # MAGIC %md ## Feature Transformation
 
 # COMMAND ----------
@@ -99,7 +112,7 @@ GAS_APPLIANCE_INDICATOR_COLS = [
     "has_gas_grill",
     "has_gas_lighting",
 ]
- 
+
 # mapping of window description to ufactor and shgc (solar heat gain coefficient) pulled from options.ts
 WINDOW_DESCRIPTION_TO_SPEC = spark.createDataFrame(
     [
@@ -409,21 +422,22 @@ def get_water_heater_capacity_ashrae(
             else:
                 return 50
 
+
 # Define the schema for the output struct
 wh_schema = StructType(
     [
-        StructField( # "Storage", "Heat Pump", or "Instantaneous"
+        StructField(  # "Storage", "Heat Pump", or "Instantaneous"
             "water_heater_type", StringType(), True
-        ),  
-        StructField( # Capacity of the tank in gallons
+        ),
+        StructField(  # Capacity of the tank in gallons
             "water_heater_tank_volume_gal", IntegerType(), True
-        ),  
-        StructField( # Efficiency Factor (EF)
+        ),
+        StructField(  # Efficiency Factor (EF)
             "water_heater_efficiency_ef", DoubleType(), True
         ),
         StructField(  # Recovery Efficiency Factor (EF)
             "water_heater_recovery_efficiency_ef", DoubleType(), True
-        ), 
+        ),
     ]
 )
 
@@ -546,6 +560,7 @@ def make_map_type_from_dict(mapping: Dict) -> Column:
     """
     return F.create_map([F.lit(x) for x in chain(*mapping.items())])
 
+
 yes_no_mapping = make_map_type_from_dict({"Yes": True, "No": False})
 
 low_medium_high_mapping = make_map_type_from_dict({"Low": 1, "Medium": 2, "High": 3})
@@ -587,7 +602,13 @@ def transform_building_features() -> DataFrame:
         # sf homes only
         .where(
             F.col("geometry_building_type_acs").isin(
-                ["Single-Family Detached", "Single-Family Attached", "Mobile Home"]
+                [
+                    "Single-Family Detached",
+                    "Single-Family Attached",
+                    "Mobile Home",
+                    "2 Unit",
+                    "3 or 4 Unit",
+                ]
             )
         )
         # other fuels are not modeled in resstock,
@@ -597,7 +618,7 @@ def transform_building_features() -> DataFrame:
         # filter out vacant homes
         .where(F.col("vacancy_status") == "Occupied")
         # filter out homes with shared HVAC systems
-        .where(F.col('hvac_has_shared_system') == 'None')
+        .where(F.col("hvac_has_shared_system") == "None")
         # -- structure transformations -- #
         .withColumn("n_bedrooms", F.col("bedrooms").cast("int"))
         .withColumn("n_bathrooms", F.col("n_bedrooms") / 2 + 0.5)  # based on docs
@@ -733,20 +754,35 @@ def transform_building_features() -> DataFrame:
         .withColumn(
             "insulation_roof_r_value", extract_r_value(F.col("insulation_roof"))
         )
-        #  -- attached home transformations -- #
+        #  -- building type transformations -- #
         .withColumn(
             "is_attached",
-            F.col("geometry_building_type_acs") == "Single-Family Attached",
+            ~F.col("geometry_building_type_acs").isin(["Single-Family Detached", "Mobile Home"])
+        )
+        .withColumn(
+            "is_mobile_home",
+            F.col("geometry_building_type_acs") == "Mobile Home",
+        )
+        .replace(
+            "None",
+            None,
+            subset=[
+                "geometry_building_number_units_sfa",
+                "geometry_building_number_units_mf",
+            ],
         )
         .withColumn(
             "n_building_units",
-            F.when(
-                F.col("geometry_building_number_units_sfa") == "None", F.lit(1)
-            ).otherwise(F.col("geometry_building_number_units_sfa")),
+            F.coalesce(
+                F.col("geometry_building_number_units_sfa"),
+                F.col("geometry_building_number_units_mf"),
+                F.lit(1),
+            ),
         )
         .withColumn(
             "is_middle_unit",
-            F.col("geometry_building_horizontal_location_sfa") == "Middle",
+            (F.col("geometry_building_horizontal_location_sfa") == "Middle") | (F.col("geometry_building_horizontal_location_mf") == "Middle"
+            ),
         )
         # -- other appliances -- #
         .withColumn("has_ceiling_fan", F.col("ceiling_fan") != "None")
@@ -867,10 +903,12 @@ def transform_building_features() -> DataFrame:
             "insulation_floor_r_value",
             "insulation_roof_r_value",
             "insulation_ceiling_r_value",
-            # attached home
+            # building type
             "is_attached",
+            "is_mobile_home",
             "n_building_units",
             "is_middle_unit",
+            F.col("geometry_building_level_mf").alias("unit_level_in_building"),
             # other appliances
             "has_ceiling_fan",
             "clothes_dryer_fuel",
