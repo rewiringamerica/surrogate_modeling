@@ -57,19 +57,6 @@ from pyspark.sql.window import Window
 
 # COMMAND ----------
 
-df = spark.table("real_estate.attom_resstock_features")
-df.select("geometry_building_number_units_sfa").distinct().display()
-df.select("geometry_building_horizontal_location_mf").distinct().display()
-df.select("geometry_building_level_mf").distinct().display()
-
-# COMMAND ----------
-
-df.groupby(
-    "geometry_building_horizontal_location_mf", "geometry_building_type_acs"
-).count().display()
-
-# COMMAND ----------
-
 # MAGIC %md ## Feature Transformation
 
 # COMMAND ----------
