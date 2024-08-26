@@ -98,10 +98,12 @@ class DataGenerator(tf.keras.utils.Sequence):
         "insulation_floor_r_value",
         "insulation_ceiling_r_value",
         "insulation_roof_r_value",
-        # attached home
+        # building type
         "is_attached",
+        "is_mobile_home",
         "n_building_units",
         "is_middle_unit",
+        "unit_level_in_building",
         # other appliances
         "has_ceiling_fan",
         "clothes_dryer_fuel",
