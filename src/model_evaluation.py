@@ -512,13 +512,11 @@ metrics_by_upgrade_type_model_pd["Type"] = pd.Categorical(
         "Methane Gas",
         "Propane",
         "Fuel Oil",
-        "Shared Heating",
         "No Heating",
         "None",
         "Heat Pump",
         "AC",
         "Room AC",
-        "Shared Cooling",
         "No Cooling",
         "Total",
     ],
@@ -590,7 +588,7 @@ pred_df_savings_pd = (
         {"No Heating": "None", "Electric Resistance": "Electricity"},
         subset="baseline_appliance",
     )
-    .where(~F.col("baseline_appliance").isin(["Heat Pump", "Shared Heating"]))
+    .where(F.col("baseline_appliance") != "Heat Pump")
     .withColumnsRenamed(
         {
             "baseline_appliance": "Baseline Fuel",
