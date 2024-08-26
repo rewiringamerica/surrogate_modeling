@@ -1337,6 +1337,12 @@ weather_data_transformed = transform_weather_features()
 
 # COMMAND ----------
 
+# MAGIC %sql 
+# MAGIC -- the following code will upsert. To overwrite, uncommnet this line to first drop the table
+# MAGIC -- DROP TABLE ml.surrogate_model.building_features
+
+# COMMAND ----------
+
 # DBTITLE 1,Create a FeatureEngineeringClient
 fe = FeatureEngineeringClient()
 
