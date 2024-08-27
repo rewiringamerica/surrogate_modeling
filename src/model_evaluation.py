@@ -251,6 +251,9 @@ baseline_appliance_features = [
     "water_heater_fuel",
     "clothes_dryer_fuel",
     "cooking_range_fuel",
+    # "is_mobile_home", 
+    # "is_attached", 
+    # "unit_level_in_building"
 ]
 pred_by_building_upgrade_fuel_model_with_metadata = test_set.select(
     *sample_pkeys, *baseline_appliance_features
@@ -406,6 +409,20 @@ def aggregate_metrics(pred_df_savings: DataFrame, groupby_cols: List[str]):
     ]
 
     return pred_df_savings.groupby(*groupby_cols).agg(*aggregation_expression)
+
+# COMMAND ----------
+
+# aggregate_metrics(
+#     pred_df_savings=pred_df_savings
+#     .withColumn('home_type', 
+#             F.when(F.col('is_mobile_home'), 'Mobile')
+#             .when((F.col("is_attached")) & (F.col("unit_level_in_building")=="None"), "SF Attatched")
+#             .when((F.col("is_attached")) & (F.col("unit_level_in_building")!="None"), "MF")
+#             .otherwise("SF"))
+#     .where(F.col("fuel") == "total")
+#     .where(F.col("model") == "Surrogate"),
+#     groupby_cols=["home_type", "upgrade_id"]
+# ).display()
 
 # COMMAND ----------
 

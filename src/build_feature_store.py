@@ -604,8 +604,11 @@ def transform_building_features() -> DataFrame:
         .where(F.col("water_heater_fuel") != "Other Fuel")
         # filter out vacant homes
         .where(F.col("vacancy_status") == "Occupied")
-        # filter out homes with shared HVAC systems
-        .where(F.col("hvac_has_shared_system") == "None")
+        # filter out homes with shared HVAC or water heating systems
+        .where(
+            (F.col("hvac_has_shared_system") == "None")
+            & (F.col("water_heater_in_unit") == "Yes")
+        )
         # -- structure transformations -- #
         .withColumn("n_bedrooms", F.col("bedrooms").cast("int"))
         .withColumn("n_bathrooms", F.col("n_bedrooms") / 2 + 0.5)  # based on docs
@@ -744,7 +747,9 @@ def transform_building_features() -> DataFrame:
         #  -- building type transformations -- #
         .withColumn(
             "is_attached",
-            ~F.col("geometry_building_type_acs").isin(["Single-Family Detached", "Mobile Home"])
+            ~F.col("geometry_building_type_acs").isin(
+                ["Single-Family Detached", "Mobile Home"]
+            ),
         )
         .withColumn(
             "is_mobile_home",
@@ -768,8 +773,8 @@ def transform_building_features() -> DataFrame:
         )
         .withColumn(
             "is_middle_unit",
-            (F.col("geometry_building_horizontal_location_sfa") == "Middle") | (F.col("geometry_building_horizontal_location_mf") == "Middle"
-            ),
+            (F.col("geometry_building_horizontal_location_sfa") == "Middle")
+            | (F.col("geometry_building_horizontal_location_mf") == "Middle"),
         )
         # -- other appliances -- #
         .withColumn("has_ceiling_fan", F.col("ceiling_fan") != "None")
@@ -1337,7 +1342,7 @@ weather_data_transformed = transform_weather_features()
 
 # COMMAND ----------
 
-# MAGIC %sql 
+# MAGIC %sql
 # MAGIC -- the following code will upsert. To overwrite, uncommnet this line to first drop the table
 # MAGIC -- DROP TABLE ml.surrogate_model.building_features
 
