@@ -307,14 +307,14 @@ class DataGenerator(tf.keras.utils.Sequence):
 
     def feature_vocab(self, feature_name: str) -> np.ndarray:
         """
-        Returns the vocabulary of the feature: unique list of possible features
+        Returns the vocabulary of the feature: unique list of possible values a categorical feature can take on
         (only used for categorical).
 
         Parameters:
             - feature_name: str, the name of the feature.
 
         Returns:
-        - np.ndarray: The unique list of possible categorical features
+        - np.ndarray: The unique list of possible values a categorical feature can take on
         """
         return self.training_df[feature_name].unique()
 
