@@ -363,7 +363,7 @@ class DataGenerator(tf.keras.utils.Sequence):
         - int: The number of batches.
         """
         return math.ceil(len(self.training_df) / self.batch_size)
-
+    
     def __getitem__(
         self, index: int
     ) -> Tuple[Dict[str, np.ndarray], Dict[str, np.ndarray]]:
@@ -382,9 +382,9 @@ class DataGenerator(tf.keras.utils.Sequence):
         batch_df = self.training_df.iloc[
             self.batch_size * index : self.batch_size * (index + 1)
         ]
-        # join batch targets and building features to weather features
+        # join batch targets and building features to weather file city index
         batch_df = batch_df.merge(
-            self.weather_features_df, on="weather_file_city", how="left"
+            self.weather_features_df[['weather_file_city', 'weather_file_city_index']], on="weather_file_city", how="left"
         )
         # convert from df to dict
         X = self.convert_dataframe_to_dict(feature_df=batch_df)

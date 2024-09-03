@@ -10,7 +10,7 @@ from pyspark.sql.types import ArrayType, DoubleType
 from tensorflow import keras
 from tensorflow.keras import layers, models
 
-from src.databricks.datagen import DataGenerator
+from src.datagen import DataGenerator
 
 
 class SurrogateModel:

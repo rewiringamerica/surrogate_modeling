@@ -43,6 +43,7 @@ from itertools import chain
 from typing import Dict
 
 import pyspark.sql.functions as F
+from pyspark.sql.functions import row_number
 from databricks.feature_engineering import FeatureEngineeringClient
 from pyspark.sql import DataFrame
 from pyspark.sql.column import Column
@@ -1268,20 +1269,17 @@ def transform_weather_features() -> DataFrame:
     weather_df = spark.read.table("ml.surrogate_model.weather_data_hourly")
     weather_pkeys = ["weather_file_city"]
 
-    weather_data_arrays = weather_df.groupBy(weather_pkeys).agg(
+    # Define a window specification, partitioning by `weather_file_city` and ordering by it
+    window_spec = Window.orderBy("weather_file_city")
+
+    weather_data_arrays = (
+        weather_df.groupBy(weather_pkeys).agg(
         *[
             F.collect_list(c).alias(c)
             for c in weather_df.columns
             if c not in weather_pkeys + ["datetime_formatted"]
         ]
-    )
-    return weather_data_arrays
-    weather_data_arrays = weather_df.groupBy(weather_pkeys).agg(
-        *[
-            F.collect_list(c).alias(c)
-            for c in weather_df.columns
-            if c not in weather_pkeys + ["datetime_formatted"]
-        ]
+    ).withColumn('weather_file_city_index', row_number().over(window_spec))
     )
     return weather_data_arrays
 
