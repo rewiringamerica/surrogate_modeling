@@ -133,14 +133,15 @@ class DataGenerator(tf.keras.utils.Sequence):
     ]
 
     weather_features = [
-        "temp_air",
-        # "relative_humidity",
-        "wind_speed",
-        # "wind_direction",
-        "ghi",
-        # "dni",
-        # "diffuse_horizontal_illum",
-        "weekend",
+        # "temp_air",
+        # # "relative_humidity",
+        # "wind_speed",
+        # # "wind_direction",
+        # "ghi",
+        # # "dni",
+        # # "diffuse_horizontal_illum",
+        # "weekend",
+        "weather_file_city_index"
     ]
 
     consumption_group_dict = {

@@ -128,6 +128,9 @@ class SurrogateModel:
             inputs=bmo_inputs_dict, outputs=bm, name="building_features_model"
         )
 
+        # Weather look up here
+        
+
         # Weather data model
         weather_inputs_dict = {
             weather_feature: layers.Input(
