@@ -133,15 +133,14 @@ class DataGenerator(tf.keras.utils.Sequence):
     ]
 
     weather_features = [
-        # "temp_air",
-        # # "relative_humidity",
-        # "wind_speed",
-        # # "wind_direction",
-        # "ghi",
-        # # "dni",
-        # # "diffuse_horizontal_illum",
-        # "weekend",
-        "weather_file_city_index"
+        "temp_air",
+        # "relative_humidity",
+        "wind_speed",
+        # "wind_direction",
+        "ghi",
+        # "dni",
+        # "diffuse_horizontal_illum",
+        "weekend",
     ]
 
     consumption_group_dict = {
@@ -195,6 +194,7 @@ class DataGenerator(tf.keras.utils.Sequence):
         )
 
         self.weather_features_df = self.init_weather_features()
+        self.weather_features_matrix = self.weather_features_df[self.weather_features].to_numpy()
         self.building_feature_vocab_dict = self.init_building_feature_vocab_dict()
 
         self.on_epoch_end()
@@ -350,11 +350,11 @@ class DataGenerator(tf.keras.utils.Sequence):
                     and shape [len(feature_df), 8760] for weather features}
         """
         X_train_bm = {col: np.array(feature_df[col]) for col in self.building_features}
-        X_train_weather = {
-            col: np.array(np.vstack(feature_df[col].values))
-            for col in self.weather_features
+        X_train_weather_lookup = {
+            col: np.array(feature_df[col].values)
+            for col in ['weather_file_city_index']
         }
-        return {**X_train_bm, **X_train_weather}
+        return {**X_train_bm, **X_train_weather_lookup}
 
     def __len__(self) -> int:
         """
@@ -385,7 +385,7 @@ class DataGenerator(tf.keras.utils.Sequence):
         ]
         # join batch targets and building features to weather file city index
         batch_df = batch_df.merge(
-            self.weather_features_df[['weather_file_city', 'weather_file_city_index']], on="weather_file_city", how="left"
+            self.weather_features_df[['weather_file_city']].reset_index().rename(columns={'index': 'weather_file_city_index'}), on="weather_file_city", how="left"
         )
         # convert from df to dict
         X = self.convert_dataframe_to_dict(feature_df=batch_df)

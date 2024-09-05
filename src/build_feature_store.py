@@ -1269,9 +1269,6 @@ def transform_weather_features() -> DataFrame:
     weather_df = spark.read.table("ml.surrogate_model.weather_data_hourly")
     weather_pkeys = ["weather_file_city"]
 
-    # Define a window specification, partitioning by `weather_file_city` and ordering by it
-    window_spec = Window.orderBy("weather_file_city")
-
     weather_data_arrays = (
         weather_df.groupBy(weather_pkeys).agg(
         *[
@@ -1279,7 +1276,7 @@ def transform_weather_features() -> DataFrame:
             for c in weather_df.columns
             if c not in weather_pkeys + ["datetime_formatted"]
         ]
-    ).withColumn('weather_file_city_index', row_number().over(window_spec))
+    )
     )
     return weather_data_arrays
 
