@@ -232,7 +232,7 @@ class DataGenerator(tf.keras.utils.Sequence):
     def init_training_set(
         self,
         train_data: DataFrame,
-        exclude_columns: List[str] = ["building_id", "upgrade_id", "weather_file_city"],
+        exclude_columns: List[str] = ["building_id", "upgrade_id"],
     ) -> TrainingSet:
         """
         Initializes the Databricks TrainingSet object contaning targets, building feautres and weather features.
@@ -240,7 +240,7 @@ class DataGenerator(tf.keras.utils.Sequence):
         Parameters:
             - train_data (DataFrame): the training data containing the targets and keys to join to the feature tables.
             - exclude_columns (list of str): columns to be excluded from the output training set.
-                                             Defaults to the join keys: ["building_id", "upgrade_id", "weather_file_city"].
+                                             Defaults to the join keys: ["building_id", "upgrade_id"].
 
         Returns:
         - TrainingSet
@@ -288,7 +288,7 @@ class DataGenerator(tf.keras.utils.Sequence):
 
         return weather_features_table.select(
             "weather_file_city", *self.weather_features
-        ).toPandas()
+        ).toPandas().reset_index().rename(columns={'index': 'weather_file_city_index'})
 
     def feature_dtype(self, feature_name: str) -> Any:
         """
@@ -385,7 +385,7 @@ class DataGenerator(tf.keras.utils.Sequence):
         ]
         # join batch targets and building features to weather file city index
         batch_df = batch_df.merge(
-            self.weather_features_df[['weather_file_city']].reset_index().rename(columns={'index': 'weather_file_city_index'}), on="weather_file_city", how="left"
+            self.weather_features_df[['weather_file_city', 'weather_file_city_index']], on="weather_file_city", how="left"
         )
         # convert from df to dict
         X = self.convert_dataframe_to_dict(feature_df=batch_df)

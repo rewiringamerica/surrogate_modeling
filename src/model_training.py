@@ -214,7 +214,7 @@ class SurrogateModelingWrapper(mlflow.pyfunc.PythonModel):
         X_train_bm = {col: np.array(feature_df[col]) for col in self.building_features}
         X_train_weather = {
             col: np.array(np.vstack(feature_df[col].values))
-            for col in self.weather_features
+            for col in ['weather_file_city_index']
         }
         return {**X_train_bm, **X_train_weather}
 
@@ -312,8 +312,13 @@ model_loaded = mlflow.pyfunc.load_model(model_uri=sm.get_model_uri(run_id=run_id
 test_gen = DataGenerator(train_data=test_data.limit(10))
 # load input data table as a Spark DataFrame
 input_data = test_gen.training_set.load_df().toPandas()
+# Merge to weather file city index 
+input_data_weather_file_city_index = (
+    input_data
+    .merge(test_gen.weather_features_df[['weather_file_city', 'weather_file_city_index']], on = 'weather_file_city', how = 'left')
+)
 # run prediction and output a N x M matrix of predictions where N is the number of rows in the input data table and M is the number of target columns
-print(model_loaded.predict(input_data))
+print(model_loaded.predict(input_data_weather_file_city_index))
 
 # COMMAND ----------
 
