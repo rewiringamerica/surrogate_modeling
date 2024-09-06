@@ -43,7 +43,6 @@ from itertools import chain
 from typing import Dict
 
 import pyspark.sql.functions as F
-from pyspark.sql.functions import row_number
 from databricks.feature_engineering import FeatureEngineeringClient
 from pyspark.sql import DataFrame
 from pyspark.sql.column import Column
