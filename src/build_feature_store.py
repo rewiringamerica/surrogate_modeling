@@ -7,7 +7,7 @@
 # MAGIC ### Process
 # MAGIC * Transform building metadata into features and subset to features of interest
 # MAGIC * Apply upgrade logic to building metadata features
-# MAGIC * Pivot weather data into wide vector format with pkey `weather_file_city` and a 8670-length timeseries vector for each weather feature column
+# MAGIC * Pivot weather data into wide vector format with pkey `weather_file_city` and a 8760-length timeseries vector for each weather feature column
 # MAGIC * Write building metadata features and weather features to feature store tables
 # MAGIC
 # MAGIC ### I/Os
@@ -19,7 +19,7 @@
 # MAGIC
 # MAGIC ##### Outputs:
 # MAGIC - `ml.surrogate_model.building_features`: Building metadata features indexed by (building_id)
-# MAGIC - `ml.surrogate_model.weather_features_hourly`: Weather features indexed by (weather_file_city) with a 8670-length timeseries vector for each weather feature column
+# MAGIC - `ml.surrogate_model.weather_features_hourly`: Weather features indexed by (weather_file_city) with a 8760-length timeseries vector for each weather feature column
 # MAGIC
 # MAGIC ### TODOs:
 # MAGIC
@@ -99,7 +99,7 @@ GAS_APPLIANCE_INDICATOR_COLS = [
     "has_gas_grill",
     "has_gas_lighting",
 ]
- 
+
 # mapping of window description to ufactor and shgc (solar heat gain coefficient) pulled from options.ts
 WINDOW_DESCRIPTION_TO_SPEC = spark.createDataFrame(
     [
@@ -409,21 +409,22 @@ def get_water_heater_capacity_ashrae(
             else:
                 return 50
 
+
 # Define the schema for the output struct
 wh_schema = StructType(
     [
-        StructField( # "Storage", "Heat Pump", or "Instantaneous"
+        StructField(  # "Storage", "Heat Pump", or "Instantaneous"
             "water_heater_type", StringType(), True
-        ),  
-        StructField( # Capacity of the tank in gallons
+        ),
+        StructField(  # Capacity of the tank in gallons
             "water_heater_tank_volume_gal", IntegerType(), True
-        ),  
-        StructField( # Efficiency Factor (EF)
+        ),
+        StructField(  # Efficiency Factor (EF)
             "water_heater_efficiency_ef", DoubleType(), True
         ),
         StructField(  # Recovery Efficiency Factor (EF)
             "water_heater_recovery_efficiency_ef", DoubleType(), True
-        ), 
+        ),
     ]
 )
 
@@ -546,6 +547,7 @@ def make_map_type_from_dict(mapping: Dict) -> Column:
     """
     return F.create_map([F.lit(x) for x in chain(*mapping.items())])
 
+
 yes_no_mapping = make_map_type_from_dict({"Yes": True, "No": False})
 
 low_medium_high_mapping = make_map_type_from_dict({"Low": 1, "Medium": 2, "High": 3})
@@ -578,31 +580,34 @@ luminous_efficiency_mapping = make_map_type_from_dict(
 def transform_building_features() -> DataFrame:
     """
     Read and transform subset of building_metadata features for single family homes.
-    Adapted from _get_building_metadata() in datagen.py
     """
     building_metadata_transformed = (
         spark.read.table("ml.surrogate_model.building_metadata")
         # add upgrade id for baseline
         .withColumn("upgrade_id", F.lit(0.0))
-        # -- filter to occupied sf homes with modeled fuels -- #
+        # -- filter to occupied sf homes with modeled fuels and without shared HVAC systems -- #
         # sf homes only
         .where(
             F.col("geometry_building_type_acs").isin(
-                ["Single-Family Detached", "Single-Family Attached"]
+                [
+                    "Single-Family Detached",
+                    "Single-Family Attached",
+                    "Mobile Home",
+                    "2 Unit",
+                    "3 or 4 Unit",
+                ]
             )
         )
         # other fuels are not modeled in resstock,
         # and this filter is sufficienct to remove units that have other fuels for any applaince
         .where(F.col("heating_fuel") != "Other Fuel")
         .where(F.col("water_heater_fuel") != "Other Fuel")
-        # not interested in vacant homes
+        # filter out vacant homes
         .where(F.col("vacancy_status") == "Occupied")
-        # filter out rare edge case where efficiency and upgrade logic is super unclear
+        # filter out homes with shared HVAC or water heating systems
         .where(
-            ~(
-                (F.col("hvac_cooling_efficiency") == "Heat Pump")
-                & (F.col("hvac_heating_efficiency") == "Shared Heating")
-            )
+            (F.col("hvac_has_shared_system") == "None")
+            & (F.col("water_heater_in_unit") == "Yes")
         )
         # -- structure transformations -- #
         .withColumn("n_bedrooms", F.col("bedrooms").cast("int"))
@@ -637,10 +642,6 @@ def transform_building_features() -> DataFrame:
         .withColumn(
             "heating_appliance_type",
             F.when(
-                F.col("hvac_heating_efficiency") == "Shared Heating",
-                F.lit("Shared Heating"),
-            )
-            .when(
                 F.col("heating_appliance_type").contains("Wall Furnace"), "Wall Furnace"
             )
             .when(F.col("heating_appliance_type").contains("Furnace"), "Furnace")
@@ -650,10 +651,7 @@ def transform_building_features() -> DataFrame:
         )
         .withColumn(
             "heating_efficiency_nominal_percentage",
-            F.when(
-                F.col("hvac_heating_efficiency") == "Shared Heating",
-                extract_heating_efficiency(F.col("hvac_shared_efficiencies")),
-            ).otherwise(extract_heating_efficiency(F.col("hvac_heating_efficiency"))),
+            extract_heating_efficiency(F.col("hvac_heating_efficiency")),
         )
         .withColumn(
             "heating_setpoint_degrees_f",
@@ -746,20 +744,40 @@ def transform_building_features() -> DataFrame:
         .withColumn(
             "insulation_roof_r_value", extract_r_value(F.col("insulation_roof"))
         )
-        #  -- attached home transformations -- #
+        #  -- building type transformations -- #
         .withColumn(
             "is_attached",
-            F.col("geometry_building_type_acs") == "Single-Family Attached",
+            ~F.col("geometry_building_type_acs").isin(
+                ["Single-Family Detached", "Mobile Home"]
+            ),
         )
         .withColumn(
+            "is_mobile_home",
+            F.col("geometry_building_type_acs") == "Mobile Home",
+        )
+        # prep for building unit transform so that coalesce will work in next step
+        # value for *_sfa will be "None" for non sfa buildings and values for *_mf will be null for non-mf
+        .replace(
+            "None",
+            None,
+            subset=[
+                "geometry_building_number_units_sfa",
+                "geometry_building_number_units_mf",
+            ],
+        )
+        # sf detatched and mobile homes will be Null for both and should get mapped to 1 unit
+        .withColumn(
             "n_building_units",
-            F.when(
-                F.col("geometry_building_number_units_sfa") == "None", F.lit(1)
-            ).otherwise(F.col("geometry_building_number_units_sfa")),
+            F.coalesce(
+                F.col("geometry_building_number_units_sfa"),
+                F.col("geometry_building_number_units_mf"),
+                F.lit(1),
+            ),
         )
         .withColumn(
             "is_middle_unit",
-            F.col("geometry_building_horizontal_location_sfa") == "Middle",
+            (F.col("geometry_building_horizontal_location_sfa") == "Middle")
+            | (F.col("geometry_building_horizontal_location_mf") == "Middle"),
         )
         # -- other appliances -- #
         .withColumn("has_ceiling_fan", F.col("ceiling_fan") != "None")
@@ -880,10 +898,12 @@ def transform_building_features() -> DataFrame:
             "insulation_floor_r_value",
             "insulation_roof_r_value",
             "insulation_ceiling_r_value",
-            # attached home
+            # building type
             "is_attached",
+            "is_mobile_home",
             "n_building_units",
             "is_middle_unit",
+            F.col("geometry_building_level_mf").alias("unit_level_in_building"),
             # other appliances
             "has_ceiling_fan",
             "clothes_dryer_fuel",
@@ -1260,7 +1280,7 @@ print(
 def transform_weather_features() -> DataFrame:
     """
     Read and transform weather timeseries table. Pivot from long format indexed by (weather_file_city, hour)
-    to a table indexed by weather_file_city with a 8670 len array timeseries for each weather feature column
+    to a table indexed by weather_file_city with a 8760 len array timeseries for each weather feature column
 
     Returns:
         DataFrame: wide(ish) format dataframe indexed by weather_file_city with timeseries array for each weather feature
@@ -1322,6 +1342,12 @@ weather_data_transformed = transform_weather_features()
 # COMMAND ----------
 
 # MAGIC %md ### Create/modify the feature stores
+
+# COMMAND ----------
+
+# MAGIC %sql
+# MAGIC -- the following code will upsert. To overwrite, uncommnet this line to first drop the table
+# MAGIC -- DROP TABLE ml.surrogate_model.building_features
 
 # COMMAND ----------
 
