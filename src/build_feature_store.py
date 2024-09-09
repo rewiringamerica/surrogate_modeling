@@ -42,6 +42,7 @@ from functools import reduce
 from itertools import chain
 from typing import Dict
 
+from pyspark.ml.feature import StringIndexer
 import pyspark.sql.functions as F
 from databricks.feature_engineering import FeatureEngineeringClient
 from pyspark.sql import DataFrame
@@ -574,6 +575,16 @@ luminous_efficiency_mapping = make_map_type_from_dict(
 
 # COMMAND ----------
 
+# DBTITLE 1,Create StringIndexer to creater a weather_file_city_index column
+# Create the StringIndexer
+indexer = StringIndexer(
+    inputCol="weather_file_city", 
+    outputCol="weather_file_city_index", 
+    stringOrderType="alphabetAsc"
+)
+
+# COMMAND ----------
+
 # DBTITLE 1,Building metadata feature transformation function
 def transform_building_features() -> DataFrame:
     """
@@ -909,6 +920,9 @@ def transform_building_features() -> DataFrame:
             "n_occupants",
             "vintage",
         )
+    )
+    building_metadata_transformed = (
+        indexer.fit(building_metadata_transformed).transform(building_metadata_transformed)
     )
     return building_metadata_transformed
 

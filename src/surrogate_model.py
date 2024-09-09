@@ -148,7 +148,7 @@ class SurrogateModel:
                     name=f'{feature_name}_embedding'
                 )(weather_file_city_index_input)
             )
-            for i, feature_name in zip(range(len(train_gen.weather_features)), train_gen.weather_features)
+            for i, feature_name in enumerate(train_gen.weather_features)
         ]
 
         # Concatenate the embeddings for all weather features along the feature axis
