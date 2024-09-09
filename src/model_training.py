@@ -14,7 +14,7 @@
 # MAGIC
 # MAGIC ##### Inputs: 
 # MAGIC - `ml.surrogate_model.building_metadata`: Building metadata features indexed by (building_id)
-# MAGIC - `ml.surrogate_model.weather_data_hourly`: Weather data indexed by (weather_file_city) with a 8670-length timeseries vector
+# MAGIC - `ml.surrogate_model.weather_data_hourly`: Weather data indexed by (weather_file_city) with a 8760-length timeseries vector
 # MAGIC - `ml.surrogate_model.building_upgrade_simulation_outputs_annual`: Annual building model simulation outputs indexed by (building_id, upgrade_id)
 # MAGIC
 # MAGIC ##### Outputs: 

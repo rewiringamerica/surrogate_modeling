@@ -7,7 +7,7 @@
 # MAGIC ### Process
 # MAGIC * Transform building metadata into features and subset to features of interest
 # MAGIC * Apply upgrade logic to building metadata features
-# MAGIC * Pivot weather data into wide vector format with pkey `weather_file_city` and a 8670-length timeseries vector for each weather feature column
+# MAGIC * Pivot weather data into wide vector format with pkey `weather_file_city` and a 8760-length timeseries vector for each weather feature column
 # MAGIC * Write building metadata features and weather features to feature store tables
 # MAGIC
 # MAGIC ### I/Os
@@ -19,7 +19,7 @@
 # MAGIC
 # MAGIC ##### Outputs:
 # MAGIC - `ml.surrogate_model.building_features`: Building metadata features indexed by (building_id)
-# MAGIC - `ml.surrogate_model.weather_features_hourly`: Weather features indexed by (weather_file_city) with a 8670-length timeseries vector for each weather feature column
+# MAGIC - `ml.surrogate_model.weather_features_hourly`: Weather features indexed by (weather_file_city) with a 8760-length timeseries vector for each weather feature column
 # MAGIC
 # MAGIC ### TODOs:
 # MAGIC
@@ -755,6 +755,8 @@ def transform_building_features() -> DataFrame:
             "is_mobile_home",
             F.col("geometry_building_type_acs") == "Mobile Home",
         )
+        # prep for building unit transform so that coalesce will work in next step
+        # value for *_sfa will be "None" for non sfa buildings and values for *_mf will be null for non-mf
         .replace(
             "None",
             None,
@@ -763,6 +765,7 @@ def transform_building_features() -> DataFrame:
                 "geometry_building_number_units_mf",
             ],
         )
+        # sf detatched and mobile homes will be Null for both and should get mapped to 1 unit
         .withColumn(
             "n_building_units",
             F.coalesce(
@@ -1277,7 +1280,7 @@ print(
 def transform_weather_features() -> DataFrame:
     """
     Read and transform weather timeseries table. Pivot from long format indexed by (weather_file_city, hour)
-    to a table indexed by weather_file_city with a 8670 len array timeseries for each weather feature column
+    to a table indexed by weather_file_city with a 8760 len array timeseries for each weather feature column
 
     Returns:
         DataFrame: wide(ish) format dataframe indexed by weather_file_city with timeseries array for each weather feature

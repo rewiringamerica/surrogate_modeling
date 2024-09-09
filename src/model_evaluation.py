@@ -412,20 +412,6 @@ def aggregate_metrics(pred_df_savings: DataFrame, groupby_cols: List[str]):
 
 # COMMAND ----------
 
-# aggregate_metrics(
-#     pred_df_savings=pred_df_savings
-#     .withColumn('home_type', 
-#             F.when(F.col('is_mobile_home'), 'Mobile')
-#             .when((F.col("is_attached")) & (F.col("unit_level_in_building")=="None"), "SF Attatched")
-#             .when((F.col("is_attached")) & (F.col("unit_level_in_building")!="None"), "MF")
-#             .otherwise("SF"))
-#     .where(F.col("fuel") == "total")
-#     .where(F.col("model") == "Surrogate"),
-#     groupby_cols=["home_type", "upgrade_id"]
-# ).display()
-
-# COMMAND ----------
-
 # DBTITLE 1,Calculate aggregated metrics with various groupings
 # all metrics are calculated on the total sum of fuels unless otherwise specified
 
