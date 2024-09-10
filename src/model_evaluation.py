@@ -52,8 +52,8 @@ print(TEST_SIZE)
 # MAGIC from pyspark.sql import DataFrame, Column
 # MAGIC from pyspark.sql.window import Window
 # MAGIC
-# MAGIC from src.databricks.datagen import DataGenerator, load_data
-# MAGIC from src.databricks.surrogate_model import SurrogateModel
+# MAGIC from src.datagen import DataGenerator, load_data
+# MAGIC from src.surrogate_model import SurrogateModel
 
 # COMMAND ----------
 
@@ -251,6 +251,9 @@ baseline_appliance_features = [
     "water_heater_fuel",
     "clothes_dryer_fuel",
     "cooking_range_fuel",
+    # "is_mobile_home", 
+    # "is_attached", 
+    # "unit_level_in_building"
 ]
 pred_by_building_upgrade_fuel_model_with_metadata = test_set.select(
     *sample_pkeys, *baseline_appliance_features
@@ -262,15 +265,11 @@ pred_by_building_upgrade_fuel_model_with_metadata = (
         "heating_fuel",
         F.when(F.col("ac_type") == "Heat Pump", F.lit("Heat Pump"))
         .when(F.col("heating_fuel") == "Electricity", F.lit("Electric Resistance"))
-        .when(
-            F.col("heating_appliance_type") == "Shared Heating", F.lit("Shared Heating")
-        )
         .when(F.col("heating_fuel") == "None", F.lit("No Heating"))
         .otherwise(F.col("heating_fuel")),
     ).withColumn(
         "ac_type",
-        F.when(F.col("ac_type") == "Shared Cooling", F.lit("Shared Cooling"))
-        .when(F.col("ac_type") == "None", F.lit("No Cooling"))
+        F.when(F.col("ac_type") == "None", F.lit("No Cooling"))
         .otherwise(F.col("ac_type")),
     )
 )
@@ -516,13 +515,11 @@ metrics_by_upgrade_type_model_pd["Type"] = pd.Categorical(
         "Methane Gas",
         "Propane",
         "Fuel Oil",
-        "Shared Heating",
         "No Heating",
         "None",
         "Heat Pump",
         "AC",
         "Room AC",
-        "Shared Cooling",
         "No Cooling",
         "Total",
     ],
@@ -594,7 +591,7 @@ pred_df_savings_pd = (
         {"No Heating": "None", "Electric Resistance": "Electricity"},
         subset="baseline_appliance",
     )
-    .where(~F.col("baseline_appliance").isin(["Heat Pump", "Shared Heating"]))
+    .where(F.col("baseline_appliance") != "Heat Pump")
     .withColumnsRenamed(
         {
             "baseline_appliance": "Baseline Fuel",
