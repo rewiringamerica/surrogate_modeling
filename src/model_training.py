@@ -131,13 +131,17 @@ class SurrogateModelingWrapper(mlflow.pyfunc.PythonModel):
         - targets (list of str) : List of consumption group targets
     """
 
-    def __init__(self, trained_model, building_features, weather_features, targets):
+    def load_context(self, context):
+        import tensorflow as tf
+        self.model = tf.keras.models.load_model(context.artifacts["tf_model"])
+
+    def __init__(self, building_features, weather_features, targets):
         """
         Parameters:
         - trained_model: The trained mlflow keras model
         See class attributes for details on other params.
         """
-        self.model = trained_model
+        # self.model = trained_model
         self.building_features = building_features
         self.weather_features = weather_features
         self.targets = targets
@@ -269,20 +273,44 @@ with mlflow.start_run() as run:
         callbacks=[keras.callbacks.EarlyStopping(monitor="val_loss", patience=15)],
     )
 
+    keras_model.save('model.keras')
+
     # wrap in custom class that defines pre and post processing steps to be applied when called at inference time
     pyfunc_model = SurrogateModelingWrapper(
-        trained_model=keras_model,
+        #trained_model=keras_model,
         building_features=train_gen.building_features,
         weather_features=train_gen.weather_features,
         targets=train_gen.targets,
     )
 
+    import cloudpickle
+
+    conda_env = {
+    "channels": ["defaults"],
+    "dependencies": [
+        f"python=3.11",
+        "pip",
+        {
+            "pip": [
+                f"mlflow=={mlflow.__version__}",
+                f"tensorflow=={tf.__version__}",
+                f"cloudpickle=={cloudpickle.__version__}",
+            ],
+        },
+    ],
+    "name": "tf_env",
+    }
+
+
     mlflow.pyfunc.log_model(
         python_model=pyfunc_model,
         artifact_path=sm.artifact_path,
-        code_paths=["surrogate_model.py"],
+        artifacts={"tf_model": 'model.keras'}, 
+        conda_env=conda_env
+        # code_paths=["surrogate_model.py"],
         # signature=signature
     )
+
     # skip registering model for now..
     # mlflow.register_model(f"runs:/{run_id}/{sm.artifact_path}", str(sm))
 
@@ -308,7 +336,11 @@ print(np.hstack([results[c] for c in train_gen.targets]))
 print(run_id)
 # mlflow.pyfunc.get_model_dependencies(model_uri=sm.get_model_uri(run_id=run_id))
 # Load the model using its registered name and version/stage from the MLflow model registry
+
+# To address: ValueError: The `{arg_name}` of this `Lambda` layer is a Python lambda. Deserializing it is unsafe. If you trust the source of the config artifact, you can override this error by passing `safe_mode=False` to `from_config()`, or calling `keras.config.enable_unsafe_deserialization().
+keras.config.enable_unsafe_deserialization()
 model_loaded = mlflow.pyfunc.load_model(model_uri=sm.get_model_uri(run_id=run_id))
+
 test_gen = DataGenerator(train_data=test_data.limit(10))
 # load input data table as a Spark DataFrame
 input_data = test_gen.training_set.load_df().toPandas()
@@ -320,3 +352,7 @@ print(model_loaded.predict(input_data))
 # DBTITLE 1,Pass Run ID to next notebook if running in job
 if not DEBUG:
     dbutils.jobs.taskValues.set(key="run_id", value=run_id)
+
+# COMMAND ----------
+
+

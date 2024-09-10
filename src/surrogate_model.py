@@ -8,8 +8,7 @@ from databricks.feature_engineering import FeatureEngineeringClient
 from pyspark.sql import DataFrame
 from pyspark.sql.types import ArrayType, DoubleType
 from tensorflow import keras
-from tensorflow.keras import layers, models
-
+from tensorflow.keras import layers, models, saving
 from src.datagen import DataGenerator
 
 
@@ -149,11 +148,35 @@ class SurrogateModel:
         wm = conv_batchnorm_relu(wm, filters=16, kernel_size=8, name = "first")
         wm = conv_batchnorm_relu(wm, filters=8, kernel_size=8, name = "second")
 
+        # # Custom layer for summing across the second dimension
+        # @keras.saving.register_keras_serializable()
+        # class SumLayer(tf.keras.layers.Layer):
+        #     def __init__(self, dtype, **kwargs):
+        #         super().__init__(**kwargs)
+        #         self.dtype = dtype
+
+        #     def call(self, inputs):
+        #         return tf.reduce_sum(inputs, axis=1)
+            
+        #     # def __init__(self, arg1, arg2, **kwargs):
+        #     #     super().__init__(**kwargs)
+        #     #     self.arg1 = arg1
+        #     #     self.arg2 = arg2
+
+        #     def get_config(self):
+        #         config = super().get_config().copy()
+        #         config.update({
+        #             "dtype": self.dtype,
+        #         })
+        #         return config
+            
+        # # Use the custom SumLayer to sum across the time dimension
+        # wm = SumLayer(dtype=layer_params["dtype"])(wm)
         # sum the time dimension
         wm = layers.Lambda(
             lambda x: tf.keras.backend.sum(x, axis=1),
             dtype=layer_params["dtype"],
-            # output_shape = (8,) -- needed for tf v2.16.1
+            output_shape = (8,) ##needed for tf v2.16.1
         )(wm)
 
         wmo = models.Model(
@@ -179,7 +202,8 @@ class SurrogateModel:
         )
 
         final_model.compile(
-            loss=masked_mae,
+            # loss=masked_mae,
+            loss="mse",
             optimizer="adam",
             # metrics=[mape],
         )
@@ -297,31 +321,31 @@ def mape(y_true, y_pred):
     return 100.0 * tf.keras.backend.mean(diff[y_true != 0], axis=-1)
 
 
-@keras.saving.register_keras_serializable(package="my_package", name="masked_mae")
-def masked_mae(y_true:tf.Tensor, y_pred:tf.Tensor) -> tf.Tensor:
-    """
-    Calculate the Mean Absolute Error (MAE) between true and predicted values, ignoring those where y_true=0.
+# @keras.saving.register_keras_serializable(package="my_package", name="masked_mae")
+# def masked_mae(y_true:tf.Tensor, y_pred:tf.Tensor) -> tf.Tensor:
+#     """
+#     Calculate the Mean Absolute Error (MAE) between true and predicted values, ignoring those where y_true=0.
 
-    This custom loss function is designed for scenarios where zero values in the true values are considered to be irrelevant and should not contribute to the loss calculation. It applies a mask to both the true and predicted values to exclude these zero entries before computing the MAE. The decorator allows this function to be serialized and logged alongside the keras model. 
+#     This custom loss function is designed for scenarios where zero values in the true values are considered to be irrelevant and should not contribute to the loss calculation. It applies a mask to both the true and predicted values to exclude these zero entries before computing the MAE. The decorator allows this function to be serialized and logged alongside the keras model. 
 
-    Args:
-    - y_true (tf.Tensor): The true values.
-    - y_pred (tf.Tensor): The predicted values.
+#     Args:
+#     - y_true (tf.Tensor): The true values.
+#     - y_pred (tf.Tensor): The predicted values.
 
-    Returns:
-    - tf.Tensor: The mean absolute error computed over non-zero true values. This is just a single scalar stored in a tensor. 
-    """
-    # Create a mask where targets are not zero
-    mask = tf.not_equal(y_true, 0)
+#     Returns:
+#     - tf.Tensor: The mean absolute error computed over non-zero true values. This is just a single scalar stored in a tensor. 
+#     """
+#     # Create a mask where targets are not zero
+#     mask = tf.not_equal(y_true, 0)
 
-    # Apply the mask to remove zero-target influence
-    y_true_masked = tf.boolean_mask(y_true, mask)
-    y_pred_masked = tf.boolean_mask(y_pred, mask)
+#     # Apply the mask to remove zero-target influence
+#     y_true_masked = tf.boolean_mask(y_true, mask)
+#     y_pred_masked = tf.boolean_mask(y_pred, mask)
 
-    # Check if the masked tensor is empty
-    if tf.size(y_true_masked) == 0:
-        # Return zero as the loss if no elements to process
-        return tf.constant(0.0)
-    else:
-        # Calculate the mean absolute error on the masked data
-        return tf.reduce_mean(tf.abs(y_true_masked - y_pred_masked))
+#     # Check if the masked tensor is empty
+#     if tf.size(y_true_masked) == 0:
+#         # Return zero as the loss if no elements to process
+#         return tf.constant(0.0)
+#     else:
+#         # Calculate the mean absolute error on the masked data
+#         return tf.reduce_mean(tf.abs(y_true_masked - y_pred_masked))
