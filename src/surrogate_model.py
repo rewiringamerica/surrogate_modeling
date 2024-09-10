@@ -110,7 +110,8 @@ class SurrogateModel:
                     output_mode="one_hot",
                     dtype=layer_params["dtype"],
                 )
-                encoder.adapt(train_gen.building_feature_vocab_dict[feature]["vocab"])
+                vocab_tensor = tf.convert_to_tensor(train_gen.building_feature_vocab_dict[feature]["vocab"])
+                encoder.adapt(vocab_tensor)
                 layer = encoder(layer)
             bmo_inputs.append(layer)
 

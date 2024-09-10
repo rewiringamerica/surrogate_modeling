@@ -210,7 +210,7 @@ class DataGenerator(tf.keras.utils.Sequence):
             FeatureLookup(
                 table_name=self.building_feature_table_name,
                 feature_names=self.building_features + ['weather_file_city_index'],
-                lookup_key=["building_id", "upgrade_id"],
+                lookup_key=["building_id", "upgrade_id", "weather_file_city"],
             ),
         ]
 

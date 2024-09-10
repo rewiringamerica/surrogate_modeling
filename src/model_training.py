@@ -103,19 +103,6 @@ val_gen = DataGenerator(train_data=val_data)
 
 # COMMAND ----------
 
-train_gen.training_df[train_gen.training_df['weather_file_city_index'].isna()]['weather_file_city'].unique()
-
-# COMMAND ----------
-
-len(train_gen.training_df[train_gen.training_df['weather_file_city_index'].isna()]['weather_file_city'].unique())
-
-# COMMAND ----------
-
-train_gen.training_df['weather_file_city_index'] = train_gen.training_df['weather_file_city_index'].astype(int)
-val_gen.training_df['weather_file_city_index'] = val_gen.training_df['weather_file_city_index'].astype(int)
-
-# COMMAND ----------
-
 # DBTITLE 1,Inspect data gen output for one batch
 if DEBUG:
     print("FEATURES:")
@@ -326,10 +313,14 @@ test_gen = DataGenerator(train_data=test_data.limit(10))
 # load input data table as a Spark DataFrame
 input_data = test_gen.training_set.load_df().toPandas()
 # run prediction and output a N x M matrix of predictions where N is the number of rows in the input data table and M is the number of target columns
-print(model_loaded.predict(input_data_weather_file_city_index))
+print(model_loaded.predict(input_data))
 
 # COMMAND ----------
 
 # DBTITLE 1,Pass Run ID to next notebook if running in job
 if not DEBUG:
     dbutils.jobs.taskValues.set(key="run_id", value=run_id)
+
+# COMMAND ----------
+
+

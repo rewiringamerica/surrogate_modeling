@@ -924,7 +924,7 @@ def transform_building_features() -> DataFrame:
     building_metadata_transformed = (
         indexer
         .fit(building_metadata_transformed).transform(building_metadata_transformed)
-        #.withColumn("weather_file_city_index", F.col("weather_file_city_index").cast("int"))
+        .withColumn("weather_file_city_index", F.col("weather_file_city_index").cast("int"))
     )
     return building_metadata_transformed
 
@@ -1348,15 +1348,11 @@ if spark.catalog.tableExists(table_name):
 else:
     fe.create_table(
         name=table_name,
-        primary_keys=["building_id", "upgrade_id"],
+        primary_keys=["building_id", "upgrade_id", "weather_file_city"],
         df=df,
         schema=df.schema,
         description="building metadata features",
     )
-
-# COMMAND ----------
-
-building_metadata_applicable_upgrades.select('weather_file_city', 'weather_file_city_index').distinct().display()
 
 # COMMAND ----------
 
