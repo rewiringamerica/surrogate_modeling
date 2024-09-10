@@ -103,6 +103,19 @@ val_gen = DataGenerator(train_data=val_data)
 
 # COMMAND ----------
 
+train_gen.training_df[train_gen.training_df['weather_file_city_index'].isna()]['weather_file_city'].unique()
+
+# COMMAND ----------
+
+len(train_gen.training_df[train_gen.training_df['weather_file_city_index'].isna()]['weather_file_city'].unique())
+
+# COMMAND ----------
+
+train_gen.training_df['weather_file_city_index'] = train_gen.training_df['weather_file_city_index'].astype(int)
+val_gen.training_df['weather_file_city_index'] = val_gen.training_df['weather_file_city_index'].astype(int)
+
+# COMMAND ----------
+
 # DBTITLE 1,Inspect data gen output for one batch
 if DEBUG:
     print("FEATURES:")
@@ -285,10 +298,6 @@ with mlflow.start_run() as run:
     )
     # skip registering model for now..
     # mlflow.register_model(f"runs:/{run_id}/{sm.artifact_path}", str(sm))
-
-# COMMAND ----------
-
-final_model.summary()
 
 # COMMAND ----------
 

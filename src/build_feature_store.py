@@ -922,7 +922,9 @@ def transform_building_features() -> DataFrame:
         )
     )
     building_metadata_transformed = (
-        indexer.fit(building_metadata_transformed).transform(building_metadata_transformed)
+        indexer
+        .fit(building_metadata_transformed).transform(building_metadata_transformed)
+        #.withColumn("weather_file_city_index", F.col("weather_file_city_index").cast("int"))
     )
     return building_metadata_transformed
 
@@ -1351,6 +1353,10 @@ else:
         schema=df.schema,
         description="building metadata features",
     )
+
+# COMMAND ----------
+
+building_metadata_applicable_upgrades.select('weather_file_city', 'weather_file_city_index').distinct().display()
 
 # COMMAND ----------
 
