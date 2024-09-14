@@ -577,16 +577,6 @@ luminous_efficiency_mapping = make_map_type_from_dict(
 
 # COMMAND ----------
 
-# DBTITLE 1,Create StringIndexer to creater a weather_file_city_index column
-# Create the StringIndexer
-indexer = StringIndexer(
-    inputCol="weather_file_city", 
-    outputCol="weather_file_city_index", 
-    stringOrderType="alphabetAsc"
-)
-
-# COMMAND ----------
-
 # DBTITLE 1,Building metadata feature transformation function
 def transform_building_features() -> DataFrame:
     """
@@ -940,11 +930,6 @@ def transform_building_features() -> DataFrame:
             "n_occupants",
             "vintage",
         )
-    )
-    building_metadata_transformed = (
-        indexer
-        .fit(building_metadata_transformed).transform(building_metadata_transformed)
-        .withColumn("weather_file_city_index", F.col("weather_file_city_index").cast("int"))
     )
     return building_metadata_transformed
 
@@ -1322,6 +1307,29 @@ weather_data_transformed = transform_weather_features()
 
 # COMMAND ----------
 
+# DBTITLE 1,Create and apply string indexer to generate weather file city index
+# Create the StringIndexer
+indexer = StringIndexer(
+    inputCol="weather_file_city", 
+    outputCol="weather_file_city_index", 
+    stringOrderType="alphabetAsc"
+)
+
+weather_file_city_indexer = indexer.fit(weather_data_transformed)
+
+weather_data_indexed = (
+    weather_file_city_indexer.transform(weather_data_transformed)
+    .withColumn('weather_file_city_index', F.col('weather_file_city_index').cast('int'))
+)
+
+building_metadata_applicable_upgrades_with_weather_file_city_index = (
+    weather_file_city_indexer.transform(building_metadata_applicable_upgrades)
+    .withColumn('weather_file_city_index', F.col('weather_file_city_index').cast('int'))
+
+)
+
+# COMMAND ----------
+
 # MAGIC %md ## Create Feature Store
 # MAGIC
 
@@ -1368,7 +1376,7 @@ fe = FeatureEngineeringClient()
 
 # DBTITLE 1,Write out building metadata feature store
 table_name = "ml.surrogate_model.building_features"
-df = building_metadata_applicable_upgrades
+df = building_metadata_applicable_upgrades_with_weather_file_city_index
 if spark.catalog.tableExists(table_name):
     fe.write_table(name=table_name, df=df, mode="merge")
 else:
@@ -1384,7 +1392,7 @@ else:
 
 # DBTITLE 1,Write out weather data feature store
 table_name = "ml.surrogate_model.weather_features_hourly"
-df = weather_data_transformed
+df = weather_data_indexed
 if spark.catalog.tableExists(table_name):
     fe.write_table(
         name=table_name,
@@ -1399,3 +1407,7 @@ else:
         schema=df.schema,
         description="hourly weather timeseries array features",
     )
+
+# COMMAND ----------
+
+

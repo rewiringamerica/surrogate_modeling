@@ -196,7 +196,7 @@ class DataGenerator(tf.keras.utils.Sequence):
         )
 
         self.weather_features_df = self.init_weather_features()
-        self.weather_features_matrix = self.weather_features_df.sort_values(by = 'weather_file_city')[self.weather_features].to_numpy()
+        self.weather_features_matrix = self.weather_features_df.sort_values(by = 'weather_file_city_index')[self.weather_features].to_numpy()
         self.building_feature_vocab_dict = self.init_building_feature_vocab_dict()
 
         self.on_epoch_end()
@@ -289,7 +289,7 @@ class DataGenerator(tf.keras.utils.Sequence):
         )
 
         return weather_features_table.select(
-            "weather_file_city", *self.weather_features
+            "weather_file_city_index", *self.weather_features
         ).toPandas()
 
     def feature_dtype(self, feature_name: str) -> Any:
