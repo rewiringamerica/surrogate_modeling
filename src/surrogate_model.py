@@ -134,26 +134,20 @@ class SurrogateModel:
         # Extract number of cities and hours from the weather data for dimensions of embedding layers
         num_cities = len(train_gen.weather_features_matrix)
         num_hours = len(train_gen.weather_features_matrix[0][0])
+        num_features = len(train_gen.weather_features_matrix[0])
 
         # Input for the weather_file_city_index (lookup key)
         weather_file_city_index_input = layers.Input(shape=(1,), dtype='int32', name='weather_file_city_index')
 
-        # Create embedding layers
-        weather_embeddings = [
-            layers.Reshape((num_hours, 1))(
-                layers.Embedding(
-                    input_dim=num_cities,
-                    output_dim=num_hours,
-                    weights=[np.array([city[i] for city in train_gen.weather_features_matrix])],
-                    trainable=False, 
-                    name=f'{feature_name}_embedding'
-                )(weather_file_city_index_input)
-            )
-            for i, feature_name in enumerate(train_gen.weather_features)
-        ]
-
-        # Concatenate the embeddings for all weather features along the feature axis
-        wm = layers.Concatenate(axis=-1, name="weather_concat_layer", dtype=layer_params["dtype"])(weather_embeddings)
+        # Create weather embedding layer
+        weather_embedding_layer = layers.Embedding(
+            input_dim=num_cities,
+            output_dim=num_hours * num_features,
+            weights=[train_gen.weather_features_matrix.reshape(num_cities, num_hours * num_features)],
+            trainable=False, name='weather_embedding')(weather_file_city_index_input)
+        
+        # Reshape weather embedding layer
+        wm = layers.Reshape((num_hours, num_features))(weather_embedding_layer)
 
         # Proceed with batch normalization and convolutions
         wm = layers.BatchNormalization(name="init_conv_batchnorm")(wm)
