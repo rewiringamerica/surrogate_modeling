@@ -211,12 +211,7 @@ class SurrogateModelingWrapper(mlflow.pyfunc.PythonModel):
         - The preprocessed feature data in format {feature_name (str) :
                 np.array of shape [N] for building model features and shape [N,8760] for weather features}
         """
-        X_train_bm = {col: np.array(feature_df[col]) for col in self.building_features}
-        X_train_weather = {
-            col: np.array(np.vstack(feature_df[col].values))
-            for col in ['weather_file_city_index']
-        }
-        return {**X_train_bm, **X_train_weather}
+        return {col: np.array(feature_df[col]) for col in self.building_features + ['weather_file_city_index']}
 
 # COMMAND ----------
 

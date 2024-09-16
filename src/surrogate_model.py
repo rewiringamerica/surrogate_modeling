@@ -132,9 +132,7 @@ class SurrogateModel:
         # Weather data model
 
         # Extract number of cities and hours from the weather data for dimensions of embedding layers
-        num_cities = len(train_gen.weather_features_matrix)
-        num_hours = len(train_gen.weather_features_matrix[0][0])
-        num_features = len(train_gen.weather_features_matrix[0])
+        num_cities, num_features, num_hours = train_gen.weather_features_matrix.shape
 
         # Input for the weather_file_city_index (lookup key)
         weather_file_city_index_input = layers.Input(shape=(1,), dtype='int32', name='weather_file_city_index')

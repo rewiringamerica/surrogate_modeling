@@ -353,12 +353,7 @@ class DataGenerator(tf.keras.utils.Sequence):
                     np.array of shape [len(feature_df)] for building model features
                     and shape [len(feature_df), 8760] for weather features}
         """
-        X_train_bm = {col: np.array(feature_df[col]) for col in self.building_features}
-        X_train_weather_lookup = {
-            col: np.array(feature_df[col].values)
-            for col in ['weather_file_city_index']
-        }
-        return {**X_train_bm, **X_train_weather_lookup}
+        return {col: np.array(feature_df[col]) for col in self.building_features + ['weather_file_city_index']}
 
     def __len__(self) -> int:
         """
