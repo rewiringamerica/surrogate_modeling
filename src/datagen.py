@@ -35,6 +35,7 @@ class DataGenerator(tf.keras.utils.Sequence):
     - training_set (TrainingSet): Databricks TrainingSet object contaning targets, building feautres and weather features.
     - training_df (pd.DataFrame): Dataframe of building features and targets of shape [N, P_b + M]. Does not include weather features.
     - weather_features_df (pd.DataFrame): Dataframe of building features of shape [N, P_w] where each column contains a 8760-length vector.
+    - weather_features_matrix (numpy.ndarray): A 3D matrix of shape (number of weather file cities, number of weather features, and number of hours in a year) representing weather data for various cities over the course of a year. 
     - building_feature_vocab_dict (dict): Dict of format {feature_name : {"dtype": feature_dtype, "vocab": np.array
                                         of all possible features if string feature else empty}}.
     - fe (databricks.feature_engineering.client.FeatureEngineeringClient: client for interacting with the
