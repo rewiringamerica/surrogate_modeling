@@ -148,7 +148,7 @@ class SurrogateModel:
         wm = layers.Reshape((num_hours, num_features))(weather_embedding_layer)
 
         # Proceed with batch normalization and convolutions
-        #wm = layers.BatchNormalization(name="init_conv_batchnorm")(wm)
+        wm = layers.BatchNormalization(name="init_conv_batchnorm")(wm)
         wm = conv_batchnorm_relu(wm, filters=16, kernel_size=8, name = "first")
         wm = conv_batchnorm_relu(wm, filters=8, kernel_size=8, name = "second")
 
