@@ -145,7 +145,10 @@ class SurrogateModel:
             trainable=False, name='weather_embedding')(weather_file_city_index_input)
         
         # Reshape weather embedding layer
-        wm = layers.Reshape((num_hours, num_features))(weather_embedding_layer)
+        wm = layers.Reshape((num_features, num_hours))(weather_embedding_layer)
+
+        # Apply transpose using a Lambda layer
+        wm = layers.Lambda(lambda x: tf.transpose(x, perm=[0,2,1]))(wm)
 
         # Proceed with batch normalization and convolutions
         wm = layers.BatchNormalization(name="init_conv_batchnorm")(wm)
