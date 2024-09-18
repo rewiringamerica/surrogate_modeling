@@ -42,6 +42,7 @@ from functools import reduce
 from itertools import chain
 from typing import Dict
 
+from pyspark.ml.feature import StringIndexer
 import pyspark.sql.functions as F
 from databricks.feature_engineering import FeatureEngineeringClient
 from pyspark.sql import DataFrame
@@ -1288,20 +1289,14 @@ def transform_weather_features() -> DataFrame:
     weather_df = spark.read.table("ml.surrogate_model.weather_data_hourly")
     weather_pkeys = ["weather_file_city"]
 
-    weather_data_arrays = weather_df.groupBy(weather_pkeys).agg(
+    weather_data_arrays = (
+        weather_df.groupBy(weather_pkeys).agg(
         *[
             F.collect_list(c).alias(c)
             for c in weather_df.columns
             if c not in weather_pkeys + ["datetime_formatted"]
         ]
     )
-    return weather_data_arrays
-    weather_data_arrays = weather_df.groupBy(weather_pkeys).agg(
-        *[
-            F.collect_list(c).alias(c)
-            for c in weather_df.columns
-            if c not in weather_pkeys + ["datetime_formatted"]
-        ]
     )
     return weather_data_arrays
 
@@ -1309,6 +1304,29 @@ def transform_weather_features() -> DataFrame:
 
 # DBTITLE 1,Transform weather features
 weather_data_transformed = transform_weather_features()
+
+# COMMAND ----------
+
+# DBTITLE 1,Create and apply string indexer to generate weather file city index
+# Create the StringIndexer
+indexer = StringIndexer(
+    inputCol="weather_file_city", 
+    outputCol="weather_file_city_index", 
+    stringOrderType="alphabetAsc"
+)
+
+weather_file_city_indexer = indexer.fit(weather_data_transformed)
+
+weather_data_indexed = (
+    weather_file_city_indexer.transform(weather_data_transformed)
+    .withColumn('weather_file_city_index', F.col('weather_file_city_index').cast('int'))
+)
+
+building_metadata_applicable_upgrades_with_weather_file_city_index = (
+    weather_file_city_indexer.transform(building_metadata_applicable_upgrades)
+    .withColumn('weather_file_city_index', F.col('weather_file_city_index').cast('int'))
+
+)
 
 # COMMAND ----------
 
@@ -1358,13 +1376,13 @@ fe = FeatureEngineeringClient()
 
 # DBTITLE 1,Write out building metadata feature store
 table_name = "ml.surrogate_model.building_features"
-df = building_metadata_applicable_upgrades
+df = building_metadata_applicable_upgrades_with_weather_file_city_index
 if spark.catalog.tableExists(table_name):
     fe.write_table(name=table_name, df=df, mode="merge")
 else:
     fe.create_table(
         name=table_name,
-        primary_keys=["building_id", "upgrade_id"],
+        primary_keys=["building_id", "upgrade_id", "weather_file_city"],
         df=df,
         schema=df.schema,
         description="building metadata features",
@@ -1374,7 +1392,7 @@ else:
 
 # DBTITLE 1,Write out weather data feature store
 table_name = "ml.surrogate_model.weather_features_hourly"
-df = weather_data_transformed
+df = weather_data_indexed
 if spark.catalog.tableExists(table_name):
     fe.write_table(
         name=table_name,
@@ -1389,3 +1407,7 @@ else:
         schema=df.schema,
         description="hourly weather timeseries array features",
     )
+
+# COMMAND ----------
+
+

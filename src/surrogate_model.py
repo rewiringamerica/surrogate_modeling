@@ -110,7 +110,8 @@ class SurrogateModel:
                     output_mode="one_hot",
                     dtype=layer_params["dtype"],
                 )
-                encoder.adapt(train_gen.building_feature_vocab_dict[feature]["vocab"])
+                vocab_tensor = tf.convert_to_tensor(train_gen.building_feature_vocab_dict[feature]["vocab"])
+                encoder.adapt(vocab_tensor)
                 layer = encoder(layer)
             bmo_inputs.append(layer)
 
@@ -129,22 +130,27 @@ class SurrogateModel:
         )
 
         # Weather data model
-        weather_inputs_dict = {
-            weather_feature: layers.Input(
-                name=weather_feature,
-                shape=(
-                    None,
-                    1,
-                ),
-                dtype=layer_params["dtype"],
-            )
-            for weather_feature in train_gen.weather_features
-        }
-        weather_inputs = list(weather_inputs_dict.values())
 
-        wm = layers.Concatenate(
-            axis=-1, name="weather_concat_layer", dtype=layer_params["dtype"]
-        )(weather_inputs)
+        # Extract number of cities and hours from the weather data for dimensions of embedding layers
+        num_cities, num_features, num_hours = train_gen.weather_features_matrix.shape
+
+        # Input for the weather_file_city_index (lookup key)
+        weather_file_city_index_input = layers.Input(shape=(1,), dtype='int32', name='weather_file_city_index')
+
+        # Create weather embedding layer
+        weather_embedding_layer = layers.Embedding(
+            input_dim=num_cities,
+            output_dim=num_hours * num_features,
+            weights=[train_gen.weather_features_matrix.reshape(num_cities, num_hours * num_features)],
+            trainable=False, name='weather_embedding')(weather_file_city_index_input)
+        
+        # Reshape weather embedding layer
+        wm = layers.Reshape((num_features, num_hours))(weather_embedding_layer)
+
+        # Apply transpose using a Lambda layer
+        wm = layers.Lambda(lambda x: tf.transpose(x, perm=[0,2,1]))(wm)
+
+        # Proceed with batch normalization and convolutions
         wm = layers.BatchNormalization(name="init_conv_batchnorm")(wm)
         wm = conv_batchnorm_relu(wm, filters=16, kernel_size=8, name = "first")
         wm = conv_batchnorm_relu(wm, filters=8, kernel_size=8, name = "second")
@@ -157,7 +163,7 @@ class SurrogateModel:
         )(wm)
 
         wmo = models.Model(
-            inputs=weather_inputs_dict, outputs=wm, name="weather_features_model"
+            inputs=weather_file_city_index_input, outputs=wm, name="weather_features_model"
         )
 
         # Combined model and separate towers for output groups
@@ -175,7 +181,7 @@ class SurrogateModel:
             final_outputs[consumption_group] = io
 
         final_model = models.Model(
-            inputs={**bmo.input, **wmo.input}, outputs=final_outputs
+            inputs={**bmo.input, 'weather_file_city_index': weather_file_city_index_input}, outputs=final_outputs
         )
 
         final_model.compile(

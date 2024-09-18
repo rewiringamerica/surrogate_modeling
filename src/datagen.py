@@ -35,6 +35,7 @@ class DataGenerator(tf.keras.utils.Sequence):
     - training_set (TrainingSet): Databricks TrainingSet object contaning targets, building feautres and weather features.
     - training_df (pd.DataFrame): Dataframe of building features and targets of shape [N, P_b + M]. Does not include weather features.
     - weather_features_df (pd.DataFrame): Dataframe of building features of shape [N, P_w] where each column contains a 8760-length vector.
+    - weather_features_matrix (numpy.ndarray): A 3D matrix of shape (number of weather file cities, number of weather features, and number of hours in a year) representing weather data for various cities over the course of a year. 
     - building_feature_vocab_dict (dict): Dict of format {feature_name : {"dtype": feature_dtype, "vocab": np.array
                                         of all possible features if string feature else empty}}.
     - fe (databricks.feature_engineering.client.FeatureEngineeringClient: client for interacting with the
@@ -196,6 +197,9 @@ class DataGenerator(tf.keras.utils.Sequence):
         )
 
         self.weather_features_df = self.init_weather_features()
+        self.weather_features_matrix = np.stack(
+            self.weather_features_df.sort_values(by = 'weather_file_city_index')[self.weather_features].apply(lambda row: np.stack(row), axis=1).values
+            )
         self.building_feature_vocab_dict = self.init_building_feature_vocab_dict()
 
         self.on_epoch_end()
@@ -210,8 +214,8 @@ class DataGenerator(tf.keras.utils.Sequence):
         return [
             FeatureLookup(
                 table_name=self.building_feature_table_name,
-                feature_names=self.building_features,
-                lookup_key=["building_id", "upgrade_id"],
+                feature_names=self.building_features + ['weather_file_city_index'],
+                lookup_key=["building_id", "upgrade_id", "weather_file_city"],
             ),
         ]
 
@@ -288,7 +292,7 @@ class DataGenerator(tf.keras.utils.Sequence):
         )
 
         return weather_features_table.select(
-            "weather_file_city", *self.weather_features
+            "weather_file_city_index", *self.weather_features
         ).toPandas()
 
     def feature_dtype(self, feature_name: str) -> Any:
@@ -350,12 +354,7 @@ class DataGenerator(tf.keras.utils.Sequence):
                     np.array of shape [len(feature_df)] for building model features
                     and shape [len(feature_df), 8760] for weather features}
         """
-        X_train_bm = {col: np.array(feature_df[col]) for col in self.building_features}
-        X_train_weather = {
-            col: np.array(np.vstack(feature_df[col].values))
-            for col in self.weather_features
-        }
-        return {**X_train_bm, **X_train_weather}
+        return {col: np.array(feature_df[col]) for col in self.building_features + ['weather_file_city_index']}
 
     def __len__(self) -> int:
         """
@@ -365,7 +364,7 @@ class DataGenerator(tf.keras.utils.Sequence):
         - int: The number of batches.
         """
         return math.ceil(len(self.training_df) / self.batch_size)
-
+    
     def __getitem__(
         self, index: int
     ) -> Tuple[Dict[str, np.ndarray], Dict[str, np.ndarray]]:
@@ -384,10 +383,6 @@ class DataGenerator(tf.keras.utils.Sequence):
         batch_df = self.training_df.iloc[
             self.batch_size * index : self.batch_size * (index + 1)
         ]
-        # join batch targets and building features to weather features
-        batch_df = batch_df.merge(
-            self.weather_features_df, on="weather_file_city", how="left"
-        )
         # convert from df to dict
         X = self.convert_dataframe_to_dict(feature_df=batch_df)
         y = {col: np.array(batch_df[col]) for col in self.targets}
