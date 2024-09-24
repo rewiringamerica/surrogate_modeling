@@ -131,8 +131,8 @@ WINDOW_DESCRIPTION_TO_SPEC = spark.createDataFrame(
 
 # COMMAND ----------
 
-
 # DBTITLE 1,Helper functions
+
 @udf(returnType=DoubleType())
 def extract_percentage(value: str) -> float:
     """Extract percentage from string and divide by 100
@@ -542,8 +542,8 @@ def add_water_heater_features(df):
 
 # COMMAND ----------
 
-
 # DBTITLE 1,Mapping Expressions
+
 # Make various mapping expressions
 def make_map_type_from_dict(mapping: Dict) -> Column:
     """
@@ -581,8 +581,8 @@ luminous_efficiency_mapping = make_map_type_from_dict(
 
 # COMMAND ----------
 
-
 # DBTITLE 1,Building metadata feature transformation function
+
 def transform_building_features() -> DataFrame:
     """
     Read and transform subset of building_metadata features for single family homes.
@@ -1284,8 +1284,8 @@ print(
 
 # COMMAND ----------
 
-
 # DBTITLE 1,Weather feature transformation function
+
 def transform_weather_features() -> DataFrame:
     """
     Read and transform weather timeseries table. Pivot from long format indexed by (weather_file_city, hour)
@@ -1415,5 +1415,3 @@ else:
         schema=df.schema,
         description="hourly weather timeseries array features",
     )
-
-# COMMAND ----------

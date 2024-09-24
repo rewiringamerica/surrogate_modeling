@@ -281,8 +281,8 @@ pred_by_building_upgrade_fuel_model_with_metadata = (
 
 # COMMAND ----------
 
-
 # DBTITLE 1,Calculate error metrics
+
 # define function to calculate absolute prediction error
 @udf("double")
 def APE(abs_error: float, actual: float, eps=1e-3):
@@ -359,8 +359,8 @@ pred_df_savings = (
 
 # COMMAND ----------
 
-
 # DBTITLE 1,Define function for aggregating over metrics
+
 # define function to calculate absolute prediction error
 def wMAPE(abs_error_col: Column, actual_col: Column) -> Column:
     """

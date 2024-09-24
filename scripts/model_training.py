@@ -73,8 +73,8 @@ os.environ["TF_FORCE_GPU_ALLOW_GROWTH"] = "true"
 # MAGIC from tensorflow import keras
 # MAGIC from typing import Tuple, Dict
 # MAGIC
-# MAGIC from datagen import DataGenerator, load_data
-# MAGIC from surrogate_model import SurrogateModel
+# MAGIC from src.datagen import DataGenerator, load_data
+# MAGIC from src.surrogate_model import SurrogateModel
 # MAGIC
 # MAGIC # list available GPUs
 # MAGIC tf.config.list_physical_devices("GPU")
@@ -116,8 +116,8 @@ if DEBUG:
 
 # COMMAND ----------
 
-
 # DBTITLE 1,Define wrapper class for processing at inference time
+
 class SurrogateModelingWrapper(mlflow.pyfunc.PythonModel):
     """
     A wrapper class that applies the pre/post processing to the data at inference time,
@@ -279,7 +279,7 @@ with mlflow.start_run() as run:
     mlflow.pyfunc.log_model(
         python_model=pyfunc_model,
         artifact_path=sm.artifact_path,
-        code_paths=["surrogate_model.py"],
+        code_paths=["../src/surrogate_model.py"],
         # signature=signature
     )
     # skip registering model for now..
@@ -321,3 +321,5 @@ if not DEBUG:
     dbutils.jobs.taskValues.set(key="run_id", value=run_id)
 
 # COMMAND ----------
+
+

@@ -70,8 +70,8 @@ HOURLY_WEATHER_CSVS_PATH = RESSTOCK_PATH + "weather/state=*/*_TMY3.csv"
 
 # COMMAND ----------
 
-
 # DBTITLE 1,Functions for loading and preprocessing raw data
+
 def transform_pkeys(df):
     return (
         df.withColumn("building_id", F.col("bldg_id").cast("int"))
