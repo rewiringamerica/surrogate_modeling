@@ -14,10 +14,10 @@ import tensorflow as tf
 
 # Constants
 EER_CONVERSION = {
-    'EER': 1.0,
-    'SEER': .875,
-    'SEER2': 0.91,  # ~=SEER*1.04 (https://www.marathonhvac.com/seer-to-seer2/)
-    'EER2': 1.04
+    "EER": 1.0,
+    "SEER": 0.875,
+    "SEER2": 0.91,  # ~=SEER*1.04 (https://www.marathonhvac.com/seer-to-seer2/)
+    "EER2": 1.04,
 }
 BTU_PER_WH = 3.413
 HOURS_IN_A_YEAR = 8760  # 24*365, assuming a non-leap year
@@ -26,13 +26,13 @@ HOURS_IN_A_YEAR = 8760  # 24*365, assuming a non-leap year
 # '1': (13, 30) means units in climate zones 1A (1-anything) with R13 insulation
 # or less are upgraded to R30
 BASIC_ENCLOSURE_INSULATION = {
-    '1': (13, 30),
-    '2': (30, 49),
-    '3': (30, 49),
-    '4': (38, 60),
-    '5': (38, 60),
-    '6': (38, 60),
-    '7': (38, 60),
+    "1": (13, 30),
+    "2": (30, 49),
+    "3": (30, 49),
+    "4": (38, 60),
+    "5": (38, 60),
+    "6": (38, 60),
+    "7": (38, 60),
 }
 
 # Path to ResStock dataset
@@ -40,9 +40,9 @@ BASIC_ENCLOSURE_INSULATION = {
 # to access gs:// paths without explicitly providing credentials, run
 # `gcloud auth application-default login` (only required once)
 RESSTOCK_PATH = os.environ.get(
-    'SURROGATE_MODELING_RESSTOCK_PATH',
-    'gs://the-cube/data/raw/nrel/end_use_load_profiles/2022/'
-    'resstock_tmy3_release_1/'
+    "SURROGATE_MODELING_RESSTOCK_PATH",
+    "gs://the-cube/data/raw/nrel/end_use_load_profiles/2022/"
+    "resstock_tmy3_release_1/",
 )
 
 # Filesystem cache layer path.
@@ -50,14 +50,20 @@ RESSTOCK_PATH = os.environ.get(
 # datagen, or (better) use `python-dotenv`
 # Cache path is only evaluated once and thus cannot be changed after import
 # without reloading (`importlib.reload(datagen)`)
-CACHE_PATH = os.environ.get('SURROGATE_MODELING_CACHE_PATH', '.cache')
+CACHE_PATH = os.environ.get("SURROGATE_MODELING_CACHE_PATH", ".cache")
 if not os.path.isdir(CACHE_PATH):
     logging.warning(f"Cache path {CACHE_PATH} does not exist. Attempting to create..")
     os.mkdir(CACHE_PATH)
     logging.warning("Success")
 
-BUILDING_METADATA_PARQUET_PATH = RESSTOCK_PATH + 'metadata_and_annual_results/national/parquet/baseline_metadata_only.parquet'
-HOURLY_OUTPUT_PATH = RESSTOCK_PATH + 'timeseries_individual_buildings/by_state/upgrade={upgrade_id}/state={state}/{building_id}-{upgrade_id}.parquet'
+BUILDING_METADATA_PARQUET_PATH = (
+    RESSTOCK_PATH
+    + "metadata_and_annual_results/national/parquet/baseline_metadata_only.parquet"
+)
+HOURLY_OUTPUT_PATH = (
+    RESSTOCK_PATH
+    + "timeseries_individual_buildings/by_state/upgrade={upgrade_id}/state={state}/{building_id}-{upgrade_id}.parquet"
+)
 # pattern of weather files path within RESSTOCK_PATH
 # examples:
 # `resstock_tmy3_release_1`, `resstock_tmy3_release_1.1`:
@@ -66,79 +72,79 @@ HOURLY_OUTPUT_PATH = RESSTOCK_PATH + 'timeseries_individual_buildings/by_state/u
 #       `.../weather/state={state}/{geoid}_f018.csv`
 # `comstock_amy2018_release_2`:
 #       `.../weather/amy2018/{geoid}_2018.csv`
-WEATHER_FILES_PATH = RESSTOCK_PATH + 'weather/state={state}/{geoid}_TMY3.csv'
+WEATHER_FILES_PATH = RESSTOCK_PATH + "weather/state={state}/{geoid}_TMY3.csv"
 STATE_2NUM_CODE_TO_2LETTER = {  # Note: keys are intentionally strings to simplify parsing county geoid
-    '01': 'AL',
-    '02': 'AK',
-    '04': 'AZ',
-    '05': 'AR',
-    '06': 'CA',
-    '08': 'CO',
-    '09': 'CT',
-    '10': 'DE',
-    '11': 'DC',
-    '12': 'FL',
-    '13': 'GA',
-    '16': 'ID',
-    '17': 'IL',
-    '18': 'IN',
-    '19': 'IA',
-    '20': 'KS',
-    '21': 'KY',
-    '22': 'LA',
-    '23': 'ME',
-    '24': 'MD',
-    '25': 'MA',
-    '26': 'MI',
-    '27': 'MN',
-    '28': 'MS',
-    '29': 'MO',
-    '30': 'MT',
-    '31': 'NE',
-    '32': 'NV',
-    '33': 'NH',
-    '34': 'NJ',
-    '35': 'NM',
-    '36': 'NY',
-    '37': 'NC',
-    '38': 'ND',
-    '39': 'OH',
-    '40': 'OK',
-    '41': 'OR',
-    '42': 'PA',
-    '44': 'RI',
-    '45': 'SC',
-    '46': 'SD',
-    '47': 'TN',
-    '48': 'TX',
-    '49': 'UT',
-    '50': 'VT',
-    '51': 'VA',
-    '53': 'WA',
-    '54': 'WV',
-    '55': 'WI',
-    '56': 'WY',
+    "01": "AL",
+    "02": "AK",
+    "04": "AZ",
+    "05": "AR",
+    "06": "CA",
+    "08": "CO",
+    "09": "CT",
+    "10": "DE",
+    "11": "DC",
+    "12": "FL",
+    "13": "GA",
+    "16": "ID",
+    "17": "IL",
+    "18": "IN",
+    "19": "IA",
+    "20": "KS",
+    "21": "KY",
+    "22": "LA",
+    "23": "ME",
+    "24": "MD",
+    "25": "MA",
+    "26": "MI",
+    "27": "MN",
+    "28": "MS",
+    "29": "MO",
+    "30": "MT",
+    "31": "NE",
+    "32": "NV",
+    "33": "NH",
+    "34": "NJ",
+    "35": "NM",
+    "36": "NY",
+    "37": "NC",
+    "38": "ND",
+    "39": "OH",
+    "40": "OK",
+    "41": "OR",
+    "42": "PA",
+    "44": "RI",
+    "45": "SC",
+    "46": "SD",
+    "47": "TN",
+    "48": "TX",
+    "49": "UT",
+    "50": "VT",
+    "51": "VA",
+    "53": "WA",
+    "54": "WV",
+    "55": "WI",
+    "56": "WY",
 }
 ORIENTATION_DEGREES = {
-    'North': 0,
-    'Northeast': 45,
-    'East': 90,
-    'Southeast': 135,
-    'South': 180,
-    'Southwest': 225,
-    'West': 270,
-    'Northwest': 315,
+    "North": 0,
+    "Northeast": 45,
+    "East": 90,
+    "Southeast": 135,
+    "South": 180,
+    "Southwest": 225,
+    "West": 270,
+    "Northwest": 315,
 }
 # https://en.wikipedia.org/wiki/Luminous_efficacy
 LUMINOUS_EFFICACY = {
-    '100% CFL': 0.12,  # 8-15%
-    '100% Incandescent': 0.02,  # 1.2-2.6%
-    '100% LED': 0.15  # 11-30%
+    "100% CFL": 0.12,  # 8-15%
+    "100% Incandescent": 0.02,  # 1.2-2.6%
+    "100% LED": 0.15,  # 11-30%
 }
 
 
 def extract_percentage(value):
-    """ Extract percentage of space given
+    """Extract percentage of space given
 
     >>> extract_percentage('100% Conditioned')
     1.0
@@ -149,31 +155,30 @@ def extract_percentage(value):
     >>> extract_percentage('10% Leakage, Uninsulated')
     0.1
     """
-    if value == 'None':
+    if value == "None":
         return 0.0
-    match = re.match(r'^<?(\d+)%', value)
+    match = re.match(r"^<?(\d+)%", value)
     try:
         return (match and float(match.group(1))) / 100.0
     except ValueError:
-        raise ValueError(
-            f'Cannot extract cooled space percentage from: f{value}')
+        raise ValueError(f"Cannot extract cooled space percentage from: f{value}")
 
 
 def vintage2age2000(vintage: str) -> int:
-    """ vintage of the building in the year of 2000
+    """vintage of the building in the year of 2000
     >>> vintage2age2000('<1940')
     70
     >>> vintage2age2000('1960s')
     40
     """
     vintage = vintage.strip()
-    if vintage.startswith('<'):  # '<1940' bin in resstock
+    if vintage.startswith("<"):  # '<1940' bin in resstock
         return 70
     return 2000 - int(vintage[:4])
 
 
 def extract_r_value(construction_type: str) -> int:
-    """ Extract R-value from an unformatted string
+    """Extract R-value from an unformatted string
 
     Assumption: all baseline walls have similar R-value of ~4.
     The returned value is for additional insulation only. Examples:
@@ -195,19 +200,19 @@ def extract_r_value(construction_type: str) -> int:
     19
     """
     lower = construction_type.lower()
-    if lower == 'none' or 'uninsulated' in lower:
+    if lower == "none" or "uninsulated" in lower:
         return 0
     m = re.search(r"\br-?(\d+)\b", construction_type, flags=re.I)
     if not m:
         raise ValueError(
-            f'Cannot determine R-value of the construction type: '
-            f'{construction_type}'
+            f"Cannot determine R-value of the construction type: "
+            f"{construction_type}"
         )
     return int(m.group(1))
 
 
 def extract_cooling_efficiency(cooling_efficiency: str) -> float:
-    """ Convert a ResStock cooling efficiency into EER value
+    """Convert a ResStock cooling efficiency into EER value
 
     Cooling in ResStock building metadata comes either in
     `in.hvac_cooling_efficiency` (for normal ACs), or in
@@ -229,13 +234,13 @@ def extract_cooling_efficiency(cooling_efficiency: str) -> float:
     ac_type = cooling_efficiency.split(", ", 1)[0].strip()
     efficiency = cooling_efficiency.rsplit(", ", 1)[-1].strip()
     # two special cases
-    if ac_type == 'None':
+    if ac_type == "None":
         # insanely high efficiency to mimic a nonexistent cooling
         return 999
-    if ac_type == 'Heat Pump' and efficiency == ac_type:
+    if ac_type == "Heat Pump" and efficiency == ac_type:
         # a default value as we don't have anything else.
         # Min SEER for heat pumps is 13 by law, 13*.875 ~= 11.4
-        return 13 * EER_CONVERSION['SEER']
+        return 13 * EER_CONVERSION["SEER"]
 
     m = re.search(r"\b(SEER2|SEER|EER)\s+(\d+\.?\d*)", cooling_efficiency)
     if m:
@@ -243,9 +248,7 @@ def extract_cooling_efficiency(cooling_efficiency: str) -> float:
             return EER_CONVERSION[m.group(1)] * float(m.group(2))
         except (ValueError, KeyError):
             pass
-    raise ValueError(
-        f'Cannot extract cooling efficiency from: {cooling_efficiency}'
-    )
+    raise ValueError(f"Cannot extract cooling efficiency from: {cooling_efficiency}")
 
 
 def extract_heating_efficiency(heating_efficiency: str) -> int:
@@ -272,20 +275,20 @@ def extract_heating_efficiency(heating_efficiency: str) -> int:
         number = float(efficiency.strip().split(" ", 1)[0].strip("%"))
     except ValueError:
         raise ValueError(
-            f'Cannot extract heating efficiency from: {heating_efficiency}'
+            f"Cannot extract heating efficiency from: {heating_efficiency}"
         )
 
     if efficiency.endswith("AFUE"):
         return int(number)
     if efficiency.endswith("HSPF"):
-        return int(number*100/BTU_PER_WH)
+        return int(number * 100 / BTU_PER_WH)
 
     # 'Other' - e.g. wood stove - is not supported
     return int(number)
 
 
 def temp70(temperature_string):
-    """ Convert string Fahrenheit degrees to float F - 70 deg
+    """Convert string Fahrenheit degrees to float F - 70 deg
 
     >>> temp70('70F')
     0.0
@@ -293,8 +296,7 @@ def temp70(temperature_string):
     -10.0
     """
     if not re.match(r"\d+F", temperature_string):
-        raise ValueError(
-            f"Unrecognized temperature format: {temperature_string}")
+        raise ValueError(f"Unrecognized temperature format: {temperature_string}")
     return float(temperature_string.strip().lower()[:-1]) - 70
 
 
@@ -318,7 +320,7 @@ def extract_window_area(value):
 
 @file_cache(CACHE_PATH)
 def _get_building_metadata():
-    """ Helper function to retrieve and clean building metadata
+    """Helper function to retrieve and clean building metadata
 
     >>> metadata_df = _get_building_metadata()
     >>> isinstance(metadata_df, pd.DataFrame)
@@ -332,128 +334,151 @@ def _get_building_metadata():
         BUILDING_METADATA_PARQUET_PATH,
         columns=[
             # features used directly or transformed
-            'in.sqft', 'in.bedrooms', 'in.geometry_stories',
-            'in.vintage', 'in.geometry_building_number_units_mf',
-            'in.geometry_building_number_units_sfa',
+            "in.sqft",
+            "in.bedrooms",
+            "in.geometry_stories",
+            "in.vintage",
+            "in.geometry_building_number_units_mf",
+            "in.geometry_building_number_units_sfa",
             # features to be used to join with other datasets
-            'in.county',  # weather files
+            "in.county",  # weather files
             # features that will be replaced with "reasonable assumptions"
-            'in.occupants',
+            "in.occupants",
             # it's either ceiling or roof; only ~15K (<3%) have none
-            'in.insulation_ceiling', 'in.insulation_roof',
-            'in.insulation_floor',
-            'in.insulation_slab', 'in.insulation_rim_joist',
-            'in.infiltration',
-
-            'in.hvac_cooling_efficiency', 'in.hvac_heating_efficiency',
-            'in.ducts', 'in.hvac_has_ducts',
+            "in.insulation_ceiling",
+            "in.insulation_roof",
+            "in.insulation_floor",
+            "in.insulation_slab",
+            "in.insulation_rim_joist",
+            "in.infiltration",
+            "in.hvac_cooling_efficiency",
+            "in.hvac_heating_efficiency",
+            "in.ducts",
+            "in.hvac_has_ducts",
             # to be filtered on
-            'in.has_pv', 'in.geometry_building_type_acs',
+            "in.has_pv",
+            "in.geometry_building_type_acs",
             # ashrae_iecc_climate_zone_2004_2_a_split splits 2A states into
             # two groups, otherwise it's the same
-            'in.ashrae_iecc_climate_zone_2004',
-            'in.cooling_setpoint', 'in.heating_setpoint',
-            'in.hvac_cooling_partial_space_conditioning',
-
+            "in.ashrae_iecc_climate_zone_2004",
+            "in.cooling_setpoint",
+            "in.heating_setpoint",
+            "in.hvac_cooling_partial_space_conditioning",
             # Cooling/Heating offset must be important, too hard to get from
             # user. Also, it will have to be transformed into a timeseries var
             # 'in.cooling_setpoint_offset_magnitude',
             # 'in.cooling_setpoint_offset_period'
             # 'in.heating_setpoint_offset_magnitude',
             # 'in.heating_setpoint_offset_period'
-
-            'in.orientation', 'in.window_areas',
-
+            "in.orientation",
+            "in.window_areas",
             # String/CATEGORICAL
-            'in.geometry_foundation_type', 'in.windows',
-            'in.lighting', 'in.insulation_wall', 'in.geometry_attic_type',
+            "in.geometry_foundation_type",
+            "in.windows",
+            "in.lighting",
+            "in.insulation_wall",
+            "in.geometry_attic_type",
         ],
     ).rename(
         # to make this code interchangeable with the spark tables
         columns={
-            'in.sqft': 'sqft',
-            'in.bedrooms': 'bedrooms',
-            'in.geometry_stories': 'stories',
-            'in.occupants': 'occupants',
-            'in.county': 'county',
-            'in.ashrae_iecc_climate_zone_2004': 'ashrae_iecc_climate_zone',
-            'in.geometry_foundation_type': 'foundation_type',
-            'in.windows': 'windows_type',
-            'in.insulation_wall': 'wall_type',
-            'in.geometry_attic_type': 'attic_type',
+            "in.sqft": "sqft",
+            "in.bedrooms": "bedrooms",
+            "in.geometry_stories": "stories",
+            "in.occupants": "occupants",
+            "in.county": "county",
+            "in.ashrae_iecc_climate_zone_2004": "ashrae_iecc_climate_zone",
+            "in.geometry_foundation_type": "foundation_type",
+            "in.windows": "windows_type",
+            "in.insulation_wall": "wall_type",
+            "in.geometry_attic_type": "attic_type",
         }
     )
-    pq.index.rename('building_id', inplace=True)
+    pq.index.rename("building_id", inplace=True)
 
     pq = pq[
-        (pq['in.geometry_building_type_acs'] == 'Single-Family Detached')
-        & (pq['occupants'] != '10+')
+        (pq["in.geometry_building_type_acs"] == "Single-Family Detached")
+        & (pq["occupants"] != "10+")
         # sanity check; it's 1 for all single family detached
         # & (pq[
         #     ['in.geometry_building_number_units_mf',
         #      'in.geometry_building_number_units_sfa']
         # ].replace('None', 1).max(axis=1).fillna(1).astype(int) == 1)
         # another sanity check; ResStock single family detached have 3 max
-        & (pq['stories'] <= '5')
+        & (pq["stories"] <= "5")
         # for some reason there are 14K 8194sqf single family detached homes
-        & (pq['sqft'] < 8000)
+        & (pq["sqft"] < 8000)
         # Not sure how to model these yet
-        & ~pq['in.hvac_heating_efficiency'].isin(['Other', 'Shared Heating'])
-        & (pq['in.hvac_cooling_efficiency'] != 'Shared Cooling')
+        & ~pq["in.hvac_heating_efficiency"].isin(["Other", "Shared Heating"])
+        & (pq["in.hvac_cooling_efficiency"] != "Shared Cooling")
         # we'll get to solar, eventually - just not yet
-        & (pq['in.has_pv'] == 'No')
+        & (pq["in.has_pv"] == "No")
     ]
     pq = pq.assign(
-        age2000=pq['in.vintage'].map(vintage2age2000),
-        bedrooms=pq['bedrooms'].astype(int),
-        stories=pq['stories'].astype(int),
-        occupants=pq['occupants'].astype(int),
-        infiltration_ach50=pq['in.infiltration'].str.split().str[0].astype(int),
-        insulation_wall=pq['wall_type'].map(extract_r_value),
-        wall_material=pq['wall_type'].str.split(',').str[0],
-        insulation_slab=pq['in.insulation_slab'].map(extract_r_value),
-        insulation_rim_joist=pq['in.insulation_rim_joist'].map(extract_r_value),
-        insulation_floor=pq['in.insulation_floor'].map(extract_r_value),
+        age2000=pq["in.vintage"].map(vintage2age2000),
+        bedrooms=pq["bedrooms"].astype(int),
+        stories=pq["stories"].astype(int),
+        occupants=pq["occupants"].astype(int),
+        infiltration_ach50=pq["in.infiltration"].str.split().str[0].astype(int),
+        insulation_wall=pq["wall_type"].map(extract_r_value),
+        wall_material=pq["wall_type"].str.split(",").str[0],
+        insulation_slab=pq["in.insulation_slab"].map(extract_r_value),
+        insulation_rim_joist=pq["in.insulation_rim_joist"].map(extract_r_value),
+        insulation_floor=pq["in.insulation_floor"].map(extract_r_value),
         # In older versions of Pandas it should be `applymap`.
-        insulation_ceiling_roof=pq[
-            ['in.insulation_ceiling', 'in.insulation_roof']
-        ].map(extract_r_value).max(axis=1),
+        insulation_ceiling_roof=pq[["in.insulation_ceiling", "in.insulation_roof"]]
+        .map(extract_r_value)
+        .max(axis=1),
         cooling_efficiency_eer=pq[
-            ['in.hvac_cooling_efficiency', 'in.hvac_heating_efficiency']
-        ].agg(', '.join, axis=1).map(extract_cooling_efficiency),
-        heating_efficiency=pq['in.hvac_heating_efficiency'].map(
-            extract_heating_efficiency),
-        ac_type=pq['in.hvac_cooling_efficiency'].str.split(',').str[0],
+            ["in.hvac_cooling_efficiency", "in.hvac_heating_efficiency"]
+        ]
+        .agg(", ".join, axis=1)
+        .map(extract_cooling_efficiency),
+        heating_efficiency=pq["in.hvac_heating_efficiency"].map(
+            extract_heating_efficiency
+        ),
+        ac_type=pq["in.hvac_cooling_efficiency"].str.split(",").str[0],
         has_ac=(
-            pq['in.hvac_cooling_efficiency'].str.split(',').str[0] != 'None'
+            pq["in.hvac_cooling_efficiency"].str.split(",").str[0] != "None"
         ).astype(int),
-        has_ducts=pq['in.hvac_has_ducts'].map({'Yes': 1, 'No': 0}),
-        ducts_insulation=pq['in.ducts'].map(extract_r_value),
-        ducts_leakage=pq['in.ducts'].map(extract_percentage),
-        cooling_setpoint=pq['in.cooling_setpoint'].map(temp70),
-        heating_setpoint=pq['in.heating_setpoint'].map(temp70),
-        cooled_space_share=pq['in.hvac_cooling_partial_space_conditioning'].map(extract_percentage),
-        orientation=pq['in.orientation'].map(ORIENTATION_DEGREES),
+        has_ducts=pq["in.hvac_has_ducts"].map({"Yes": 1, "No": 0}),
+        ducts_insulation=pq["in.ducts"].map(extract_r_value),
+        ducts_leakage=pq["in.ducts"].map(extract_percentage),
+        cooling_setpoint=pq["in.cooling_setpoint"].map(temp70),
+        heating_setpoint=pq["in.heating_setpoint"].map(temp70),
+        cooled_space_share=pq["in.hvac_cooling_partial_space_conditioning"].map(
+            extract_percentage
+        ),
+        orientation=pq["in.orientation"].map(ORIENTATION_DEGREES),
         # door area in ResStock is always the same (20), and thus, useless
-        window_area=pq['in.window_areas'].map(extract_window_area),
-        lighting_efficiency=pq['in.lighting'].map(LUMINOUS_EFFICACY),
+        window_area=pq["in.window_areas"].map(extract_window_area),
+        lighting_efficiency=pq["in.lighting"].map(LUMINOUS_EFFICACY),
     ).drop(
         columns=[
-            'in.vintage', 'in.geometry_building_type_acs',
-            'in.has_pv', 'in.geometry_building_number_units_mf',
-            'in.geometry_building_number_units_sfa',
-            'in.infiltration',
-            'in.insulation_slab', 'in.insulation_rim_joist',
-            'in.insulation_floor',
-            'in.insulation_ceiling', 'in.insulation_roof',
-            'in.hvac_cooling_efficiency', 'in.hvac_heating_efficiency',
-            'in.hvac_has_ducts', 'in.ducts',
-            'in.cooling_setpoint', 'in.heating_setpoint',
-            'in.hvac_cooling_partial_space_conditioning',
-            'in.orientation', 'in.window_areas', 'in.lighting',
+            "in.vintage",
+            "in.geometry_building_type_acs",
+            "in.has_pv",
+            "in.geometry_building_number_units_mf",
+            "in.geometry_building_number_units_sfa",
+            "in.infiltration",
+            "in.insulation_slab",
+            "in.insulation_rim_joist",
+            "in.insulation_floor",
+            "in.insulation_ceiling",
+            "in.insulation_roof",
+            "in.hvac_cooling_efficiency",
+            "in.hvac_heating_efficiency",
+            "in.hvac_has_ducts",
+            "in.ducts",
+            "in.cooling_setpoint",
+            "in.heating_setpoint",
+            "in.hvac_cooling_partial_space_conditioning",
+            "in.orientation",
+            "in.window_areas",
+            "in.lighting",
         ]
     )
-    pq['backup_heating_efficiency'] = pq['heating_efficiency']
+    pq["backup_heating_efficiency"] = pq["heating_efficiency"]
 
     # extra safety check to eliminate duplicate buildings
     # (not that there are any)
@@ -461,8 +486,8 @@ def _get_building_metadata():
 
 
 class BuildingMetadataBuilder:
-    """ A class to cache building metadata in memory.
-    """
+    """A class to cache building metadata in memory."""
+
     _building_metadata = None
 
     def __init__(self):
@@ -491,7 +516,7 @@ class BuildingMetadataBuilder:
 
 
 def get_state_code_from_county_geoid(county_geoid):
-    """ Extract two-letter state code from a county geoid in ResStock format
+    """Extract two-letter state code from a county geoid in ResStock format
 
     >>> get_state_code_from_county_geoid('G0200130')
     'AK'
@@ -523,7 +548,7 @@ def get_state_code_from_county_geoid(county_geoid):
 
 @file_cache(CACHE_PATH)
 def get_hourly_outputs(building_id, upgrade_id, county_geoid):
-    """ Get hourly timeseries for a combination of building id and an upgrade id
+    """Get hourly timeseries for a combination of building id and an upgrade id
 
     The overall flow reproduces the Spark table created by
     https://github.com/rewiringamerica/pep/blob/dev/src/process/process_eulp_timeseries.py
@@ -561,102 +586,134 @@ def get_hourly_outputs(building_id, upgrade_id, county_geoid):
     """
     state = get_state_code_from_county_geoid(county_geoid)
     pqpath = HOURLY_OUTPUT_PATH.format(
-        building_id=building_id, upgrade_id=upgrade_id, state=state)
+        building_id=building_id, upgrade_id=upgrade_id, state=state
+    )
     # To save RAM, it'd be good to cache the columns of the dataset and read
     # only the needed ones. So, we need a stateful function - this is a dirty
     # hack to implement this.
-    if not hasattr(get_hourly_outputs, 'columns'):
-        pqtemp = pd.read_parquet(pqpath).sort_values('timestamp')
+    if not hasattr(get_hourly_outputs, "columns"):
+        pqtemp = pd.read_parquet(pqpath).sort_values("timestamp")
         # skipping intensity and emissions columns
         columns = [
-            column for column in pqtemp.columns
-            if column == 'timestamp' or column.endswith('.energy_consumption')
+            column
+            for column in pqtemp.columns
+            if column == "timestamp" or column.endswith(".energy_consumption")
         ]
-        setattr(get_hourly_outputs, 'columns', columns)
+        setattr(get_hourly_outputs, "columns", columns)
         column_renames = {
-            col: col[4:-19] for col in columns
-            if col.startswith('out.') and col.endswith('.energy_consumption')
+            col: col[4:-19]
+            for col in columns
+            if col.startswith("out.") and col.endswith(".energy_consumption")
         }
-        setattr(get_hourly_outputs, 'column_renames', column_renames)
-        timestep = pqtemp.iloc[1]['timestamp'] - pqtemp.iloc[0]['timestamp']
-        setattr(get_hourly_outputs, 'timestep', timestep)
+        setattr(get_hourly_outputs, "column_renames", column_renames)
+        timestep = pqtemp.iloc[1]["timestamp"] - pqtemp.iloc[0]["timestamp"]
+        setattr(get_hourly_outputs, "timestep", timestep)
         fuel_types = set()
         appliance_types = set()
         appliance_groups = {}
         for column in column_renames.values():
-            if '.' not in column:  # timestamp
+            if "." not in column:  # timestamp
                 continue
-            fuel_type, appliance = column.split('.', 1)
+            fuel_type, appliance = column.split(".", 1)
             fuel_types.add(fuel_type)
             appliance_types.add(appliance)
             appliance_groups.setdefault(appliance, [])
             appliance_groups[appliance].append(column)
 
-        fuel_types -= {'site_energy'}
+        fuel_types -= {"site_energy"}
         # maybe remove appliances not covered by upgrades: grill, pool_pump,
         # and hot tub heater
-        appliance_types -= {'total', 'net', 'grill', 'pool_pump', }
-        setattr(get_hourly_outputs, 'fuel_types', fuel_types)
-        setattr(get_hourly_outputs, 'appliance_types', appliance_types)
-        setattr(get_hourly_outputs, 'appliance_groups', appliance_groups)
+        appliance_types -= {
+            "total",
+            "net",
+            "grill",
+            "pool_pump",
+        }
+        setattr(get_hourly_outputs, "fuel_types", fuel_types)
+        setattr(get_hourly_outputs, "appliance_types", appliance_types)
+        setattr(get_hourly_outputs, "appliance_groups", appliance_groups)
         # appliance mapping to aggregate by purpose
         # TODO: make groups separable by fuel, e.g. backup heating should be
         # a separate group. Heating/cooling fans should be separate, too.
-        setattr(get_hourly_outputs, 'consumption_groups', {
-            'heating': [
-                'heating', 'heating_fans_pumps', 'heating_hp_bkup',
-                # fireplace in ResStock are only gas powered (i.e., not wood)
-                # and should be counted towards heating
-                'fireplace',
-            ],
-            'cooling': ['cooling', 'cooling_fans_pumps', ],
-            'lighting': [
-                'lighting', 'lighting_interior', 'lighting_exterior',
-                'lighting_garage',
-            ],
-            'other': [
-                'hot_tub_heater', 'hot_tub_pump', 'hot_water', 'well_pump',
-                'dishwasher',  'freezer', 'refrigerator', 'grill', 'range_oven',
-                # should fans and mech vent  be considered cooling/heating?
-                'ceiling_fan', 'mech_vent',
-                'pool_heater', 'pool_pump',
-                'clothes_dryer', 'clothes_washer',
-                'plug_loads',  # pv,  # not considering solar (pv) yet
-            ]
-        })
+        setattr(
+            get_hourly_outputs,
+            "consumption_groups",
+            {
+                "heating": [
+                    "heating",
+                    "heating_fans_pumps",
+                    "heating_hp_bkup",
+                    # fireplace in ResStock are only gas powered (i.e., not wood)
+                    # and should be counted towards heating
+                    "fireplace",
+                ],
+                "cooling": [
+                    "cooling",
+                    "cooling_fans_pumps",
+                ],
+                "lighting": [
+                    "lighting",
+                    "lighting_interior",
+                    "lighting_exterior",
+                    "lighting_garage",
+                ],
+                "other": [
+                    "hot_tub_heater",
+                    "hot_tub_pump",
+                    "hot_water",
+                    "well_pump",
+                    "dishwasher",
+                    "freezer",
+                    "refrigerator",
+                    "grill",
+                    "range_oven",
+                    # should fans and mech vent  be considered cooling/heating?
+                    "ceiling_fan",
+                    "mech_vent",
+                    "pool_heater",
+                    "pool_pump",
+                    "clothes_dryer",
+                    "clothes_washer",
+                    "plug_loads",  # pv,  # not considering solar (pv) yet
+                ],
+            },
+        )
 
     ho = (
         pd.read_parquet(pqpath, columns=get_hourly_outputs.columns)
-        .set_index('timestamp')
+        .set_index("timestamp")
         .sort_index()
     )
 
     # timestamps indicate the end of the period.
     # To make use of pandas resampling, they should be set at the start
-    ho = (
-        ho.set_index(ho.index-get_hourly_outputs.timestep)
-        .rename(columns=get_hourly_outputs.column_renames)
+    ho = ho.set_index(ho.index - get_hourly_outputs.timestep).rename(
+        columns=get_hourly_outputs.column_renames
     )
 
-    ho = pd.DataFrame({
-        appliance: ho[col_names].sum(axis=1)
-        for appliance, col_names in get_hourly_outputs.appliance_groups.items()
-    })
-    ho = pd.DataFrame({
-        group_name: ho[col_names].sum(axis=1)
-        for group_name, col_names in get_hourly_outputs.consumption_groups.items()
-    })
+    ho = pd.DataFrame(
+        {
+            appliance: ho[col_names].sum(axis=1)
+            for appliance, col_names in get_hourly_outputs.appliance_groups.items()
+        }
+    )
+    ho = pd.DataFrame(
+        {
+            group_name: ho[col_names].sum(axis=1)
+            for group_name, col_names in get_hourly_outputs.consumption_groups.items()
+        }
+    )
 
-    return ho.resample('H').sum()
+    return ho.resample("H").sum()
 
 
 # a predefined
-REFERENCE_YEAR = pd.date_range(start='1/1/2007', periods=HOURS_IN_A_YEAR, freq='H')
+REFERENCE_YEAR = pd.date_range(start="1/1/2007", periods=HOURS_IN_A_YEAR, freq="H")
 
 
 @file_cache(CACHE_PATH)
 def get_weather_file(county_geoid: str) -> pd.DataFrame:
-    """ Retrieve weather timeseries for a given county geoid in ResStock
+    """Retrieve weather timeseries for a given county geoid in ResStock
 
     It takes about 150..200ms to read a file from a GCP bucket. With ~3K files,
     that's ~10min worst case for the entire dataset. This function returns all
@@ -684,16 +741,18 @@ def get_weather_file(county_geoid: str) -> pd.DataFrame:
     state = get_state_code_from_county_geoid(county_geoid)
     weather_file_path = WEATHER_FILES_PATH.format(state=state, geoid=county_geoid)
     df = pd.read_csv(
-        weather_file_path, parse_dates=['date_time'], index_col=['date_time']
-    ).rename(columns={
-        'Dry Bulb Temperature [°C]': 'temp_air',
-        'Relative Humidity [%]': 'relative_humidity',
-        'Wind Speed [m/s]': 'wind_speed',
-        'Wind Direction [Deg]': 'wind_direction',
-        'Global Horizontal Radiation [W/m2]': 'ghi',
-        'Direct Normal Radiation [W/m2]': 'dni',
-        'Diffuse Horizontal Radiation [W/m2]': 'diffuse_horizontal_illum'
-    })
+        weather_file_path, parse_dates=["date_time"], index_col=["date_time"]
+    ).rename(
+        columns={
+            "Dry Bulb Temperature [°C]": "temp_air",
+            "Relative Humidity [%]": "relative_humidity",
+            "Wind Speed [m/s]": "wind_speed",
+            "Wind Direction [Deg]": "wind_direction",
+            "Global Horizontal Radiation [W/m2]": "ghi",
+            "Direct Normal Radiation [W/m2]": "dni",
+            "Diffuse Horizontal Radiation [W/m2]": "diffuse_horizontal_illum",
+        }
+    )
     # in TMY3 files, weather year is a combination of months from different
     # years. Resstock overrides year for these files, so only month-day-hour
     # portion matters
@@ -712,7 +771,7 @@ def get_weather_file(county_geoid: str) -> pd.DataFrame:
 
 
 def apply_upgrades(building_features: pd.Series, upgrade_id: int) -> pd.Series:
-    """ Augment building features to reflect the upgrade
+    """Augment building features to reflect the upgrade
 
     Thoughts: it is more efficient to apply these upgrades to an entire
     dataframe, but it is a lot harder to test
@@ -749,19 +808,21 @@ def apply_upgrades(building_features: pd.Series, upgrade_id: int) -> pd.Series:
 
     if upgrade_id == 1:  # basic enclosure
         # applies only to vented attic dwellings
-        cz_family = building_features['ashrae_iecc_climate_zone'][0]
+        cz_family = building_features["ashrae_iecc_climate_zone"][0]
         threshold, insulation = BASIC_ENCLOSURE_INSULATION[cz_family]
-        if (building_features['attic_type'] == 'Vented Attic'
-                and building_features['insulation_ceiling_roof'] <= threshold):
-            building_features['insulation_ceiling_roof'] = insulation
+        if (
+            building_features["attic_type"] == "Vented Attic"
+            and building_features["insulation_ceiling_roof"] <= threshold
+        ):
+            building_features["insulation_ceiling_roof"] = insulation
         # Manual has two thresholds, 10 and 15. In the .yml it's applied at 15
-        if building_features['infiltration_ach50'] >= 15:
-            building_features['infiltration_ach50'] *= 0.7
-        if building_features['ducts_leakage'] > 0:
-            building_features['ducts_leakage'] = 0.1
-            building_features['ducts_insulation'] = 8.0
-        if building_features['wall_type'] == 'Wood Stud, Uninsulated':
-            building_features['insulation_wall'] = extract_r_value('Wood Stud, R-13')
+        if building_features["infiltration_ach50"] >= 15:
+            building_features["infiltration_ach50"] *= 0.7
+        if building_features["ducts_leakage"] > 0:
+            building_features["ducts_leakage"] = 0.1
+            building_features["ducts_insulation"] = 8.0
+        if building_features["wall_type"] == "Wood Stud, Uninsulated":
+            building_features["insulation_wall"] = extract_r_value("Wood Stud, R-13")
         return building_features
 
     # if upgrade_id == 2:  # enhanced enclosure
@@ -769,32 +830,50 @@ def apply_upgrades(building_features: pd.Series, upgrade_id: int) -> pd.Series:
 
     if upgrade_id == 3:  # heat pump, min efficiency, electric backup
         # both ducted and ductless: SEER 15, 9 HSPF
-        building_features['cooling_efficiency_eer'] = extract_cooling_efficiency('Heat Pump, SEER 15, 9 HSPF')
-        building_features['heating_efficiency'] = extract_heating_efficiency('Heat Pump, SEER 15, 9 HSPF')
-        building_features['backup_heating_efficiency'] = 1.0
-        building_features['ac_type'] = 'Heat Pump'
-        building_features['has_ac'] = 1
+        building_features["cooling_efficiency_eer"] = extract_cooling_efficiency(
+            "Heat Pump, SEER 15, 9 HSPF"
+        )
+        building_features["heating_efficiency"] = extract_heating_efficiency(
+            "Heat Pump, SEER 15, 9 HSPF"
+        )
+        building_features["backup_heating_efficiency"] = 1.0
+        building_features["ac_type"] = "Heat Pump"
+        building_features["has_ac"] = 1
         return building_features
 
     if upgrade_id == 4:  # heat pump, high efficiency, electric backup
-        if building_features['has_ducts']:  # ducted systems: SEER 24, 13 HSPF
-            building_features['cooling_efficiency_eer'] = extract_cooling_efficiency('Heat Pump, SEER 24, 13 HSPF')
-            building_features['heating_efficiency'] = extract_heating_efficiency('Heat Pump, SEER 24, 13 HSPF')
+        if building_features["has_ducts"]:  # ducted systems: SEER 24, 13 HSPF
+            building_features["cooling_efficiency_eer"] = extract_cooling_efficiency(
+                "Heat Pump, SEER 24, 13 HSPF"
+            )
+            building_features["heating_efficiency"] = extract_heating_efficiency(
+                "Heat Pump, SEER 24, 13 HSPF"
+            )
         else:  # ductless dwellings: SEER 29.3, 14 HSPF,
-            building_features['cooling_efficiency_eer'] = extract_cooling_efficiency('Heat Pump, SEER 29.3, 14 HSPF')
-            building_features['heating_efficiency'] = extract_heating_efficiency('Heat Pump, SEER 29.3, 14 HSPF')
-        building_features['backup_heating_efficiency'] = 1.0
-        building_features['ac_type'] = 'Heat Pump'
-        building_features['has_ac'] = 1
+            building_features["cooling_efficiency_eer"] = extract_cooling_efficiency(
+                "Heat Pump, SEER 29.3, 14 HSPF"
+            )
+            building_features["heating_efficiency"] = extract_heating_efficiency(
+                "Heat Pump, SEER 29.3, 14 HSPF"
+            )
+        building_features["backup_heating_efficiency"] = 1.0
+        building_features["ac_type"] = "Heat Pump"
+        building_features["has_ac"] = 1
         return building_features
 
     if upgrade_id == 5:  # high efficiency HP, existing heating as backup
         # both ducted and ductless: SEER 15, 9 HSPF
-        building_features['backup_heating_efficiency'] = building_features['heating_efficiency']
-        building_features['cooling_efficiency_eer'] = extract_cooling_efficiency('Heat Pump, SEER 15, 9 HSPF')
-        building_features['heating_efficiency'] = extract_heating_efficiency('Heat Pump, SEER 15, 9 HSPF')
-        building_features['ac_type'] = 'Heat Pump'
-        building_features['has_ac'] = 1
+        building_features["backup_heating_efficiency"] = building_features[
+            "heating_efficiency"
+        ]
+        building_features["cooling_efficiency_eer"] = extract_cooling_efficiency(
+            "Heat Pump, SEER 15, 9 HSPF"
+        )
+        building_features["heating_efficiency"] = extract_heating_efficiency(
+            "Heat Pump, SEER 15, 9 HSPF"
+        )
+        building_features["ac_type"] = "Heat Pump"
+        building_features["has_ac"] = 1
         return building_features
 
     # if upgrade_id == 6:  # heat pump water heater
@@ -809,7 +888,7 @@ def apply_upgrades(building_features: pd.Series, upgrade_id: int) -> pd.Series:
 
 
 def train_test_split(dataset: np.array, left_size):
-    """ Split the provided array into two random shares
+    """Split the provided array into two random shares
 
     Why: `tf.keras.utils.split_dataset()`-based iterators are a bit slow
     for small experiments, with iteration over 500k examples taking 25s.
@@ -818,12 +897,12 @@ def train_test_split(dataset: np.array, left_size):
     `tf.keras.utils.split_dataset()` is still the preferred option
     """
     np.random.shuffle(dataset)
-    split_point = int(len(dataset)*left_size)
+    split_point = int(len(dataset) * left_size)
     return dataset[:split_point], dataset[split_point:]
 
 
 def parallelize(func, args, num_threads=None):
-    num_threads = num_threads or min(os.cpu_count()*10, 50)
+    num_threads = num_threads or min(os.cpu_count() * 10, 50)
     tp = ThreadPool(num_threads)
     for _ in tp.imap_unordered(func, args):
         pass
@@ -835,29 +914,46 @@ def parallelize(func, args, num_threads=None):
 class DataGen(tf.keras.utils.Sequence):
     batch_size: int
     upgrades = (0, 1, 3, 4, 5)
-    weather_features = ('temp_air', 'ghi', 'wind_speed', 'weekend', 'hour')
+    weather_features = ("temp_air", "ghi", "wind_speed", "weekend", "hour")
     # features model will be trained on by default.
     # For all available features, check self.building_features_df columns
     building_features = (
         # numeric
-        'sqft', 'bedrooms', 'stories', 'occupants', 'age2000',
-        'infiltration_ach50', 'insulation_wall', 'insulation_ceiling_roof',
-        'cooling_efficiency_eer', 'heating_efficiency',
-        'backup_heating_efficiency', 'has_ducts',
-        'insulation_slab', 'insulation_rim_joist', 'insulation_floor',
-        'cooling_setpoint', 'heating_setpoint', 'orientation', 'window_area',
-        'lighting_efficiency', 'cooled_space_share',
-
+        "sqft",
+        "bedrooms",
+        "stories",
+        "occupants",
+        "age2000",
+        "infiltration_ach50",
+        "insulation_wall",
+        "insulation_ceiling_roof",
+        "cooling_efficiency_eer",
+        "heating_efficiency",
+        "backup_heating_efficiency",
+        "has_ducts",
+        "insulation_slab",
+        "insulation_rim_joist",
+        "insulation_floor",
+        "cooling_setpoint",
+        "heating_setpoint",
+        "orientation",
+        "window_area",
+        "lighting_efficiency",
+        "cooled_space_share",
         # categorical
-        'foundation_type', 'windows_type', 'wall_material',
-
+        "foundation_type",
+        "windows_type",
+        "wall_material",
         # service features - not to be fed to the model
         # 'county',
     )
 
     # skipping 'other' and 'lighting' here. Both are artificial and are unlikely
     # to predict real life usage well
-    consumption_groups = ('heating', 'cooling',)
+    consumption_groups = (
+        "heating",
+        "cooling",
+    )
     time_granularity = None
     # Building ids only. Not used, for debugging purpose only
     building_ids: np.array
@@ -876,10 +972,18 @@ class DataGen(tf.keras.utils.Sequence):
     # weather cache has a 2-level index, (weather_station, time_step)
     weather_cache = None
 
-    def __init__(self, building_ids, upgrade_ids=None, weather_features=None,
-                 building_features=None, consumption_groups=None,
-                 time_granularity='Y', batch_size=64, metadata_builder=None,
-                 dtype=np.float32):
+    def __init__(
+        self,
+        building_ids,
+        upgrade_ids=None,
+        weather_features=None,
+        building_features=None,
+        consumption_groups=None,
+        time_granularity="Y",
+        batch_size=64,
+        metadata_builder=None,
+        dtype=np.float32,
+    ):
         """
         Args:
             building_ids: (Iterable[int]) integer ids of the buildings in this
@@ -919,19 +1023,19 @@ class DataGen(tf.keras.utils.Sequence):
         self.metadata_builder = metadata_builder or BuildingMetadataBuilder()
         self.dtype = dtype
         number_of_time_steps = {
-            'D': 365,
-            'M': 12,
-            'Q': 4,
-            'Y': 1,
+            "D": 365,
+            "M": 12,
+            "Q": 4,
+            "Y": 1,
         }[time_granularity]
         self.timestep_length = HOURS_IN_A_YEAR // number_of_time_steps
         time_steps = tuple(range(number_of_time_steps))
         self.ids = pd.DataFrame(
             itertools.product(self.building_ids, self.upgrades, time_steps),
-            columns=['building_id', 'upgrade_id', 'time_step']
+            columns=["building_id", "upgrade_id", "time_step"],
         )
-        counties = self.metadata_builder.all().loc[self.building_ids, 'county']
-        self.ids['county'] = self.ids['building_id'].map(counties)
+        counties = self.metadata_builder.all().loc[self.building_ids, "county"]
+        self.ids["county"] = self.ids["building_id"].map(counties)
 
         self.building_features_df = self.init_building_cache()
         self.weather_cache = self.init_weather_cache()
@@ -947,17 +1051,17 @@ class DataGen(tf.keras.utils.Sequence):
         # required by `apply_upgrades`
         df = self.metadata_builder.all().loc[self.building_ids]
         # `.explode()` needs a column of iterables, thus a column of tuples
-        df['upgrade_id'] = [self.upgrades]*len(df)
-        df = df.explode('upgrade_id')
-        building_features_df = pd.DataFrame([
-            apply_upgrades(row, row['upgrade_id']) for _, row in df.iterrows()
-        ])
-        building_features_df.index.name = 'building_id'
+        df["upgrade_id"] = [self.upgrades] * len(df)
+        df = df.explode("upgrade_id")
+        building_features_df = pd.DataFrame(
+            [apply_upgrades(row, row["upgrade_id"]) for _, row in df.iterrows()]
+        )
+        building_features_df.index.name = "building_id"
         building_features_df.reset_index(inplace=True)
-        return building_features_df.set_index(['building_id', 'upgrade_id'])
+        return building_features_df.set_index(["building_id", "upgrade_id"])
 
     def batch_building_features(self, batch_ids):
-        """ Get building features for a batch
+        """Get building features for a batch
 
         This method is intended to abstract the structure of building feature
         cache.
@@ -968,15 +1072,12 @@ class DataGen(tf.keras.utils.Sequence):
         Returns:
             Dict[str, np.ndarray]: a dictionary of building features
         """
-        idx = batch_ids[['building_id', 'upgrade_id']].apply(tuple, axis=1)
+        idx = batch_ids[["building_id", "upgrade_id"]].apply(tuple, axis=1)
         df = self.building_features_df.loc[idx]
-        return {
-            feature: df[feature].values
-            for feature in self.building_features
-        }
+        return {feature: df[feature].values for feature in self.building_features}
 
     def init_weather_cache(self):
-        """ Initialize in-memory weather cache
+        """Initialize in-memory weather cache
 
         TODO: accommodate for weather embeddings
         The intent of this method is to build an in-memory cache of weather data
@@ -996,10 +1097,9 @@ class DataGen(tf.keras.utils.Sequence):
             month, or day. As a result, we'll get a dataframe with a 2-level
             multiindex (
         """
-        counties = self.ids['county'].unique()
+        counties = self.ids["county"].unique()
         weather_cache = {}
-        logging.warning(
-            f"Building weather cache for {len(counties)} counties...")
+        logging.warning(f"Building weather cache for {len(counties)} counties...")
 
         def fill_cache(county_geoid):
             weather_cache[county_geoid] = get_weather_file(county_geoid)
@@ -1008,14 +1108,14 @@ class DataGen(tf.keras.utils.Sequence):
         logging.warning("...almost done")
 
         weather_cache = {
-            feature: pd.DataFrame([
-                weather_cache[county][feature] for county in counties
-            ], index=counties)
+            feature: pd.DataFrame(
+                [weather_cache[county][feature] for county in counties], index=counties
+            )
             for feature in self.weather_features
         }
 
         def aggregate_by_time(df, feature_name):
-            """ Slice timeseries according to time granularity.
+            """Slice timeseries according to time granularity.
 
             The input df is expected to have counties as index and dt columns
 
@@ -1023,15 +1123,13 @@ class DataGen(tf.keras.utils.Sequence):
                 pd.DataFrame: a dataframe with a single column of numpy arrays
             """
             df.columns = np.arange(len(df.columns))
-            df.columns.name = 'timestamp'
-            df.index.name = 'county'
-            df = pd.DataFrame(
-                {feature_name: df.stack()}
-            ).reset_index()
-            df['time_step'] = df['timestamp'] // self.timestep_length
-            df['timestamp'] %= self.timestep_length
-            df.set_index(['county', 'time_step'], inplace=True)
-            return df.pivot(columns='timestamp', values=feature_name)
+            df.columns.name = "timestamp"
+            df.index.name = "county"
+            df = pd.DataFrame({feature_name: df.stack()}).reset_index()
+            df["time_step"] = df["timestamp"] // self.timestep_length
+            df["timestamp"] %= self.timestep_length
+            df.set_index(["county", "time_step"], inplace=True)
+            return df.pivot(columns="timestamp", values=feature_name)
 
         weather_cache = {
             feature: aggregate_by_time(df, feature)
@@ -1041,7 +1139,7 @@ class DataGen(tf.keras.utils.Sequence):
         return weather_cache
 
     def batch_weather_features(self, batch_ids):
-        """ Get weather features for a batch
+        """Get weather features for a batch
 
         Similar to `batch_building_features`, the purpose is to abstract
         structure of weather cache.
@@ -1055,7 +1153,7 @@ class DataGen(tf.keras.utils.Sequence):
                 size - e.g., with monthly aggregation some months are 30 days
                 and some are 28 or 31.
         """
-        idx = batch_ids[['county', 'time_step']].apply(tuple, axis=1)
+        idx = batch_ids[["county", "time_step"]].apply(tuple, axis=1)
         return {
             feature: self.weather_cache[feature].loc[idx].values
             for feature in self.weather_features
@@ -1069,11 +1167,11 @@ class DataGen(tf.keras.utils.Sequence):
         """
         ids = [
             (building_id, upgrade_id, county)
-            for (building_id, upgrade_id), county
-            in self.building_features_df['county'].items()
+            for (building_id, upgrade_id), county in self.building_features_df[
+                "county"
+            ].items()
         ]
-        logging.warning(
-            f"Building output cache for {len(ids)} buildings...")
+        logging.warning(f"Building output cache for {len(ids)} buildings...")
         output_cache = {}
 
         def fill_cache(batch_id):
@@ -1085,21 +1183,20 @@ class DataGen(tf.keras.utils.Sequence):
         logging.warning("...almost done")
 
         output_cache = {
-            group: pd.DataFrame([
-                output_cache[batch_id][group] for batch_id in ids
-            ], index=self.building_features_df.index)
+            group: pd.DataFrame(
+                [output_cache[batch_id][group] for batch_id in ids],
+                index=self.building_features_df.index,
+            )
             for group in self.consumption_groups
         }
 
         def aggregate_by_time(df, feature_name):
-            """ Slice timeseries according to time granularity.
+            """Slice timeseries according to time granularity.
 
             The input df is expected to have counties as index and dt columns
             """
             df.columns.name = self.time_granularity
-            return pd.DataFrame(
-                {feature_name: df.stack()}
-            )
+            return pd.DataFrame({feature_name: df.stack()})
 
         output_cache = {
             feature: aggregate_by_time(df, feature)
@@ -1110,19 +1207,18 @@ class DataGen(tf.keras.utils.Sequence):
         return output_cache
 
     def batch_output_features(self, batch_ids):
-        idx = batch_ids[
-            ['building_id', 'upgrade_id', 'time_step']].apply(tuple, axis=1)
+        idx = batch_ids[["building_id", "upgrade_id", "time_step"]].apply(tuple, axis=1)
         return {
             group: self.output_cache[group].loc[idx].values
             for group in self.consumption_groups
         }
 
     def feature_dtype(self, feature_name):
-        is_string_feature = self.building_features_df[feature_name].dtype == 'O'
+        is_string_feature = self.building_features_df[feature_name].dtype == "O"
         return tf.string if is_string_feature else self.dtype
 
     def feature_vocab(self, feature_name):
-        """ Get all possible values for a feature
+        """Get all possible values for a feature
 
         This method is used to create encoders for string (categorical/ordinal)
         features
@@ -1139,11 +1235,11 @@ class DataGen(tf.keras.utils.Sequence):
         pass
 
     def __getitem__(self, idx):
-        """ Generate a batch #`idx`
+        """Generate a batch #`idx`
 
         This method should produce a dictionary of numpy arrays (or tensors)
         """
-        batch_ids = self.ids[idx*self.batch_size:(idx+1)*self.batch_size]
+        batch_ids = self.ids[idx * self.batch_size : (idx + 1) * self.batch_size]
         # for last batch, batch_size might be different from self.batch_size
         features = self.batch_building_features(batch_ids)
         features.update(self.batch_weather_features(batch_ids))
@@ -1151,7 +1247,7 @@ class DataGen(tf.keras.utils.Sequence):
         return features, self.batch_output_features(batch_ids)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     np.random.seed(42)  # 42 is always the answer
     N = 5
     get_building_metadata = BuildingMetadataBuilder()

@@ -23,7 +23,6 @@ def gather_cpu_gpu_metrics(
     log_interval: Optional[int] = None,
 ):
     """Gather GPU performance at regular intervals."""
-
     if not isinstance(interval, pd.Timedelta):
         interval = pd.Timedelta(interval, unit="seconds")
 
@@ -66,7 +65,7 @@ def gather_cpu_gpu_metrics(
 
                 gpu_utilization = utilization.gpu
                 gpu_memory_utilization = utilization.memory
-            
+
                 utilization_dict.update(
                     {
                         "gpu_utilization": gpu_utilization,

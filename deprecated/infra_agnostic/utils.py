@@ -7,7 +7,7 @@ import pandas as pd
 
 
 def file_cache(cache_path=None):
-    """ A file caching decorator
+    """A file caching decorator
 
     Assumptions about the underlying function:
         - all arguments are positional, and are strings
@@ -49,9 +49,8 @@ def file_cache(cache_path=None):
 
         def __call__(self, *args):
             # function name is to have a meaningful key even with empty args
-            arg_key = '__'.join(str(arg) for arg in (self.f.__name__, *args))
-            cache_fpath = os.path.join(
-                self.func_cache_path, arg_key + '.pq')
+            arg_key = "__".join(str(arg) for arg in (self.f.__name__, *args))
+            cache_fpath = os.path.join(self.func_cache_path, arg_key + ".pq")
             if os.path.exists(cache_fpath):
                 return pd.read_parquet(cache_fpath)
             res = self.f(*args)
@@ -59,7 +58,7 @@ def file_cache(cache_path=None):
             return res
 
         def reset_cache(self):
-            for fpath in glob.glob(os.path.join(self.func_cache_path, '*')):
+            for fpath in glob.glob(os.path.join(self.func_cache_path, "*")):
                 os.remove(fpath)
 
     return Decorator
