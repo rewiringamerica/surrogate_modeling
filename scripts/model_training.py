@@ -118,6 +118,7 @@ if DEBUG:
 
 # DBTITLE 1,Define wrapper class for processing at inference time
 
+
 class SurrogateModelingWrapper(mlflow.pyfunc.PythonModel):
     """
     A wrapper class that applies the pre/post processing to the data at inference time,
@@ -321,5 +322,3 @@ if not DEBUG:
     dbutils.jobs.taskValues.set(key="run_id", value=run_id)
 
 # COMMAND ----------
-
-

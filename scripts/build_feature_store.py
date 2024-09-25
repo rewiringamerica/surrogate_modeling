@@ -133,6 +133,7 @@ WINDOW_DESCRIPTION_TO_SPEC = spark.createDataFrame(
 
 # DBTITLE 1,Helper functions
 
+
 @udf(returnType=DoubleType())
 def extract_percentage(value: str) -> float:
     """Extract percentage from string and divide by 100
@@ -582,6 +583,7 @@ luminous_efficiency_mapping = make_map_type_from_dict(
 # COMMAND ----------
 
 # DBTITLE 1,Building metadata feature transformation function
+
 
 def transform_building_features() -> DataFrame:
     """
@@ -1285,6 +1287,7 @@ print(
 # COMMAND ----------
 
 # DBTITLE 1,Weather feature transformation function
+
 
 def transform_weather_features() -> DataFrame:
     """

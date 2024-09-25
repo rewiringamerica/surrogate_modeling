@@ -147,7 +147,7 @@ def extract_resstock_annual_outputs() -> DataFrame:
     return annual_energy_consumption_cleaned
 
 
-#TODO: remove or flag GSHP upgrades for homes without ducts
+# TODO: remove or flag GSHP upgrades for homes without ducts
 def extract_rastock_annual_outputs() -> DataFrame:
     """
     Extract and lightly preprocess RAStock annual energy consumption outputs:
@@ -158,36 +158,41 @@ def extract_rastock_annual_outputs() -> DataFrame:
     annual_energy_consumption_rastock = util.get_clean_rastock_df()
 
     # cast pkeys to the right type
-    annual_energy_consumption_rastock = (
-        annual_energy_consumption_rastock
-            .withColumn("building_id", F.col("building_id").cast("int"))
-            .withColumn("upgrade_id", F.col("upgrade_id").cast("double"))
-    )
+    annual_energy_consumption_rastock = annual_energy_consumption_rastock.withColumn(
+        "building_id", F.col("building_id").cast("int")
+    ).withColumn("upgrade_id", F.col("upgrade_id").cast("double"))
 
-    modeled_fuel_types = ['fuel_oil', 'propane', 'electricity', 'natural_gas', 'site_energy']
-    pkey_cols = ['building_id','upgrade_id']
+    modeled_fuel_types = [
+        "fuel_oil",
+        "propane",
+        "electricity",
+        "natural_gas",
+        "site_energy",
+    ]
+    pkey_cols = ["building_id", "upgrade_id"]
 
-    r_fuels = '|'.join(modeled_fuel_types)
-    r_pkey = ''.join([f"(?!{k}$)" for k in pkey_cols])
+    r_fuels = "|".join(modeled_fuel_types)
+    r_pkey = "".join([f"(?!{k}$)" for k in pkey_cols])
 
-    fuel_replace_dict = {f + '_': f + '__' for f in modeled_fuel_types}
+    fuel_replace_dict = {f + "_": f + "__" for f in modeled_fuel_types}
 
-    # reformat to match ResStock and do some light preprocessing 
+    # reformat to match ResStock and do some light preprocessing
     annual_energy_consumption_rastock_cleaned = util.clean_columns(
         df=annual_energy_consumption_rastock,
         # remove all columns unless they are
         # prefixed with "out_" followed by a modeled fuel or are a pkey
-        remove_columns_with_substrings=[
-            rf"^(?!out_({r_fuels})){r_pkey}.*"
-        ],
+        remove_columns_with_substrings=[rf"^(?!out_({r_fuels})){r_pkey}.*"],
         remove_substrings_from_columns=["out_", "_energy_consumption_kwh"],
         replace_column_substrings_dict={
             **fuel_replace_dict,
-            **{"natural_gas": "methane_gas", 
-            "permanent_spa" : "hot_tub"}}
+            **{"natural_gas": "methane_gas", "permanent_spa": "hot_tub"},
+        },
     )
 
-    return annual_energy_consumption_rastock_cleaned.withColumn('applicability', F.lit(True))
+    return annual_energy_consumption_rastock_cleaned.withColumn(
+        "applicability", F.lit(True)
+    )
+
 
 def extract_hourly_weather_data():
     """
@@ -205,7 +210,7 @@ def extract_hourly_weather_data():
     # pull in weather data for unique weather stataions
     weather_data = (
         # read in all county weather files
-        spark.read.csv(HOURLY_WEATHER_CSVS_PATH , inferSchema=True, header=True)
+        spark.read.csv(HOURLY_WEATHER_CSVS_PATH, inferSchema=True, header=True)
         # get county id from filename
         .withColumn(
             "county_gisjoin", F.element_at(F.split(F.input_file_name(), "/|_"), -2)

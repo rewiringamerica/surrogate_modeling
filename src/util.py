@@ -321,9 +321,9 @@ def convert_column_units(bsb_df: DataFrame) -> DataFrame:
                     if new_unit != "c"
                     else ((F.col(new_col_name) - 32) * 5 / 9)
                 )
-                bsb_df = bsb_df.withColumnRenamed(
-                    col_name, new_col_name
-                ).withColumn(new_col_name, conversion_expr)
+                bsb_df = bsb_df.withColumnRenamed(col_name, new_col_name).withColumn(
+                    new_col_name, conversion_expr
+                )
     return bsb_df
 
 
