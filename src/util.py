@@ -9,24 +9,9 @@ from pyspark.sql import DataFrame
 import pyspark.sql.functions as F
 from pyspark.sql.types import BooleanType, DoubleType, LongType, StructField, StructType
 
+import constants
+
 from databricks.sdk.runtime import *
-
-# move into constants.py util
-KILOWATT_HOUR_TO_BRITISH_THERMAL_UNIT = 3412.14
-"""
-The number of kilowatt-hours in British thermal units (BTU)
-"""
-
-BRITISH_THERMAL_UNIT_TO_KILOWATT_HOUR = 1 / KILOWATT_HOUR_TO_BRITISH_THERMAL_UNIT
-"""
-The number British thermal units (BTU) in a kilowatt-hour
-"""
-
-POUNDS_TO_KILOGRAM = 0.453592
-"""
-The number of pounds in a kilogram.
-"""
-
 
 # move into a new resstock.py util?
 def clean_columns(
@@ -307,9 +292,9 @@ def convert_column_units(bsb_df: DataFrame) -> DataFrame:
     # TODO: this is quite ineffiecient and should be rewritten
     # (suffix, conversion_factor except for temp, new_unit)
     conversions = [
-        ("_m_btu", BRITISH_THERMAL_UNIT_TO_KILOWATT_HOUR * 1e6, "kwh"),
-        ("_lb", POUNDS_TO_KILOGRAM, "kg"),
-        ("_btu_h", BRITISH_THERMAL_UNIT_TO_KILOWATT_HOUR, "kw"),
+        ("_m_btu", constants.BRITISH_THERMAL_UNIT_TO_KILOWATT_HOUR * 1e6, "kwh"),
+        ("_lb", constants.POUNDS_TO_KILOGRAM, "kg"),
+        ("_btu_h", constants.BRITISH_THERMAL_UNIT_TO_KILOWATT_HOUR, "kw"),
         ("_f", 1, "c"),
     ]
 
