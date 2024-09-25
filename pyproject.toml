@@ -1,0 +1,79 @@
+# Common config file for python tools.
+
+
+# Poetry
+
+[tool.poetry]
+name = "sumo"
+version = "0.1.0"
+description = "Surrogate model for predicting energy consumption under various upgrades."
+authors = ["Miki Verma <miki@rewiringamerica.org>"]
+readme = "README.md"
+package-mode = false
+
+# The priorities of these are backwards relative to what they should
+# actually be. See
+# https://www.notion.so/rewiringamerica/Poetry-performance-regression-when-using-private-artifact-repository-21cf6e7c7b4c496ab3526a86e7d7d641?pvs=4
+# for details.
+[[tool.poetry.source]]
+name = "rewiring-america-python-repo"
+url = "https://us-central1-python.pkg.dev/cube-machine-learning/rewiring-america-python-repo/simple/"
+priority = "supplemental"
+
+[[tool.poetry.source]]
+name = "PyPI"
+priority = "primary"
+
+[tool.poetry.dependencies]
+# DB Cluster 14.3 runs on Python 3.10 so we should too.
+python = ">=3.10, <3.11"
+cloudpathlib = "^0.16.0"
+gcsfs = "^2023.5.0"
+
+# These are RA projects in an internal repo.
+dmlutils = "^0.5.10"
+
+# This is to depend on essentially all the pinned
+# versions of things found in the Databricks 14.3 
+# runtime. This means this project should only be
+# run on 14.3 runtimes, possibly including the ML
+# version.
+radbcluster = "==14.3"
+
+# These are from PyPi
+usingversion = "^0.1.2"
+
+[tool.poetry.group.dev.dependencies]
+# Allow old black, flake8, and pytest versions
+# to match what is on DB Runtime 14.3.
+black = "^22.6.0"
+flake8 = "^6.1.0"
+pytest = ">=7.4.4, <9.0.0"
+ruff = "^0.5.5"
+isort = "^5.13.2"
+
+[tool.poetry.group.test.dependencies]
+pytest = ">=7.4.4, <9.0.0"
+coverage = {extras = ["toml"], version = "^7.6.0"}
+pytest-cov = "^5.0.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+
+# Linting tools
+
+[tool.isort]
+profile = "black"
+
+[tool.ruff.lint]
+select = ["D"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "numpy"
+
+[tool.pytest.ini_options]
+pythonpath = [
+  "src"
+]
