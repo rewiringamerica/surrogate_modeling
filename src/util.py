@@ -26,6 +26,8 @@ POUNDS_TO_KILOGRAM = 0.453592
 """
 The number of pounds in a kilogram.
 """
+
+
 # move into a new resstock.py util?
 def clean_columns(
     df,
