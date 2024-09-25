@@ -7,7 +7,7 @@
 # MAGIC ### Process
 # MAGIC * Extract and lightly preprocess various ResStock data
 # MAGIC     1. building metadata
-# MAGIC     2. annual outputs
+# MAGIC     2. annual outputs: read in and process resstock and RAStock independently and them combine
 # MAGIC     3. hourly weather data
 # MAGIC * Write each to Delta Table
 # MAGIC
@@ -19,50 +19,61 @@
 # MAGIC - `RESSTOCK_PATH/metadata_and_annual_results/national/parquet/*_metadata_and_annual_results.parquet`: Parquet file of annual building model simulation outputs (building id [~550K], upgrade_id [11] x output variable)
 # MAGIC - `RESSTOCK_PATH/weather/state=*/*_TMY3.csv`: 3107 weather csvs for each county (hour [8760] x weather variable).
 # MAGIC                                                Note that counties corresponding to the same weather station have identical data.
+# MAGIC - `gs://the-cube/data/raw/bsb_sims`: Many parquets within this folder holding all the RAStock simulations
 # MAGIC
 # MAGIC ##### Outputs:
 # MAGIC - `ml.surrogate_model.building_metadata`: Building metadata indexed by (building_id)
 # MAGIC - `ml.surrogate_model.building_simulation_outputs_annual`: Annual building model simulation outputs indexed by (building_id, upgrade_id)
 # MAGIC - `ml.surrogate_model.weather_data_hourly`: Hourly weather data indexed by (weather_file_city, hour datetime)
-# MAGIC
-# MAGIC ### TODOs:
-# MAGIC
-# MAGIC #### Outstanding
-# MAGIC
-# MAGIC #### Future Work
+
+# COMMAND ----------
+
+# DBTITLE 1,Reflect changes without reimporting
+# MAGIC %load_ext autoreload
+# MAGIC %autoreload 2
 
 # COMMAND ----------
 
 # DBTITLE 1,Imports
 import os
-import re
 from typing import List
 
+from cloudpathlib import CloudPath
 from pyspark.sql import DataFrame
 import pyspark.sql.functions as F
+
+from src import util
 
 # COMMAND ----------
 
 # DBTITLE 1,Data Paths
 RESSTOCK_PATH = (
-    "gs://the-cube/data/raw/nrel/end_use_load_profiles/2022/resstock_tmy3_release_1/"
+    CloudPath("gs://the-cube")
+    / "data"
+    / "raw"
+    / "nrel"
+    / "end_use_load_profiles"
+    / "2022"
+    / "resstock_tmy3_release_1"
 )
 
-BUILDING_METADATA_PARQUET_PATH = (
+BUILDING_METADATA_PARQUET_PATH = str(
     RESSTOCK_PATH
-    + "metadata_and_annual_results/national/parquet/baseline_metadata_only.parquet"
+    / "metadata_and_annual_results"
+    / "national"
+    / "parquet"
+    / "baseline_metadata_only.parquet"
 )
 
-ANNUAL_OUTPUT_PARQUET_PATH = (
+ANNUAL_OUTPUT_PARQUET_PATH = str(
     RESSTOCK_PATH
-    + "/metadata_and_annual_results/national/parquet/*_metadata_and_annual_results.parquet"
+    / "metadata_and_annual_results"
+    / "national"
+    / "parquet"
+    / "*_metadata_and_annual_results.parquet"
 )
 
-# pattern of weather files path within HOURLY_WEATHER_CSVS_PATH
-# examples:
-# `resstock_tmy3_release_1`, `resstock_tmy3_release_1.1`:
-#       `.../weather/state={state}/{county_geoid}_TMY3.csv`
-HOURLY_WEATHER_CSVS_PATH = RESSTOCK_PATH + "weather/state=*/*_TMY3.csv"
+HOURLY_WEATHER_CSVS_PATH = str(RESSTOCK_PATH / "weather" / "state=*/*_TMY3.csv")
 
 # COMMAND ----------
 
@@ -71,67 +82,12 @@ HOURLY_WEATHER_CSVS_PATH = RESSTOCK_PATH + "weather/state=*/*_TMY3.csv"
 # COMMAND ----------
 
 # DBTITLE 1,Functions for loading and preprocessing raw data
-
 def transform_pkeys(df):
     return (
         df.withColumn("building_id", F.col("bldg_id").cast("int"))
         .withColumn("upgrade_id", F.col("upgrade").cast("double"))
         .drop("bldg_id", "upgrade")
     )
-
-
-def clean_resstock_columns(
-    df,
-    remove_columns_with_substrings=[],
-    remove_substrings_from_columns=[],
-    replace_column_substrings_dict={},
-):
-    """
-    Clean ResStock columns by doing the following in order
-    1. Replace '.' with an empty string in column names so that string manipulation works
-    2. Drop columns that contain strings in `remove_columns_with_strings`.
-    3. Remove remove strings in `remove_strings_from_columns` from column names
-    4. Replace strings that occur within column names based on `replace_strings_dict`
-    It is important to note the order of operations here when constructing input arguments!
-
-    Args:
-      df (DataFrame): Input DataFrame
-      remove_substrings_from_columns (list, optional): List of strings to remove from column names. Defaults to [].
-      remove_columns_with_substrings (list, , optional): Remove columns that contain any of the strings in this list.
-                                                         Defaults to [].
-      replace_substrings_dict (dict, optional): Replace any occurances of strings within column names based on dict
-                                                in format {to_replace: replace_value}.
-    Returns:
-      DataFrame: Cleaned DataFrame
-    """
-    # replace these with an empty string
-    remove_str_dict = {c: "" for c in remove_substrings_from_columns}
-    # combine the two replacement lookups
-    combined_replace_dict = {**replace_column_substrings_dict, **remove_str_dict}
-
-    # Replace '.' with an '__' string in column names so that we don't have to deal with backticks
-    df = df.selectExpr(
-        *[f" `{col}` as `{col.replace('.', '__')}`" for col in df.columns]
-    )
-
-    # Iterate through the columns and replace dict to construct column mapping
-    new_col_dict = {}
-    for col in df.columns:
-        # skip if in ignore list
-        if len(remove_columns_with_substrings) > 0 and re.search(
-            "|".join(remove_columns_with_substrings), col
-        ):
-            continue
-        new_col = col
-        for pattern, replacement in combined_replace_dict.items():
-            new_col = re.sub(pattern, replacement, new_col)
-        new_col_dict[col] = new_col
-
-    # Replace column names according to constructed replace dict
-    df_clean = df.selectExpr(
-        *[f" `{old_col}` as `{new_col}`" for old_col, new_col in new_col_dict.items()]
-    )
-    return df_clean
 
 
 def extract_building_metadata() -> DataFrame:
@@ -150,7 +106,7 @@ def extract_building_metadata() -> DataFrame:
     )
 
     # rename and remove columns
-    building_metadata_cleaned = clean_resstock_columns(
+    building_metadata_cleaned = util.clean_columns(
         df=building_metadata,
         remove_substrings_from_columns=["in__"],
         remove_columns_with_substrings=[
@@ -165,9 +121,9 @@ def extract_building_metadata() -> DataFrame:
     return building_metadata_cleaned
 
 
-def extract_annual_outputs() -> DataFrame:
+def extract_resstock_annual_outputs() -> DataFrame:
     """
-    Extract and lightly preprocess annual energy consumption outputs from all upgrades:
+    Extract and lightly preprocess annual energy consumption outputs:
     rename and remove columns.
     """
     # Read all scenarios at once by reading baseline and all 9 upgrade files in the directory
@@ -176,7 +132,7 @@ def extract_annual_outputs() -> DataFrame:
     ).transform(transform_pkeys)
 
     # rename and remove columns
-    annual_energy_consumption_cleaned = clean_resstock_columns(
+    annual_energy_consumption_cleaned = util.clean_columns(
         df=annual_energy_consumption_with_metadata,
         remove_substrings_from_columns=["in__", "out__", "__energy_consumption__kwh"],
         remove_columns_with_substrings=[
@@ -190,6 +146,48 @@ def extract_annual_outputs() -> DataFrame:
 
     return annual_energy_consumption_cleaned
 
+
+#TODO: remove or flag GSHP upgrades for homes without ducts
+def extract_rastock_annual_outputs() -> DataFrame:
+    """
+    Extract and lightly preprocess RAStock annual energy consumption outputs:
+    rename and remove columns.
+    """
+    # TODO: add better documentation
+    # # get annual outputs for all RAStock upgrades
+    annual_energy_consumption_rastock = util.get_clean_rastock_df()
+
+    # cast pkeys to the right type
+    annual_energy_consumption_rastock = (
+        annual_energy_consumption_rastock
+            .withColumn("building_id", F.col("building_id").cast("int"))
+            .withColumn("upgrade_id", F.col("upgrade_id").cast("double"))
+    )
+
+    modeled_fuel_types = ['fuel_oil', 'propane', 'electricity', 'natural_gas', 'site_energy']
+    pkey_cols = ['building_id','upgrade_id']
+
+    r_fuels = '|'.join(modeled_fuel_types)
+    r_pkey = ''.join([f"(?!{k}$)" for k in pkey_cols])
+
+    fuel_replace_dict = {f + '_': f + '__' for f in modeled_fuel_types}
+
+    # reformat to match ResStock and do some light preprocessing 
+    annual_energy_consumption_rastock_cleaned = util.clean_columns(
+        df=annual_energy_consumption_rastock,
+        # remove all columns unless they are
+        # prefixed with "out_" followed by a modeled fuel or are a pkey
+        remove_columns_with_substrings=[
+            rf"^(?!out_({r_fuels})){r_pkey}.*"
+        ],
+        remove_substrings_from_columns=["out_", "_energy_consumption_kwh"],
+        replace_column_substrings_dict={
+            **fuel_replace_dict,
+            **{"natural_gas": "methane_gas", 
+            "permanent_spa" : "hot_tub"}}
+    )
+
+    return annual_energy_consumption_rastock_cleaned.withColumn('applicability', F.lit(True))
 
 def extract_hourly_weather_data():
     """
@@ -207,9 +205,7 @@ def extract_hourly_weather_data():
     # pull in weather data for unique weather stataions
     weather_data = (
         # read in all county weather files
-        spark.read.csv(
-            RESSTOCK_PATH + "weather/state=*/*_TMY3.csv", inferSchema=True, header=True
-        )
+        spark.read.csv(HOURLY_WEATHER_CSVS_PATH , inferSchema=True, header=True)
         # get county id from filename
         .withColumn(
             "county_gisjoin", F.element_at(F.split(F.input_file_name(), "/|_"), -2)
@@ -249,8 +245,21 @@ building_metadata = extract_building_metadata()
 
 # COMMAND ----------
 
-# DBTITLE 1,Extract annual outputs
-annual_outputs = extract_annual_outputs()
+# DBTITLE 1,Extract ResStock annual outputs
+annual_resstock_outputs = extract_resstock_annual_outputs()
+
+# COMMAND ----------
+
+# DBTITLE 1,Extract RAStock annual outputs
+annual_rastock_outputs = extract_rastock_annual_outputs()
+
+# COMMAND ----------
+
+# DBTITLE 1,Combine annual outputs
+# there are ~25 specific end use columns in RAStock that are not in ResStock so these will be null in ResStock
+annual_outputs = annual_rastock_outputs.unionByName(
+    annual_resstock_outputs, allowMissingColumns=True
+)
 
 # COMMAND ----------
 
@@ -272,7 +281,9 @@ spark.sql(f"OPTIMIZE {table_name}")
 # COMMAND ----------
 
 # DBTITLE 1,Write out annual outputs
-table_name = "ml.surrogate_model.building_simulation_outputs_annual"
+# TODO: move this back to the original once testing is complete
+table_name = "ml.surrogate_model.building_simulation_outputs_annual_tmp"
+# table_name = "ml.surrogate_model.building_simulation_outputs_annual"
 annual_outputs.write.saveAsTable(
     table_name, mode="overwrite", overwriteSchema=True, partitionBy=["upgrade_id"]
 )
