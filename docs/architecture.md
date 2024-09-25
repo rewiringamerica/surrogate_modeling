@@ -2,9 +2,9 @@
 
 ## Architecture
 
-The architecture consist of three components: a **weather time-series convolutional neural network (CNN)**, a **building metadata feed forward network (FNN)**, and a **combine FNN**. The model is trained on the multivariate regression task of predicting total household energy consumption by fuel type, specifically outputting the length 4 vector: [`electricity`,`natural_gas` ,`fuel_oil`,`propane`] . The input features are described in detail [here](https://www.notion.so/Features-Upgrades-c8239f52a100427fbf445878663d7135?pvs=21).
+The architecture consist of three components: a **weather time-series convolutional neural network (CNN)**, a **building metadata feed forward network (FNN)**, and a **combine FNN**. The model is trained on the multivariate regression task of predicting total household energy consumption by fuel type, specifically outputting the length 4 vector: [`electricity`,`natural_gas` ,`fuel_oil`,`propane`] . The input features are described in detail [here](features_upgrades.md).
 
-![Diagram](architecture.svg)
+![Diagram](/images/architecture.svg)
 
 The model was inspired by [this multi-modal model](https://pyimagesearch.com/2019/02/04/keras-multiple-inputs-and-mixed-data/), which takes in numeric, categorical and image data and uses different branches to handle the mixed data. Note that the architecture has been tweaked manually, but no formal experiments have been performed to optimize architecture. This is planned for future work.
 

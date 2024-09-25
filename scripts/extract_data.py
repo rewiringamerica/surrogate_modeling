@@ -1,8 +1,8 @@
 # Databricks notebook source
-# MAGIC %md # Extract Raw Dataset for Surrogate Model 
+# MAGIC %md # Extract Raw Dataset for Surrogate Model
 # MAGIC
 # MAGIC ### Goal
-# MAGIC Extract and collect the raw ResStock EUSS data required for surrogate modeling, do some light pre-processing to prep for feature engineering, and write to a Delta Table. 
+# MAGIC Extract and collect the raw ResStock EUSS data required for surrogate modeling, do some light pre-processing to prep for feature engineering, and write to a Delta Table.
 # MAGIC
 # MAGIC ### Process
 # MAGIC * Extract and lightly preprocess various ResStock data
@@ -13,14 +13,14 @@
 # MAGIC
 # MAGIC ### I/Os
 # MAGIC
-# MAGIC ##### Inputs: 
+# MAGIC ##### Inputs:
 # MAGIC Let `RESSTOCK_PATH = gs://the-cube/data/raw/nrel/end_use_load_profiles/2022/`
 # MAGIC - `RESSTOCK_PATH/metadata_and_annual_results/national/parquet/baseline_metadata_only.parquet` : Parquet file of building metadata (building id [550K] x building metadata variable)
 # MAGIC - `RESSTOCK_PATH/metadata_and_annual_results/national/parquet/*_metadata_and_annual_results.parquet`: Parquet file of annual building model simulation outputs (building id [~550K], upgrade_id [11] x output variable)
-# MAGIC - `RESSTOCK_PATH/weather/state=*/*_TMY3.csv`: 3107 weather csvs for each county (hour [8760] x weather variable). 
-# MAGIC                                                Note that counties corresponding to the same weather station have identical data. 
+# MAGIC - `RESSTOCK_PATH/weather/state=*/*_TMY3.csv`: 3107 weather csvs for each county (hour [8760] x weather variable).
+# MAGIC                                                Note that counties corresponding to the same weather station have identical data.
 # MAGIC
-# MAGIC ##### Outputs: 
+# MAGIC ##### Outputs:
 # MAGIC - `ml.surrogate_model.building_metadata`: Building metadata indexed by (building_id)
 # MAGIC - `ml.surrogate_model.building_simulation_outputs_annual`: Annual building model simulation outputs indexed by (building_id, upgrade_id)
 # MAGIC - `ml.surrogate_model.weather_data_hourly`: Hourly weather data indexed by (weather_file_city, hour datetime)
@@ -71,6 +71,7 @@ HOURLY_WEATHER_CSVS_PATH = RESSTOCK_PATH + "weather/state=*/*_TMY3.csv"
 # COMMAND ----------
 
 # DBTITLE 1,Functions for loading and preprocessing raw data
+
 def transform_pkeys(df):
     return (
         df.withColumn("building_id", F.col("bldg_id").cast("int"))
@@ -239,6 +240,7 @@ def extract_hourly_weather_data():
         .drop("county_gisjoin", "date_time")
     )
     return weather_data
+
 
 # COMMAND ----------
 

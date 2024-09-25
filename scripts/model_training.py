@@ -12,13 +12,13 @@
 # MAGIC
 # MAGIC ### I/Os
 # MAGIC
-# MAGIC ##### Inputs: 
+# MAGIC ##### Inputs:
 # MAGIC - `ml.surrogate_model.building_metadata`: Building metadata features indexed by (building_id)
 # MAGIC - `ml.surrogate_model.weather_data_hourly`: Weather data indexed by (weather_file_city) with a 8760-length timeseries vector
 # MAGIC - `ml.surrogate_model.building_upgrade_simulation_outputs_annual`: Annual building model simulation outputs indexed by (building_id, upgrade_id)
 # MAGIC
-# MAGIC ##### Outputs: 
-# MAGIC None. The model is logged to the unity catalog with the run id, but as of now is not registered due to issue with signature enforcement slowing down inference. 
+# MAGIC ##### Outputs:
+# MAGIC None. The model is logged to the unity catalog with the run id, but as of now is not registered due to issue with signature enforcement slowing down inference.
 # MAGIC
 # MAGIC ### TODOs:
 # MAGIC
@@ -34,7 +34,7 @@
 # MAGIC #### Cluster/ User Requirements
 # MAGIC - Access Mode: Single User or Shared (Not No Isolation Shared)
 # MAGIC - Runtime: >= Databricks Runtime 14.3 ML (or >= Databricks Runtime 14.3 +  `%pip install databricks-feature-engineering`)
-# MAGIC - Node type: Single Node. Because of [this issue](https://kb.databricks.com/en_US/libraries/apache-spark-jobs-fail-with-environment-directory-not-found-error), worker nodes cannot access the directory needed to run inference on a keras trained model, meaning that the `score_batch()` function throws and OSError. 
+# MAGIC - Node type: Single Node. Because of [this issue](https://kb.databricks.com/en_US/libraries/apache-spark-jobs-fail-with-environment-directory-not-found-error), worker nodes cannot access the directory needed to run inference on a keras trained model, meaning that the `score_batch()` function throws and OSError.
 # MAGIC - Can be run on CPU or GPU, with 2x speedup on GPU
 # MAGIC - Cluster-level packages: `gcsfs==2023.5.0`, `mlflow==2.13.0` (newer than default, which is required to pass a `code_paths` in logging)
 # MAGIC - `USE CATALOG`, `CREATE SCHEMA` privleges on the `ml` Unity Catalog (Ask Miki if for access)
@@ -73,8 +73,8 @@ os.environ["TF_FORCE_GPU_ALLOW_GROWTH"] = "true"
 # MAGIC from tensorflow import keras
 # MAGIC from typing import Tuple, Dict
 # MAGIC
-# MAGIC from datagen import DataGenerator, load_data
-# MAGIC from surrogate_model import SurrogateModel
+# MAGIC from src.datagen import DataGenerator, load_data
+# MAGIC from src.surrogate_model import SurrogateModel
 # MAGIC
 # MAGIC # list available GPUs
 # MAGIC tf.config.list_physical_devices("GPU")
@@ -117,6 +117,7 @@ if DEBUG:
 # COMMAND ----------
 
 # DBTITLE 1,Define wrapper class for processing at inference time
+
 class SurrogateModelingWrapper(mlflow.pyfunc.PythonModel):
     """
     A wrapper class that applies the pre/post processing to the data at inference time,
@@ -163,7 +164,7 @@ class SurrogateModelingWrapper(mlflow.pyfunc.PythonModel):
 
         Parameters:
         - results (dict of {str: np.ndarray}): The outputs of the model in format {target_name (str) : np.ndarray [N,]}
-        - feature_df (pd.DataFrame): The features for the samples of shape [N, *]. Only the features flagging which fuels are present are used here. 
+        - feature_df (pd.DataFrame): The features for the samples of shape [N, *]. Only the features flagging which fuels are present are used here.
 
         Returns:
         - np.ndarray of shape [N, M]
@@ -211,7 +212,11 @@ class SurrogateModelingWrapper(mlflow.pyfunc.PythonModel):
         - The preprocessed feature data in format {feature_name (str) :
                 np.array of shape [N] for building model features and shape [N,8760] for weather features}
         """
-        return {col: np.array(feature_df[col]) for col in self.building_features + ['weather_file_city_index']}
+        return {
+            col: np.array(feature_df[col])
+            for col in self.building_features + ["weather_file_city_index"]
+        }
+
 
 # COMMAND ----------
 
@@ -247,7 +252,6 @@ if not DEBUG:
 
 # Starts an MLflow experiment to track training parameters and results.
 with mlflow.start_run() as run:
-
     # Get the unique ID of the current run in case we aren't registering it
     run_id = mlflow.active_run().info.run_id
 
@@ -275,7 +279,7 @@ with mlflow.start_run() as run:
     mlflow.pyfunc.log_model(
         python_model=pyfunc_model,
         artifact_path=sm.artifact_path,
-        code_paths=["surrogate_model.py"],
+        code_paths=["../src/surrogate_model.py"],
         # signature=signature
     )
     # skip registering model for now..

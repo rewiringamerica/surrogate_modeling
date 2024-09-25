@@ -132,6 +132,7 @@ WINDOW_DESCRIPTION_TO_SPEC = spark.createDataFrame(
 # COMMAND ----------
 
 # DBTITLE 1,Helper functions
+
 @udf(returnType=DoubleType())
 def extract_percentage(value: str) -> float:
     """Extract percentage from string and divide by 100
@@ -429,6 +430,7 @@ wh_schema = StructType(
     ]
 )
 
+
 # pulled from options.tsv
 @udf(wh_schema)
 def get_water_heater_specs(name: str) -> StructType:
@@ -537,9 +539,11 @@ def add_water_heater_features(df):
         .drop("wh_struct")
     )
 
+
 # COMMAND ----------
 
 # DBTITLE 1,Mapping Expressions
+
 # Make various mapping expressions
 def make_map_type_from_dict(mapping: Dict) -> Column:
     """
@@ -578,6 +582,7 @@ luminous_efficiency_mapping = make_map_type_from_dict(
 # COMMAND ----------
 
 # DBTITLE 1,Building metadata feature transformation function
+
 def transform_building_features() -> DataFrame:
     """
     Read and transform subset of building_metadata features for single family homes.
@@ -933,6 +938,7 @@ def transform_building_features() -> DataFrame:
     )
     return building_metadata_transformed
 
+
 # COMMAND ----------
 
 # DBTITLE 1,Transform building metadata
@@ -1164,6 +1170,7 @@ def apply_upgrades(baseline_building_features: DataFrame, upgrade_id: int) -> Da
 
     return upgrade_building_features
 
+
 # COMMAND ----------
 
 # DBTITLE 1,Apply upgrade logic to baseline features
@@ -1278,6 +1285,7 @@ print(
 # COMMAND ----------
 
 # DBTITLE 1,Weather feature transformation function
+
 def transform_weather_features() -> DataFrame:
     """
     Read and transform weather timeseries table. Pivot from long format indexed by (weather_file_city, hour)
@@ -1289,16 +1297,15 @@ def transform_weather_features() -> DataFrame:
     weather_df = spark.read.table("ml.surrogate_model.weather_data_hourly")
     weather_pkeys = ["weather_file_city"]
 
-    weather_data_arrays = (
-        weather_df.groupBy(weather_pkeys).agg(
+    weather_data_arrays = weather_df.groupBy(weather_pkeys).agg(
         *[
             F.collect_list(c).alias(c)
             for c in weather_df.columns
             if c not in weather_pkeys + ["datetime_formatted"]
         ]
     )
-    )
     return weather_data_arrays
+
 
 # COMMAND ----------
 
@@ -1310,22 +1317,23 @@ weather_data_transformed = transform_weather_features()
 # DBTITLE 1,Create and apply string indexer to generate weather file city index
 # Create the StringIndexer
 indexer = StringIndexer(
-    inputCol="weather_file_city", 
-    outputCol="weather_file_city_index", 
-    stringOrderType="alphabetAsc"
+    inputCol="weather_file_city",
+    outputCol="weather_file_city_index",
+    stringOrderType="alphabetAsc",
 )
 
 weather_file_city_indexer = indexer.fit(weather_data_transformed)
 
-weather_data_indexed = (
-    weather_file_city_indexer.transform(weather_data_transformed)
-    .withColumn('weather_file_city_index', F.col('weather_file_city_index').cast('int'))
-)
+weather_data_indexed = weather_file_city_indexer.transform(
+    weather_data_transformed
+).withColumn("weather_file_city_index", F.col("weather_file_city_index").cast("int"))
 
 building_metadata_applicable_upgrades_with_weather_file_city_index = (
-    weather_file_city_indexer.transform(building_metadata_applicable_upgrades)
-    .withColumn('weather_file_city_index', F.col('weather_file_city_index').cast('int'))
-
+    weather_file_city_indexer.transform(
+        building_metadata_applicable_upgrades
+    ).withColumn(
+        "weather_file_city_index", F.col("weather_file_city_index").cast("int")
+    )
 )
 
 # COMMAND ----------
@@ -1407,7 +1415,3 @@ else:
         schema=df.schema,
         description="hourly weather timeseries array features",
     )
-
-# COMMAND ----------
-
-

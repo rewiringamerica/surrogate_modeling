@@ -17,7 +17,8 @@ class SurrogateModel:
     """
     A Deep Learning model for surrogate modeling energy consumption prediction.
 
-    Attributes:
+    Attributes
+    ----------
     - name (str): the name of the model.
     - batch_size (int): the batch size for training. Defaults to 64.
     - dtype (np.dtype), the data type for the numeric features in the model. Defaults to np.float32.
@@ -62,23 +63,34 @@ class SurrogateModel:
         """
         Create a keras model based on the given data generator and layer parameters.
 
-        Parameters:
+        Parameters
+        ----------
         - train_gen (DataGenerator):, the data generator object for training.
         - layer_params (Dict[str, Any]): the layer parameters for the model.
 
-        Returns:
+        Returns
+        -------
         - tensorflow.keras.src.engine.functional.Functional: the created keras model
 
         """
-        #Dense-BatchNorm-LeakyReLU block
-        def dense_batchnorm_leakyrelu(x:tf.keras.layers, n_units:int, name:str, **layer_params):
+
+        # Dense-BatchNorm-LeakyReLU block
+        def dense_batchnorm_leakyrelu(
+            x: tf.keras.layers, n_units: int, name: str, **layer_params
+        ):
             x = layers.Dense(n_units, name=f"{name}_dense", **layer_params)(x)
             x = layers.BatchNormalization(name=f"{name}_batchnorm")(x)
             x = layers.LeakyReLU(name=f"{name}_leakyrelu")(x)
             return x
-        
-        #Conv-BatchNorm-LeakyReLU block
-        def conv_batchnorm_relu(x:tf.keras.layers, filters:int, kernel_size:int, name:str, **layer_params):
+
+        # Conv-BatchNorm-LeakyReLU block
+        def conv_batchnorm_relu(
+            x: tf.keras.layers,
+            filters: int,
+            kernel_size: int,
+            name: str,
+            **layer_params,
+        ):
             x = layers.Conv1D(
                 filters=filters,
                 kernel_size=kernel_size,
@@ -90,7 +102,7 @@ class SurrogateModel:
             x = layers.BatchNormalization(name=f"{name}_conv_batchnorm")(x)
             x = layers.LeakyReLU(name=f"{name}_conv_leakyrelu")(x)
             return x
-        
+
         # Building metadata model
         bmo_inputs_dict = {
             building_feature: layers.Input(
@@ -110,7 +122,9 @@ class SurrogateModel:
                     output_mode="one_hot",
                     dtype=layer_params["dtype"],
                 )
-                vocab_tensor = tf.convert_to_tensor(train_gen.building_feature_vocab_dict[feature]["vocab"])
+                vocab_tensor = tf.convert_to_tensor(
+                    train_gen.building_feature_vocab_dict[feature]["vocab"]
+                )
                 encoder.adapt(vocab_tensor)
                 layer = encoder(layer)
             bmo_inputs.append(layer)
@@ -120,10 +134,10 @@ class SurrogateModel:
         )
 
         bm = layers.BatchNormalization(name="init_batchnorm")(bm)
-        bm = dense_batchnorm_leakyrelu(bm, n_units = 128, name = "first")
-        bm = dense_batchnorm_leakyrelu(bm, n_units = 64, name = "second")
-        bm = dense_batchnorm_leakyrelu(bm, n_units = 32, name = "third")
-        bm = dense_batchnorm_leakyrelu(bm, n_units = 16, name = "fourth")
+        bm = dense_batchnorm_leakyrelu(bm, n_units=128, name="first")
+        bm = dense_batchnorm_leakyrelu(bm, n_units=64, name="second")
+        bm = dense_batchnorm_leakyrelu(bm, n_units=32, name="third")
+        bm = dense_batchnorm_leakyrelu(bm, n_units=16, name="fourth")
 
         bmo = models.Model(
             inputs=bmo_inputs_dict, outputs=bm, name="building_features_model"
@@ -135,25 +149,33 @@ class SurrogateModel:
         num_cities, num_features, num_hours = train_gen.weather_features_matrix.shape
 
         # Input for the weather_file_city_index (lookup key)
-        weather_file_city_index_input = layers.Input(shape=(1,), dtype='int32', name='weather_file_city_index')
+        weather_file_city_index_input = layers.Input(
+            shape=(1,), dtype="int32", name="weather_file_city_index"
+        )
 
         # Create weather embedding layer
         weather_embedding_layer = layers.Embedding(
             input_dim=num_cities,
             output_dim=num_hours * num_features,
-            weights=[train_gen.weather_features_matrix.reshape(num_cities, num_hours * num_features)],
-            trainable=False, name='weather_embedding')(weather_file_city_index_input)
-        
+            weights=[
+                train_gen.weather_features_matrix.reshape(
+                    num_cities, num_hours * num_features
+                )
+            ],
+            trainable=False,
+            name="weather_embedding",
+        )(weather_file_city_index_input)
+
         # Reshape weather embedding layer
         wm = layers.Reshape((num_features, num_hours))(weather_embedding_layer)
 
         # Apply transpose using a Lambda layer
-        wm = layers.Lambda(lambda x: tf.transpose(x, perm=[0,2,1]))(wm)
+        wm = layers.Lambda(lambda x: tf.transpose(x, perm=[0, 2, 1]))(wm)
 
         # Proceed with batch normalization and convolutions
         wm = layers.BatchNormalization(name="init_conv_batchnorm")(wm)
-        wm = conv_batchnorm_relu(wm, filters=16, kernel_size=8, name = "first")
-        wm = conv_batchnorm_relu(wm, filters=8, kernel_size=8, name = "second")
+        wm = conv_batchnorm_relu(wm, filters=16, kernel_size=8, name="first")
+        wm = conv_batchnorm_relu(wm, filters=8, kernel_size=8, name="second")
 
         # sum the time dimension
         wm = layers.Lambda(
@@ -163,25 +185,47 @@ class SurrogateModel:
         )(wm)
 
         wmo = models.Model(
-            inputs=weather_file_city_index_input, outputs=wm, name="weather_features_model"
+            inputs=weather_file_city_index_input,
+            outputs=wm,
+            name="weather_features_model",
         )
 
         # Combined model and separate towers for output groups
         cm = layers.Concatenate(name="combine")([bmo.output, wmo.output])
-        cm = layers.Dense(24, name="combine_first_dense", activation="leaky_relu", **layer_params)(cm)
-        cm = layers.Dense(24, name="combine_second_dense", activation="leaky_relu", **layer_params)(cm)
-        cm = layers.Dense(16, name="third_second_dense", activation="leaky_relu", **layer_params)(cm)
+        cm = layers.Dense(
+            24, name="combine_first_dense", activation="leaky_relu", **layer_params
+        )(cm)
+        cm = layers.Dense(
+            24, name="combine_second_dense", activation="leaky_relu", **layer_params
+        )(cm)
+        cm = layers.Dense(
+            16, name="third_second_dense", activation="leaky_relu", **layer_params
+        )(cm)
 
         # building a separate tower for each output group
         final_outputs = {}
         for consumption_group in train_gen.targets:
-            io = layers.Dense(4, name=consumption_group + "_entry", activation="leaky_relu", **layer_params)(cm)
-            io = layers.Dense(2, name=consumption_group + "_mid", activation="leaky_relu", **layer_params)(io)
+            io = layers.Dense(
+                4,
+                name=consumption_group + "_entry",
+                activation="leaky_relu",
+                **layer_params,
+            )(cm)
+            io = layers.Dense(
+                2,
+                name=consumption_group + "_mid",
+                activation="leaky_relu",
+                **layer_params,
+            )(io)
             io = layers.Dense(1, name=consumption_group, activation="leaky_relu")(io)
             final_outputs[consumption_group] = io
 
         final_model = models.Model(
-            inputs={**bmo.input, 'weather_file_city_index': weather_file_city_index_input}, outputs=final_outputs
+            inputs={
+                **bmo.input,
+                "weather_file_city_index": weather_file_city_index_input,
+            },
+            outputs=final_outputs,
         )
 
         final_model.compile(
@@ -195,7 +239,8 @@ class SurrogateModel:
         """
         Returns the latest version of the registered model.
 
-        Returns:
+        Returns
+        -------
         - int, the latest version of the registered model
 
         """
@@ -213,10 +258,12 @@ class SurrogateModel:
         """
         Returns the URI for the latest version of the registered model.
 
-        Raises:
+        Raises
+        ------
         - ValueError: If no version of the model has been registered yet
 
-        Returns:
+        Returns
+        -------
         - str: the URI for the latest version of the registered model
 
         """
@@ -239,14 +286,17 @@ class SurrogateModel:
             * the model version if specified
             * the latest registered model otherwise
 
-        Raises:
+        Raises
+        ------
         - ValueError: If no run_id is not passed and no version of the model has been registered yet
 
-        Parameters:
+        Parameters
+        ----------
         - run_id (str): the ID of the run. Defaults to None.
         - version (int): the version of the model. Ignored if run_id is passed. Defaults to None.
 
-        Returns:
+        Returns
+        -------
         - str, the URI for the specified model version or the latest registered model
 
         """
@@ -269,12 +319,14 @@ class SurrogateModel:
             * the latest registered model otherwise
         Returns the input dataframe with a column containing predicted values as an array (one for each target)
 
-        Parameters:
+        Parameters
+        ----------
         - test_data (DataFrame): the test data to run inference on containing the keys to join to feature tables on.
         - run_id (str): the ID of the run. Defaults to None.
         - version (int): the version of the model. Ignored if run_id is passed. Defaults to None.
 
-        Returns:
+        Returns
+        -------
         - DataFrame: test data with predictions
 
         """
@@ -291,11 +343,13 @@ def mape(y_true, y_pred):
     Computes the Mean Absolute Percentage Error between the true and predicted values,
     ignoring elements where the true value is 0.
 
-    Parameters:
+    Parameters
+    ----------
     - y_true (array): the true values
     - y_pred (array): the predicted values
 
-    Returns:
+    Returns
+    -------
     - float: the Mean Absolute Percentage Error
 
     """
@@ -304,18 +358,19 @@ def mape(y_true, y_pred):
 
 
 @keras.saving.register_keras_serializable(package="my_package", name="masked_mae")
-def masked_mae(y_true:tf.Tensor, y_pred:tf.Tensor) -> tf.Tensor:
+def masked_mae(y_true: tf.Tensor, y_pred: tf.Tensor) -> tf.Tensor:
     """
     Calculate the Mean Absolute Error (MAE) between true and predicted values, ignoring those where y_true=0.
 
-    This custom loss function is designed for scenarios where zero values in the true values are considered to be irrelevant and should not contribute to the loss calculation. It applies a mask to both the true and predicted values to exclude these zero entries before computing the MAE. The decorator allows this function to be serialized and logged alongside the keras model. 
+    This custom loss function is designed for scenarios where zero values in the true values are considered to be irrelevant and should not contribute to the loss calculation. It applies a mask to both the true and predicted values to exclude these zero entries before computing the MAE. The decorator allows this function to be serialized and logged alongside the keras model.
 
     Args:
     - y_true (tf.Tensor): The true values.
     - y_pred (tf.Tensor): The predicted values.
 
-    Returns:
-    - tf.Tensor: The mean absolute error computed over non-zero true values. This is just a single scalar stored in a tensor. 
+    Returns
+    -------
+    - tf.Tensor: The mean absolute error computed over non-zero true values. This is just a single scalar stored in a tensor.
     """
     # Create a mask where targets are not zero
     mask = tf.not_equal(y_true, 0)

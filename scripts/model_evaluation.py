@@ -251,8 +251,8 @@ baseline_appliance_features = [
     "water_heater_fuel",
     "clothes_dryer_fuel",
     "cooking_range_fuel",
-    # "is_mobile_home", 
-    # "is_attached", 
+    # "is_mobile_home",
+    # "is_attached",
     # "unit_level_in_building"
 ]
 pred_by_building_upgrade_fuel_model_with_metadata = test_set.select(
@@ -269,8 +269,9 @@ pred_by_building_upgrade_fuel_model_with_metadata = (
         .otherwise(F.col("heating_fuel")),
     ).withColumn(
         "ac_type",
-        F.when(F.col("ac_type") == "None", F.lit("No Cooling"))
-        .otherwise(F.col("ac_type")),
+        F.when(F.col("ac_type") == "None", F.lit("No Cooling")).otherwise(
+            F.col("ac_type")
+        ),
     )
 )
 
@@ -281,6 +282,7 @@ pred_by_building_upgrade_fuel_model_with_metadata = (
 # COMMAND ----------
 
 # DBTITLE 1,Calculate error metrics
+
 # define function to calculate absolute prediction error
 @udf("double")
 def APE(abs_error: float, actual: float, eps=1e-3):
@@ -358,6 +360,7 @@ pred_df_savings = (
 # COMMAND ----------
 
 # DBTITLE 1,Define function for aggregating over metrics
+
 # define function to calculate absolute prediction error
 def wMAPE(abs_error_col: Column, actual_col: Column) -> Column:
     """
@@ -409,6 +412,7 @@ def aggregate_metrics(pred_df_savings: DataFrame, groupby_cols: List[str]):
     ]
 
     return pred_df_savings.groupby(*groupby_cols).agg(*aggregation_expression)
+
 
 # COMMAND ----------
 
@@ -607,7 +611,6 @@ pred_df_savings_pd = (
 pred_df_savings_pd_clip = pred_df_savings_pd.copy()
 
 with sns.axes_style("whitegrid"):
-
     g = sns.catplot(
         data=pred_df_savings_pd_clip,
         x="Baseline Fuel",
@@ -678,6 +681,7 @@ def save_figure_to_gcfs(fig, gcspath, figure_format="png", dpi=200, transparent=
     bucket = client.get_bucket(gcspath.bucket)
     blob = bucket.blob(gcspath.blob)
     blob.upload_from_file(buf, content_type=figure_format, rewind=True)
+
 
 # COMMAND ----------
 

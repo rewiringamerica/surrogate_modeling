@@ -1,7 +1,6 @@
 import math
 from typing import Any, Dict, List, Tuple
 
-import mlflow
 import numpy as np
 import pandas as pd
 import pyspark.sql.functions as F
@@ -21,7 +20,8 @@ class DataGenerator(tf.keras.utils.Sequence):
     Let N and M be the number of samples and targets in the training set respectively.
     Let P_b and P_w be the number of building and weather features respectively, where P = P_b + P_w is the total number of features.
 
-    Attributes:
+    Attributes
+    ----------
     - building_features (List[str]): names of the building features to use in training. Defaults to class attribute.
     - weather_features (List[str]): names of the weather features to use in training. Defaults to class attribute.
     - upgrade_ids (List[str]): ids of upgrades to include in training set. Defaults to class attribute.
@@ -35,7 +35,7 @@ class DataGenerator(tf.keras.utils.Sequence):
     - training_set (TrainingSet): Databricks TrainingSet object contaning targets, building feautres and weather features.
     - training_df (pd.DataFrame): Dataframe of building features and targets of shape [N, P_b + M]. Does not include weather features.
     - weather_features_df (pd.DataFrame): Dataframe of building features of shape [N, P_w] where each column contains a 8760-length vector.
-    - weather_features_matrix (numpy.ndarray): A 3D matrix of shape (number of weather file cities, number of weather features, and number of hours in a year) representing weather data for various cities over the course of a year. 
+    - weather_features_matrix (numpy.ndarray): A 3D matrix of shape (number of weather file cities, number of weather features, and number of hours in a year) representing weather data for various cities over the course of a year.
     - building_feature_vocab_dict (dict): Dict of format {feature_name : {"dtype": feature_dtype, "vocab": np.array
                                         of all possible features if string feature else empty}}.
     - fe (databricks.feature_engineering.client.FeatureEngineeringClient: client for interacting with the
@@ -167,11 +167,11 @@ class DataGenerator(tf.keras.utils.Sequence):
         """
         Initializes the DataGenerator object.
 
-        Parameters:
+        Parameters
+        ----------
         - train_data (DataFrame): the training data containing the targets and keys to join to the feature tables.
         See class docstring for all other parameters.
         """
-
         # self.upgrades = upgrade_ids or self.upgrade_ids
         self.building_features = building_features or self.building_features
         self.weather_features = weather_features or self.weather_features
@@ -198,8 +198,12 @@ class DataGenerator(tf.keras.utils.Sequence):
 
         self.weather_features_df = self.init_weather_features()
         self.weather_features_matrix = np.stack(
-            self.weather_features_df.sort_values(by = 'weather_file_city_index')[self.weather_features].apply(lambda row: np.stack(row), axis=1).values
-            )
+            self.weather_features_df.sort_values(by="weather_file_city_index")[
+                self.weather_features
+            ]
+            .apply(lambda row: np.stack(row), axis=1)
+            .values
+        )
         self.building_feature_vocab_dict = self.init_building_feature_vocab_dict()
 
         self.on_epoch_end()
@@ -208,13 +212,14 @@ class DataGenerator(tf.keras.utils.Sequence):
         """
         Returns the FeatureLookup objects for building features.
 
-        Returns:
+        Returns
+        -------
         - list: List of FeatureLookup objects for building features.
         """
         return [
             FeatureLookup(
                 table_name=self.building_feature_table_name,
-                feature_names=self.building_features + ['weather_file_city_index'],
+                feature_names=self.building_features + ["weather_file_city_index"],
                 lookup_key=["building_id", "upgrade_id", "weather_file_city"],
             ),
         ]
@@ -223,7 +228,8 @@ class DataGenerator(tf.keras.utils.Sequence):
         """
         Returns the FeatureLookup objects for weather features.
 
-        Returns:
+        Returns
+        -------
         - list: List of FeatureLookup objects for weather features.
         """
         return [
@@ -242,12 +248,14 @@ class DataGenerator(tf.keras.utils.Sequence):
         """
         Initializes the Databricks TrainingSet object contaning targets, building feautres and weather features.
 
-        Parameters:
+        Parameters
+        ----------
             - train_data (DataFrame): the training data containing the targets and keys to join to the feature tables.
             - exclude_columns (list of str): columns to be excluded from the output training set.
                                              Defaults to the join keys: ["building_id", "upgrade_id", "weather_file_city"].
 
-        Returns:
+        Returns
+        -------
         - TrainingSet
         """
         # Join the feature tables
@@ -265,10 +273,12 @@ class DataGenerator(tf.keras.utils.Sequence):
         Loads dataframe containing building features and targets into memory.
         Note that weather features are not joined until generation time when __get_item__() is called.
 
-        Parameters:
+        Parameters
+        ----------
          - train_data (DataFrame): the training data containing the targets and keys to join to the feature tables.
 
-        Returns:
+        Returns
+        -------
         - pd.DataFrame: dataframe containing building features and targets.
         """
         # Join to building feature tables and drop join keys since these aren't features we wanna train on
@@ -284,7 +294,8 @@ class DataGenerator(tf.keras.utils.Sequence):
         """
         Loads dataframe weather features into memory
 
-        Returns:
+        Returns
+        -------
         - pd.DataFrame: The weather features dataframe.
         """
         weather_features_table = self.fe.read_table(
@@ -300,10 +311,12 @@ class DataGenerator(tf.keras.utils.Sequence):
         Returns the dtype of the feature, which is tf.string
         if object, otherwise self.dtype
 
-        Parameters:
+        Parameters
+        ----------
         - feature_name (str): the name of the feature.
 
-        Returns:
+        Returns
+        -------
         - The dtype of the feature, which is tf.string if catagorical
         """
         is_string_feature = self.training_df[feature_name].dtype == "O"
@@ -314,10 +327,12 @@ class DataGenerator(tf.keras.utils.Sequence):
         Returns the vocabulary of the feature: unique list of possible values a categorical feature can take on
         (only used for categorical).
 
-        Parameters:
+        Parameters
+        ----------
             - feature_name: str, the name of the feature.
 
-        Returns:
+        Returns
+        -------
         - np.ndarray: The unique list of possible values a categorical feature can take on
         """
         return self.training_df[feature_name].unique()
@@ -326,7 +341,8 @@ class DataGenerator(tf.keras.utils.Sequence):
         """
         Initializes the building feature vocabulary dictionary.
 
-        Returns:
+        Returns
+        -------
             Dict of format {feature_name : {"dtype": feature_dtype, "vocab": np.array of all possible features if string feature else empty}}.
         """
         bm_dict = {}
@@ -344,37 +360,45 @@ class DataGenerator(tf.keras.utils.Sequence):
         """
         Converts the training features from a pandas dataframe to a dictionary.
 
-        Parameters:
+        Parameters
+        ----------
         - feature_df: pd.DataFrame, the input features for the model of shape [N, P + 1] where feature columns
                         for weather features contain len 8760 arrays. Note the one extra column "in_weather_city"
                         which was used in join and will get dropped here.
 
-        Returns:
+        Returns
+        -------
             Dict[str,np.ndarray]: The preprocessed feature data in format {feature_name (str):
                     np.array of shape [len(feature_df)] for building model features
                     and shape [len(feature_df), 8760] for weather features}
         """
-        return {col: np.array(feature_df[col]) for col in self.building_features + ['weather_file_city_index']}
+        return {
+            col: np.array(feature_df[col])
+            for col in self.building_features + ["weather_file_city_index"]
+        }
 
     def __len__(self) -> int:
         """
         Returns the number of batches.
 
-        Returns:
+        Returns
+        -------
         - int: The number of batches.
         """
         return math.ceil(len(self.training_df) / self.batch_size)
-    
+
     def __getitem__(
         self, index: int
     ) -> Tuple[Dict[str, np.ndarray], Dict[str, np.ndarray]]:
         """
         Generates one batch of data.
 
-        Parameters:
+        Parameters
+        ----------
         - index: int, the batch index.
 
-        Returns:
+        Returns
+        -------
         - X (dict): features for batch in format {feature_name (str):
               np.array of shape [batch_size] for building model features and shape [batch_size, 8760] for weather features}
         - y (dict) : targets for the batch in format {target_name (str): np.array of shape [batch_size]}
@@ -410,20 +434,22 @@ def load_data(
     and split into train/val/test sets. The parameters n_train and n_test can be used to reduce the size of the data,
     by subsetting from the existing train/val/test data, meaning that the same splits are preserved.
 
-    Parameters:
+    Parameters
+    ----------
         consumption_group_dict (dict): Dictionary mapping consumption categories (e.g., 'heating') to columns.
             Default is DataGenerator.consumption_by_fuel_dict (too long to write out)
         building_feature_table_name (str): Name of the building feature table.
             Default is "ml.surrogate_model.building_features"
         p_val (float): Proportion of data to use for validation. Default is 0.2.
         p_test (float): Proportion of data to use for testing. Default is 0.1.
-        n_train (int): Number of training records to select, where the size of the val and tests sets will be adjusted accordingly to   
+        n_train (int): Number of training records to select, where the size of the val and tests sets will be adjusted accordingly to
                     maintain the requested ratios. If number is passed that exceeds the size of p_train * all samples, then this will just be set to that max value. Default is None (select all)
-        n_test (int): Number of test records to select, where the size of the train and val sets will be adjusted accordingly to maintain 
+        n_test (int): Number of test records to select, where the size of the train and val sets will be adjusted accordingly to maintain
                     the requested ratios. If number is passed that exceeds the size of p_test * all_samples, then this will just be set to that max value. Default is None (select all).
         seed (int): Seed for random sampling. Default is 42.
 
-    Returns:
+    Returns
+    -------
         train data (DataFrame)
         val_data (DataFrame)
         test_data (DataFrame)
@@ -465,9 +491,11 @@ def load_data(
         )
 
         if n_train:
-            frac = np.clip(n_train * p_baseline / train_ids.count(), a_max = 1.0, a_min=0.0)
+            frac = np.clip(
+                n_train * p_baseline / train_ids.count(), a_max=1.0, a_min=0.0
+            )
         elif n_test:
-            frac = np.clip(n_test * p_baseline / test_ids.count(), a_max = 1.0, a_min=0.0)
+            frac = np.clip(n_test * p_baseline / test_ids.count(), a_max=1.0, a_min=0.0)
     else:
         frac = 1.0
 

@@ -58,7 +58,7 @@ for row in gpuutils.gather_cpu_gpu_metrics(
     df_usage = pd.concat([df_usage, pd.DataFrame([row])])
 
     data_cols = [col for col in df_usage.columns if col != "timestamp"]
-    labels = [label_map[col] for col in data_cols]  
+    labels = [label_map[col] for col in data_cols]
 
     if lines is None:
         lines = ax.plot(
@@ -93,7 +93,7 @@ df_usage
 
 fig, ax = plt.subplots(figsize=(6, 4))
 ax.set_title(", ".join(labels) + " Utilization")
-             
+
 lines = ax.plot(
     df_usage["timestamp"],
     df_usage[data_cols],
@@ -108,5 +108,3 @@ ax.legend()
 ax.grid()
 
 # COMMAND ----------
-
-
