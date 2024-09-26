@@ -35,12 +35,12 @@ jobs:
       #----------------------------------------------
       - run: python -m pip install isort
       - run: |
-          isort --profile black ./src
+          isort --profile black ./src ./tests
       #----------------------------------------------
       #          run black
       #----------------------------------------------
       - run: python -m pip install black[jupyter]
       - run: |
-          black ./src  --diff
-          black ./src  --check
+          black ./src ./tests --diff
+          black ./src ./tests --check
     
