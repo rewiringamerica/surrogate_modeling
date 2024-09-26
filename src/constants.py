@@ -9,7 +9,12 @@ BRITISH_THERMAL_UNIT_TO_KILOWATT_HOUR = 1 / KILOWATT_HOUR_TO_BRITISH_THERMAL_UNI
 The number British thermal units (BTU) in a kilowatt-hour
 """
 
-POUNDS_TO_KILOGRAM = 0.453592
+POUND_TO_KILOGRAM = 0.453592
 """
 The number of pounds in a kilogram.
+"""
+
+KILOGRAM_TO_POUND = 1 / POUND_TO_KILOGRAM
+"""
+The number of kilograms in pound.
 """

@@ -286,7 +286,7 @@ def convert_column_units(bsb_df: DataFrame) -> DataFrame:
     # (suffix, conversion_factor except for temp, new_unit)
     conversions = [
         ("_m_btu", constants.BRITISH_THERMAL_UNIT_TO_KILOWATT_HOUR * 1e6, "kwh"),
-        ("_lb", constants.POUNDS_TO_KILOGRAM, "kg"),
+        ("_lb", constants.POUND_TO_KILOGRAM, "kg"),
         ("_btu_h", constants.BRITISH_THERMAL_UNIT_TO_KILOWATT_HOUR, "kw"),
         ("_f", 1, "c"),
     ]
