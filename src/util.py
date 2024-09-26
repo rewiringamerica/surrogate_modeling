@@ -9,7 +9,7 @@ from pyspark.sql import DataFrame
 import pyspark.sql.functions as F
 from pyspark.sql.types import BooleanType, DoubleType, LongType, StructField, StructType
 
-import constants
+from src import constants
 
 from databricks.sdk.runtime import *
 
@@ -157,21 +157,14 @@ def load_clean_and_add_upgrade_id(
         if field.name in df.schema.fieldNames():
             if field.dataType.typeName() != get_dtype(df, field.name):
                 # Escape column names with periods, because PySpark doesn't like them.
-                # These are cleaned up later, in clean_columns().
+                # These are cleaned up later.
                 colname = f"`{field.name}`" if "." in field.name else field.name
                 df = df.withColumn(field.name, df[colname].cast(field.dataType))
 
     if "completed_status" in df.columns:
         df = df.where(F.col("completed_status") == "Success")
 
-    # df_clean = util.clean_colnames(df)
     df = df.withColumn("upgrade_id", F.lit(upgrade_id))
-
-    # # special handling for upgrade_id 14.01 and 14.02 in which we exclude ductless upgrades
-    # if upgrade_id in [14.01, 14.02]:
-    #     df_join = df.join(resstock_metadata_filtered, on="building_id", how="inner")
-    #     df_filtered = df_join.filter(F.col("in_hvac_has_ducts"))
-    #     df = df_filtered.drop("in_hvac_has_ducts")
 
     return df
 

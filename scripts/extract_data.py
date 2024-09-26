@@ -2,7 +2,7 @@
 # MAGIC %md # Extract Raw Dataset for Surrogate Model
 # MAGIC
 # MAGIC ### Goal
-# MAGIC Extract and collect the raw ResStock EUSS data required for surrogate modeling, do some light pre-processing to prep for feature engineering, and write to a Delta Table.
+# MAGIC Extract and collect the raw ResStock EUSS data and RAStock data required for surrogate modeling, do some light pre-processing to prep for feature engineering, and write to a Delta Table.
 # MAGIC
 # MAGIC ### Process
 # MAGIC * Extract and lightly preprocess various ResStock data
@@ -147,21 +147,29 @@ def extract_resstock_annual_outputs() -> DataFrame:
     return annual_energy_consumption_cleaned
 
 
-# TODO: remove or flag GSHP upgrades for homes without ducts
 def extract_rastock_annual_outputs() -> DataFrame:
     """
     Extract and lightly preprocess RAStock annual energy consumption outputs:
-    rename and remove columns.
+    rename and remove columns so that is matches format output by extract_resstock_annual_outputs()
+
     """
-    # TODO: add better documentation
-    # # get annual outputs for all RAStock upgrades
-    annual_energy_consumption_rastock = util.get_clean_rastock_df()
+    # TODO: if we ever add GSHP to sumo, we need to mark homes without ducts as inapplicable
+    # 1. get annual outputs for all RAStock upgrades and apply common post-processing
+    rastock_outputs = util.get_clean_rastock_df()
 
+    # 2. apply custom sumo post-processing to align with ResStock outputs 
     # cast pkeys to the right type
-    annual_energy_consumption_rastock = annual_energy_consumption_rastock.withColumn(
-        "building_id", F.col("building_id").cast("int")
-    ).withColumn("upgrade_id", F.col("upgrade_id").cast("double"))
-
+    rastock_outputs = (
+        rastock_outputs
+            .withColumn("building_id", F.col("building_id").cast("int"))
+            .withColumn("upgrade_id", F.col("upgrade_id").cast("double"))
+    )
+    # remove irrelevant columns and rename to align with resstock
+    # first do some prep: 
+    # construct the regex pattern of columns to remove: 
+    # match all columns except for:
+    #   * pkeys
+    #   * those prefixed with "out_" followed by a modeled fuel
     modeled_fuel_types = [
         "fuel_oil",
         "propane",
@@ -170,31 +178,29 @@ def extract_rastock_annual_outputs() -> DataFrame:
         "site_energy",
     ]
     pkey_cols = ["building_id", "upgrade_id"]
-
     r_fuels = "|".join(modeled_fuel_types)
     r_pkey = "".join([f"(?!{k}$)" for k in pkey_cols])
-
-    fuel_replace_dict = {f + "_": f + "__" for f in modeled_fuel_types}
-
-    # reformat to match ResStock and do some light preprocessing
-    annual_energy_consumption_rastock_cleaned = util.clean_columns(
-        df=annual_energy_consumption_rastock,
-        # remove all columns unless they are
-        # prefixed with "out_" followed by a modeled fuel or are a pkey
-        remove_columns_with_substrings=[rf"^(?!out_({r_fuels})){r_pkey}.*"],
-        remove_substrings_from_columns=["out_", "_energy_consumption_kwh"],
-        replace_column_substrings_dict={
-            **fuel_replace_dict,
+    columns_to_remove_match_pattern = rf"^(?!out_({r_fuels})){r_pkey}.*"
+    # construct the the substring replacement dict to align colnames with ResStock
+    replace_column_substrings_dict={
+            **{f + "_": f + "__" for f in modeled_fuel_types},
             **{"natural_gas": "methane_gas", "permanent_spa": "hot_tub"},
-        },
+        }
+    # apply reformatting to match ResStock 
+    rastock_outputs_cleaned = util.clean_columns(
+        df=rastock_outputs,
+        remove_columns_with_substrings=[columns_to_remove_match_pattern],
+        remove_substrings_from_columns=["out_", "_energy_consumption_kwh"],
+        replace_column_substrings_dict=replace_column_substrings_dict,
     )
 
-    return annual_energy_consumption_rastock_cleaned.withColumn(
-        "applicability", F.lit(True)
-    )
+    # RAStock only includes sims when upgrades are applicable, so this column is missing
+    rastock_outputs_cleaned = rastock_outputs_cleaned.withColumn("applicability", F.lit(True))
+
+    return rastock_outputs_cleaned
 
 
-def extract_hourly_weather_data():
+def extract_hourly_weather_data() -> DataFrame:
     """
     Extract and lightly preprocess weather data from all county TMY weather files:
     drop data from duplicated weather stations; subset, rename and format columns
