@@ -779,8 +779,8 @@ def transform_building_features() -> DataFrame:
             F.coalesce(
                 F.col("geometry_building_number_units_sfa"),
                 F.col("geometry_building_number_units_mf"),
-                F.lit(1),
-            ),
+                F.lit("1"),
+            ).cast('int'),
         )
         .withColumn(
             "is_middle_unit",
