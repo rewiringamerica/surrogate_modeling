@@ -157,16 +157,14 @@ def extract_rastock_annual_outputs() -> DataFrame:
     # 1. get annual outputs for all RAStock upgrades and apply common post-processing
     rastock_outputs = util.get_clean_rastock_df()
 
-    # 2. apply custom sumo post-processing to align with ResStock outputs 
+    # 2. apply custom sumo post-processing to align with ResStock outputs
     # cast pkeys to the right type
-    rastock_outputs = (
-        rastock_outputs
-            .withColumn("building_id", F.col("building_id").cast("int"))
-            .withColumn("upgrade_id", F.col("upgrade_id").cast("double"))
-    )
+    rastock_outputs = rastock_outputs.withColumn(
+        "building_id", F.col("building_id").cast("int")
+    ).withColumn("upgrade_id", F.col("upgrade_id").cast("double"))
     # remove irrelevant columns and rename to align with resstock
-    # first do some prep: 
-    # construct the regex pattern of columns to remove: 
+    # first do some prep:
+    # construct the regex pattern of columns to remove:
     # match all columns except for:
     #   * pkeys
     #   * those prefixed with "out_" followed by a modeled fuel
@@ -182,11 +180,11 @@ def extract_rastock_annual_outputs() -> DataFrame:
     r_pkey = "".join([f"(?!{k}$)" for k in pkey_cols])
     columns_to_remove_match_pattern = rf"^(?!out_({r_fuels})){r_pkey}.*"
     # construct the the substring replacement dict to align colnames with ResStock
-    replace_column_substrings_dict={
-            **{f + "_": f + "__" for f in modeled_fuel_types},
-            **{"natural_gas": "methane_gas", "permanent_spa": "hot_tub"},
-        }
-    # apply reformatting to match ResStock 
+    replace_column_substrings_dict = {
+        **{f + "_": f + "__" for f in modeled_fuel_types},
+        **{"natural_gas": "methane_gas", "permanent_spa": "hot_tub"},
+    }
+    # apply reformatting to match ResStock
     rastock_outputs_cleaned = util.clean_columns(
         df=rastock_outputs,
         remove_columns_with_substrings=[columns_to_remove_match_pattern],
@@ -195,7 +193,9 @@ def extract_rastock_annual_outputs() -> DataFrame:
     )
 
     # RAStock only includes sims when upgrades are applicable, so this column is missing
-    rastock_outputs_cleaned = rastock_outputs_cleaned.withColumn("applicability", F.lit(True))
+    rastock_outputs_cleaned = rastock_outputs_cleaned.withColumn(
+        "applicability", F.lit(True)
+    )
 
     return rastock_outputs_cleaned
 
@@ -248,7 +248,6 @@ def extract_hourly_weather_data() -> DataFrame:
     )
     return weather_data
 
-
 # COMMAND ----------
 
 # DBTITLE 1,Extract building metadata
@@ -292,9 +291,7 @@ spark.sql(f"OPTIMIZE {table_name}")
 # COMMAND ----------
 
 # DBTITLE 1,Write out annual outputs
-# TODO: move this back to the original once testing is complete
-table_name = "ml.surrogate_model.building_simulation_outputs_annual_tmp"
-# table_name = "ml.surrogate_model.building_simulation_outputs_annual"
+table_name = "ml.surrogate_model.building_simulation_outputs_annual"
 annual_outputs.write.saveAsTable(
     table_name, mode="overwrite", overwriteSchema=True, partitionBy=["upgrade_id"]
 )

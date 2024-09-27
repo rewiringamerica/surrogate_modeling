@@ -117,8 +117,6 @@ if DEBUG:
 # COMMAND ----------
 
 # DBTITLE 1,Define wrapper class for processing at inference time
-
-
 class SurrogateModelingWrapper(mlflow.pyfunc.PythonModel):
     """
     A wrapper class that applies the pre/post processing to the data at inference time,
@@ -217,7 +215,6 @@ class SurrogateModelingWrapper(mlflow.pyfunc.PythonModel):
             col: np.array(feature_df[col])
             for col in self.building_features + ["weather_file_city_index"]
         }
-
 
 # COMMAND ----------
 
@@ -320,5 +317,3 @@ print(model_loaded.predict(input_data))
 # DBTITLE 1,Pass Run ID to next notebook if running in job
 if not DEBUG:
     dbutils.jobs.taskValues.set(key="run_id", value=run_id)
-
-# COMMAND ----------

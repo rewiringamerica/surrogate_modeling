@@ -47,10 +47,11 @@ class DataGenerator(tf.keras.utils.Sequence):
     # init FeatureEngineering client
     fe = FeatureEngineeringClient()
 
-    # table names to pull from
-    building_feature_table_name = "ml.surrogate_model.building_features_tmp"
+    #table names to pull from
+    building_feature_table_name = "ml.surrogate_model.building_features"
     weather_feature_table_name = "ml.surrogate_model.weather_features_hourly"
 
+    #TODO: put this in some kind of shared config that can be used across srcipts/repos
     # init all of the class attribute defaults
     building_features = [
         # structure
@@ -154,8 +155,8 @@ class DataGenerator(tf.keras.utils.Sequence):
         "propane": ["propane__total"],
     }
 
-    # TODO: put this in some kind of shared config that can be used across srcipts/repos
-    supported_upgrade_ids = [0.0, 1.0, 3.0, 4.0, 6.0, 9.0, 11.05, 13.01]
+    #TODO: add 13.01 and 11.05 before training new model
+    supported_upgrade_ids = [0.0, 1.0, 3.0, 4.0, 6.0, 9.0]
 
     def __init__(
         self,

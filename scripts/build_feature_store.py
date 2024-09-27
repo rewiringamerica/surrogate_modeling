@@ -1206,7 +1206,7 @@ building_metadata_upgrades = reduce(
 # DBTITLE 1,Drop rows where upgrade was not applied
 # read in outputs so that we can test applicability logic
 annual_outputs = spark.table(
-    "ml.surrogate_model.building_simulation_outputs_annual_tmp"
+    "ml.surrogate_model.building_simulation_outputs_annual"
 ).where(F.col("upgrade_id").isin(SUPPORTED_UPGRADES))
 
 # drop upgrades that had no unchanged features and therefore weren't upgraded
@@ -1402,8 +1402,11 @@ fe = FeatureEngineeringClient()
 # COMMAND ----------
 
 # DBTITLE 1,Write out building metadata feature store
-table_name = "ml.surrogate_model.building_features_tmp"
-df = building_metadata_applicable_upgrades_with_weather_file_city_index
+table_name = "ml.surrogate_model.building_features"
+# TODO: remove this drop statement before retraining-- this is just a temp (yes hacky i know back off) solution to not break dohyo dowstream
+df = building_metadata_applicable_upgrades_with_weather_file_city_index.drop(
+    "heat_pump_sizing_methodology"
+)
 if spark.catalog.tableExists(table_name):
     fe.write_table(name=table_name, df=df, mode="merge")
 else:
