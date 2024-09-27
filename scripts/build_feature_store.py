@@ -1403,10 +1403,7 @@ fe = FeatureEngineeringClient()
 
 # DBTITLE 1,Write out building metadata feature store
 table_name = "ml.surrogate_model.building_features"
-# TODO: remove this drop statement before retraining-- this is just a temp (yes hacky i know back off) solution to not break dohyo dowstream
-df = building_metadata_applicable_upgrades_with_weather_file_city_index.drop(
-    "heat_pump_sizing_methodology"
-)
+df = building_metadata_applicable_upgrades_with_weather_file_city_index
 if spark.catalog.tableExists(table_name):
     fe.write_table(name=table_name, df=df, mode="merge")
 else:
