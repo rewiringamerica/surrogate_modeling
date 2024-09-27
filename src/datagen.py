@@ -47,7 +47,7 @@ class DataGenerator(tf.keras.utils.Sequence):
     # init FeatureEngineering client
     fe = FeatureEngineeringClient()
 
-    #table names to pull from
+    # table names to pull from
     building_feature_table_name = "ml.surrogate_model.building_features_tmp"
     weather_feature_table_name = "ml.surrogate_model.weather_features_hourly"
 
@@ -154,7 +154,7 @@ class DataGenerator(tf.keras.utils.Sequence):
         "propane": ["propane__total"],
     }
 
-    #TODO: put this in some kind of shared config that can be used across srcipts/repos
+    # TODO: put this in some kind of shared config that can be used across srcipts/repos
     supported_upgrade_ids = [0.0, 1.0, 3.0, 4.0, 6.0, 9.0, 11.05, 13.01]
 
     def __init__(
@@ -436,7 +436,7 @@ def load_data(
             Default is DataGenerator.consumption_by_fuel_dict (too long to write out)
         building_feature_table_name (str): Name of the building feature table.
             Default is "ml.surrogate_model.building_features"
-        upgrade_ids (list): List of upgrade ids to use. If none (default) all supported upgrades are used. 
+        upgrade_ids (list): List of upgrade ids to use. If none (default) all supported upgrades are used.
         p_val (float): Proportion of data to use for validation. Default is 0.2.
         p_test (float): Proportion of data to use for testing. Default is 0.1.
         n_train (int): Number of training records to select, where the size of the val and tests sets will be adjusted accordingly to
