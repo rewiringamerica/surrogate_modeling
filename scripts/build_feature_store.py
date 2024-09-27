@@ -132,8 +132,6 @@ WINDOW_DESCRIPTION_TO_SPEC = spark.createDataFrame(
 # COMMAND ----------
 
 # DBTITLE 1,Helper functions
-
-
 @udf(returnType=DoubleType())
 def extract_percentage(value: str) -> float:
     """Extract percentage from string and divide by 100
@@ -540,11 +538,9 @@ def add_water_heater_features(df):
         .drop("wh_struct")
     )
 
-
 # COMMAND ----------
 
 # DBTITLE 1,Mapping Expressions
-
 # Make various mapping expressions
 def make_map_type_from_dict(mapping: Dict) -> Column:
     """
@@ -583,8 +579,6 @@ luminous_efficiency_mapping = make_map_type_from_dict(
 # COMMAND ----------
 
 # DBTITLE 1,Building metadata feature transformation function
-
-
 def transform_building_features() -> DataFrame:
     """
     Read and transform subset of building_metadata features for single family homes.
@@ -656,6 +650,12 @@ def transform_building_features() -> DataFrame:
             .when(F.col("heating_appliance_type").contains("Boiler"), "Boiler")
             .when(F.col("heating_appliance_type") == "", "None")
             .otherwise(F.trim(F.col("heating_appliance_type"))),
+        )
+        .withColumn(
+            "heat_pump_sizing_methodology",
+            F.when(F.col("heating_appliance_type") == "ASHP", F.lit("ACCA")).otherwise(
+                "None"
+            ),
         )
         .withColumn(
             "heating_efficiency_nominal_percentage",
@@ -780,7 +780,7 @@ def transform_building_features() -> DataFrame:
                 F.col("geometry_building_number_units_sfa"),
                 F.col("geometry_building_number_units_mf"),
                 F.lit("1"),
-            ).cast('int'),
+            ).cast("int"),
         )
         .withColumn(
             "is_middle_unit",
@@ -872,6 +872,7 @@ def transform_building_features() -> DataFrame:
             # heating
             "heating_fuel",
             "heating_appliance_type",
+            "heat_pump_sizing_methodology",
             "has_ducted_heating",
             "heating_efficiency_nominal_percentage",
             "heating_setpoint_degrees_f",
@@ -940,7 +941,6 @@ def transform_building_features() -> DataFrame:
     )
     return building_metadata_transformed
 
-
 # COMMAND ----------
 
 # DBTITLE 1,Transform building metadata
@@ -955,6 +955,8 @@ building_metadata_transformed = transform_building_features()
 # COMMAND ----------
 
 # DBTITLE 1,Apply upgrade functions
+# TODO: put this in some kind of shared config that can be used across srcipts/repos
+SUPPORTED_UPGRADES = [0.0, 1.0, 3.0, 4.0, 6.0, 9.0, 11.05, 13.01]
 # Mapping of climate zone temperature  -> threshold, insulation
 # where climate zone temperature is the first character in the ASHRAE IECC climate zone
 # ('1', 13, 30) means units in climate zones 1A (1-anything) with R13 insulation or less are upgraded to R30
@@ -976,6 +978,7 @@ def upgrade_to_hp(
     baseline_building_features: DataFrame,
     ducted_efficiency: str,
     non_ducted_efficiency: str,
+    heat_pump_sizing_methodology: str = "ACCA",
 ) -> DataFrame:
     """
     Upgrade the baseline building features to an air source heat pump (ASHP) with specified efficiencies.
@@ -1009,6 +1012,7 @@ def upgrade_to_hp(
         )
         .withColumn("ac_type", F.lit("Heat Pump"))
         .withColumn("cooled_space_percentage", F.lit(1.0))
+        .withColumn("heat_pump_sizing_methodology", F.lit(heat_pump_sizing_methodology))
     )
 
 
@@ -1026,7 +1030,7 @@ def apply_upgrades(baseline_building_features: DataFrame, upgrade_id: int) -> Da
           DataFrame: building_features, augmented to reflect the upgrade.
     """
     # Raise an error if an unsupported upgrade ID is provided
-    if upgrade_id not in [0, 1, 3, 4, 6, 8.1, 8.2, 9]:
+    if upgrade_id not in SUPPORTED_UPGRADES:
         raise ValueError(f"Upgrade id={upgrade_id} is not yet supported")
 
     upgrade_building_features = (
@@ -1038,7 +1042,7 @@ def apply_upgrades(baseline_building_features: DataFrame, upgrade_id: int) -> Da
     if upgrade_id == 0:  # baseline: return as is
         pass
 
-    if upgrade_id in [1, 9]:  # basic enclosure
+    if upgrade_id in [1, 9, 13.01]:  # basic enclosure
         upgrade_building_features = (
             upgrade_building_features
             # Upgrade insulation of ceiling
@@ -1115,6 +1119,17 @@ def apply_upgrades(baseline_building_features: DataFrame, upgrade_id: int) -> Da
             "Heat Pump, SEER 24, 13 HSPF",
             "Heat Pump, SEER 29.3, 14 HSPF",
         )
+    if upgrade_id in [11.05, 13.01]:
+        upgrade_building_features = (
+            upgrade_building_features.transform(
+                upgrade_to_hp,
+                "Heat Pump, SEER 18, 10 HSPF",
+                "Heat Pump, SEER 18, 10.5 HSPF",
+                "HERS",
+            )
+            .withColumn("cooling_setpoint_offset_magnitude_degrees_f", F.lit(0.0))
+            .withColumn("heating_setpoint_offset_magnitude_degrees_f", F.lit(0.0))
+        )
     if upgrade_id in [6, 9]:
         upgrade_building_features = upgrade_building_features.withColumn(
             "water_heater_efficiency",
@@ -1172,19 +1187,17 @@ def apply_upgrades(baseline_building_features: DataFrame, upgrade_id: int) -> Da
 
     return upgrade_building_features
 
-
 # COMMAND ----------
 
 # DBTITLE 1,Apply upgrade logic to baseline features
 # create a metadata df for baseline and each HVAC upgrade
-upgrade_ids = [0.0, 1.0, 3.0, 4.0, 6.0, 9.0]
 building_metadata_upgrades = reduce(
     DataFrame.unionByName,
     [
         apply_upgrades(
             baseline_building_features=building_metadata_transformed, upgrade_id=upgrade
         )
-        for upgrade in upgrade_ids
+        for upgrade in SUPPORTED_UPGRADES
     ],
 )
 
@@ -1192,7 +1205,9 @@ building_metadata_upgrades = reduce(
 
 # DBTITLE 1,Drop rows where upgrade was not applied
 # read in outputs so that we can test applicability logic
-annual_outputs = spark.table("ml.surrogate_model.building_simulation_outputs_annual")
+annual_outputs = spark.table(
+    "ml.surrogate_model.building_simulation_outputs_annual_tmp"
+).where(F.col("upgrade_id").isin(SUPPORTED_UPGRADES))
 
 # drop upgrades that had no unchanged features and therefore weren't upgraded
 partition_cols = building_metadata_upgrades.drop("upgrade_id").columns
@@ -1208,6 +1223,8 @@ building_metadata_upgrades_applicability_flag = (
 )
 
 # test that the applicability logic matches between the features and targets
+# we ignore 13.01 since they are all flagged as True in the output table
+# even though many do not have the insulation upgrade applied and are therefore identical to 11.05
 applicability_compare = building_metadata_upgrades_applicability_flag.alias(
     "features"
 ).join(
@@ -1219,7 +1236,9 @@ applicability_compare = building_metadata_upgrades_applicability_flag.alias(
 assert (
     applicability_compare.where(
         F.col("features.applicability") != F.col("targets.applicability")
-    ).count()
+    )
+    .where(F.col("upgrade_id") != 13.01)
+    .count()
     == 0
 )
 # #display mismatching cases if assert fails
@@ -1287,8 +1306,6 @@ print(
 # COMMAND ----------
 
 # DBTITLE 1,Weather feature transformation function
-
-
 def transform_weather_features() -> DataFrame:
     """
     Read and transform weather timeseries table. Pivot from long format indexed by (weather_file_city, hour)
@@ -1308,7 +1325,6 @@ def transform_weather_features() -> DataFrame:
         ]
     )
     return weather_data_arrays
-
 
 # COMMAND ----------
 
@@ -1375,7 +1391,7 @@ building_metadata_applicable_upgrades_with_weather_file_city_index = (
 # COMMAND ----------
 
 # MAGIC %sql
-# MAGIC -- the following code will upsert. To overwrite, uncommnet this line to first drop the table
+# MAGIC -- the following code will upsert. To overwrite, uncomment this line to first drop the table
 # MAGIC -- DROP TABLE ml.surrogate_model.building_features
 
 # COMMAND ----------
@@ -1386,7 +1402,7 @@ fe = FeatureEngineeringClient()
 # COMMAND ----------
 
 # DBTITLE 1,Write out building metadata feature store
-table_name = "ml.surrogate_model.building_features"
+table_name = "ml.surrogate_model.building_features_tmp"
 df = building_metadata_applicable_upgrades_with_weather_file_city_index
 if spark.catalog.tableExists(table_name):
     fe.write_table(name=table_name, df=df, mode="merge")
