@@ -9,8 +9,8 @@ import unittest
 
 if os.environ.get("DATABRICKS_RUNTIME_VERSION", None):
     sys.path.append("../src")
-    
-import util  # noqa
+
+import util
 import constants
 
 
