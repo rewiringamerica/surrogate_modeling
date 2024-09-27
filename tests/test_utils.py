@@ -9,16 +9,9 @@ import unittest
 
 if os.environ.get("DATABRICKS_RUNTIME_VERSION", None):
     sys.path.append("../src")
-    # If your cluster is 15.0.0 or higher, you should install
-    # requirements-test.txt at the cluster level by uploading
-    # it. This approach is for older clusters.
-    # db_version = os.environ.get("DATABRICKS_RUNTIME_VERSION")
-    # major = int(db_version.split(".")[0])
-    # if major < 15:
-    #     subprocess.call(["/bin/sh", "../sh/install-requirements.sh", "test"])
-
-    import util  # noqa
-    import constants
+    
+import util  # noqa
+import constants
 
 
 class ResStockDataTestCase(unittest.TestCase):

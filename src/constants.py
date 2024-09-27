@@ -1,4 +1,4 @@
-# move into constants.py util
+# TODO: move into constants.py util
 KILOWATT_HOUR_TO_BRITISH_THERMAL_UNIT = 3412.14
 """
 The number of kilowatt-hours in British thermal units (BTU)
