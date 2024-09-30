@@ -41,7 +41,6 @@ class DataGenerator(tf.keras.utils.Sequence):
     - fe (databricks.feature_engineering.client.FeatureEngineeringClient: client for interacting with the
                                                                             Databricks Feature Engineering in Unity Catalog
 
-    TODO: modify this be more flexible to use this at inference time only (e.g, don't load various feature tables into mem)
     """
 
     # init FeatureEngineering client
@@ -70,6 +69,7 @@ class DataGenerator(tf.keras.utils.Sequence):
         # heating
         "heating_fuel",
         "heating_appliance_type",
+        "heat_pump_sizing_methodology",
         "has_ducted_heating",
         "heating_efficiency_nominal_percentage",
         "heating_setpoint_degrees_f",
@@ -155,8 +155,7 @@ class DataGenerator(tf.keras.utils.Sequence):
         "propane": ["propane__total"],
     }
 
-    # TODO: add 13.01 and 11.05 before training new model
-    supported_upgrade_ids = [0.0, 1.0, 3.0, 4.0, 6.0, 9.0]
+    supported_upgrade_ids = [0.0, 1.0, 3.0, 4.0, 6.0, 9.0, 13.01, 11.05]
 
     def __init__(
         self,
