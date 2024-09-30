@@ -13,6 +13,9 @@ dbutils.widgets.dropdown("mode", "test", ["test", "production"])
 dbutils.widgets.text("model_name", "test")
 dbutils.widgets.text("run_id", "")
 dbutils.widgets.text("test_size", "10000")  # default in test mode
+
+# COMMAND ----------
+
 DEBUG = dbutils.widgets.get("mode") == "test"
 # name of the model
 MODEL_NAME = dbutils.widgets.get("model_name")
@@ -533,7 +536,7 @@ metrics_by_upgrade_type_model_pd["Type"] = pd.Categorical(
 # COMMAND ----------
 
 # DBTITLE 1,Pivot to wide on model type and sort by upgrade and type
-metrics_by_upgrade_type_model_metric = metrics_by_upgrade_type_model_pd.melt(
+metrics_by_upgrade_type_model_metric = metrics_by_upgrade_type_model_pd.sort_values('Model').melt(
     id_vars=["Type", "Model", "Upgrade ID"],
     value_vars=list(metric_rename_dict.values()),
     var_name="Metric",
