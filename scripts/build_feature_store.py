@@ -21,13 +21,6 @@
 # MAGIC - `ml.surrogate_model.building_features`: Building metadata features indexed by (building_id)
 # MAGIC - `ml.surrogate_model.weather_features_hourly`: Weather features indexed by (weather_file_city) with a 8760-length timeseries vector for each weather feature column
 # MAGIC
-# MAGIC ### TODOs:
-# MAGIC
-# MAGIC #### Outstanding
-# MAGIC
-# MAGIC #### Future Work
-# MAGIC - Updates to the feature table should merge and not overwrite, and in general transformation that are a hyperparameter of the model (i.e, that we may want to vary in different models) should be done downstream of this table. Sorting out exactly which transformations should happen in each of the `build_dataset`, `build_feature_store` and `model_training` files is still a WIP.
-# MAGIC
 # MAGIC ---
 # MAGIC Cluster/ User Requirements
 # MAGIC - Access Mode: Single User or Shared (Not No Isolation Shared)
@@ -956,6 +949,7 @@ building_metadata_transformed = transform_building_features()
 
 # DBTITLE 1,Apply upgrade functions
 # TODO: put this in some kind of shared config that can be used across srcipts/repos
+# TODO: pull from enums when they are ready
 SUPPORTED_UPGRADES = [0.0, 1.0, 3.0, 4.0, 6.0, 9.0, 11.05, 13.01]
 # Mapping of climate zone temperature  -> threshold, insulation
 # where climate zone temperature is the first character in the ASHRAE IECC climate zone

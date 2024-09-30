@@ -155,6 +155,7 @@ class DataGenerator(tf.keras.utils.Sequence):
         "propane": ["propane__total"],
     }
 
+    # TODO: pull from enums when they are ready
     supported_upgrade_ids = [0.0, 1.0, 3.0, 4.0, 6.0, 9.0, 13.01, 11.05]
 
     def __init__(
