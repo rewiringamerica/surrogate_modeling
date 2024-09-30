@@ -956,6 +956,7 @@ building_metadata_transformed = transform_building_features()
 
 # DBTITLE 1,Apply upgrade functions
 # TODO: put this in some kind of shared config that can be used across srcipts/repos
+# TODO: pull from enums when they are ready
 SUPPORTED_UPGRADES = [0.0, 1.0, 3.0, 4.0, 6.0, 9.0, 11.05, 13.01]
 # Mapping of climate zone temperature  -> threshold, insulation
 # where climate zone temperature is the first character in the ASHRAE IECC climate zone

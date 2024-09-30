@@ -1,5 +1,8 @@
 """Tests utility functions."""
 
+# TODO: Remove all unit test skips once we have spark unit testing on git working: 
+# https://www.notion.so/rewiringamerica/Local-Spark-Testing-4aef885e20034c18b1a2fba6c355e82c?pvs=4
+
 import os
 import pandas as pd
 from pandas.testing import assert_frame_equal
