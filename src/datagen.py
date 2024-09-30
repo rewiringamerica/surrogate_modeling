@@ -41,16 +41,17 @@ class DataGenerator(tf.keras.utils.Sequence):
     - fe (databricks.feature_engineering.client.FeatureEngineeringClient: client for interacting with the
                                                                             Databricks Feature Engineering in Unity Catalog
 
-    TODO: modify this be more flexible to use this at inference time only (e.g, don't load various feature tables into mem)
     """
 
     # init FeatureEngineering client
     fe = FeatureEngineeringClient()
 
-    # init all of the class attribute defaults
+    # table names to pull from
     building_feature_table_name = "ml.surrogate_model.building_features"
     weather_feature_table_name = "ml.surrogate_model.weather_features_hourly"
 
+    # TODO: put this in some kind of shared config that can be used across srcipts/repos
+    # init all of the class attribute defaults
     building_features = [
         # structure
         "n_bedrooms",
@@ -68,6 +69,7 @@ class DataGenerator(tf.keras.utils.Sequence):
         # heating
         "heating_fuel",
         "heating_appliance_type",
+        "heat_pump_sizing_methodology",
         "has_ducted_heating",
         "heating_efficiency_nominal_percentage",
         "heating_setpoint_degrees_f",
@@ -153,6 +155,9 @@ class DataGenerator(tf.keras.utils.Sequence):
         "propane": ["propane__total"],
     }
 
+    # TODO: pull from enums when they are ready
+    supported_upgrade_ids = [0.0, 1.0, 3.0, 4.0, 6.0, 9.0, 13.01, 11.05]
+
     def __init__(
         self,
         train_data: DataFrame,
@@ -172,16 +177,8 @@ class DataGenerator(tf.keras.utils.Sequence):
         - train_data (DataFrame): the training data containing the targets and keys to join to the feature tables.
         See class docstring for all other parameters.
         """
-        # self.upgrades = upgrade_ids or self.upgrade_ids
         self.building_features = building_features or self.building_features
         self.weather_features = weather_features or self.weather_features
-
-        self.building_feature_table_name = (
-            building_feature_table_name or self.building_feature_table_name
-        )
-        self.weather_feature_table_name = (
-            weather_feature_table_name or self.weather_feature_table_name
-        )
 
         self.consumption_group_dict = (
             consumption_group_dict or self.consumption_group_dict
@@ -422,7 +419,7 @@ class DataGenerator(tf.keras.utils.Sequence):
 def load_data(
     consumption_group_dict=DataGenerator.consumption_group_dict,
     building_feature_table_name=DataGenerator.building_feature_table_name,
-    upgrade_ids: List[str] = None,
+    upgrade_ids: List[float] = None,
     p_val=0.2,
     p_test=0.1,
     n_train=None,
@@ -440,6 +437,7 @@ def load_data(
             Default is DataGenerator.consumption_by_fuel_dict (too long to write out)
         building_feature_table_name (str): Name of the building feature table.
             Default is "ml.surrogate_model.building_features"
+        upgrade_ids (list): List of upgrade ids to use. If none (default) all supported upgrades are used.
         p_val (float): Proportion of data to use for validation. Default is 0.2.
         p_test (float): Proportion of data to use for testing. Default is 0.1.
         n_train (int): Number of training records to select, where the size of the val and tests sets will be adjusted accordingly to
@@ -466,14 +464,14 @@ def load_data(
     data = spark.sql(
         f"""
         SELECT B.building_id, B.upgrade_id, B.weather_file_city, {sum_str}
-        FROM ml.surrogate_model.building_simulation_outputs_annual O
+        FROM ml.surrogate_model.building_simulation_outputs_annual_tmp O
         INNER JOIN {building_feature_table_name} B 
             ON B.upgrade_id = O.upgrade_id AND B.building_id == O.building_id
-        --WHERE B.upgrade_id IN (0,1,3,4)
         """
     )
-    if upgrade_ids is not None:
-        data = data.where(F.col("upgrade_id").isin(upgrade_ids))
+    if upgrade_ids is None:
+        upgrade_ids = DataGenerator.supported_upgrade_ids
+    data = data.where(F.col("upgrade_id").isin(upgrade_ids))
 
     # get list of unique building ids, which will be the basis for the dataset split
     unique_building_ids = data.where(F.col("upgrade_id") == 0).select("building_id")
