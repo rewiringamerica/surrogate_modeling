@@ -8,7 +8,7 @@ if os.environ.get("DATABRICKS_RUNTIME_VERSION", None):
 
 import unittest
 
-from src import constants
+import constants
 
 
 class ConstantTestCase(unittest.TestCase):
@@ -56,7 +56,7 @@ class ConstantTestCase(unittest.TestCase):
 
 if os.environ.get("DATABRICKS_RUNTIME_VERSION", None):
     # If we are developing on databricks we have to manually
-    # instatiate a test suite and load all the tests from this module.
+    # instantiate a test suite and load all the tests from this module.
     test_suite = unittest.TestSuite()
     test_suite.addTests(
         unittest.TestLoader().loadTestsFromModule(sys.modules[__name__])
