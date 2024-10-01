@@ -14,7 +14,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 
 # TODO: Probably want to move this to dmlutils.
-import src.gpuutils as gpuutils
+import src.dmutils.gpuutils as gpuutils
 
 # COMMAND ----------
 
@@ -106,5 +106,3 @@ ax.set_ylim(0.0, 100.0)
 
 ax.legend()
 ax.grid()
-
-# COMMAND ----------

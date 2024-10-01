@@ -3,78 +3,15 @@
 from cloudpathlib import CloudPath
 import collections
 from functools import reduce, partial
-import re
-from typing import List, Dict
 from pyspark.sql import DataFrame
 import pyspark.sql.functions as F
 from pyspark.sql.types import BooleanType, DoubleType, LongType, StructField, StructType
 
-from src import constants
+from src.dmutils import constants, data_cleaning
 
 from databricks.sdk.runtime import *
 
-# move into a new resstock.py util?
-def clean_columns(
-    df,
-    remove_columns_with_substrings: List[str] = [],
-    remove_substrings_from_columns: List[str] = [],
-    replace_column_substrings_dict: Dict[str, str] = {},
-    replace_period_character: str = "__",
-):
-    """
-    Clean ResStock columns by doing the following in order
-    1. Replace '.' with an empty string in column names so that string manipulation works
-    2. Drop columns that contain strings in `remove_columns_with_strings`.
-    3. Remove remove strings in `remove_strings_from_columns` from column names
-    4. Replace strings that occur within column names based on `replace_strings_dict`
-    It is important to note the order of operations here when constructing input arguments!
 
-    Args:
-      df (DataFrame): Input DataFrame
-      remove_substrings_from_columns (list, optional): List of strings to remove from column names. Defaults to [].
-      remove_columns_with_substrings (list, , optional): Remove columns that contain any of the strings in this list.
-                                                         Defaults to [].
-      replace_substrings_dict (dict, optional): Replace any occurances of strings within column names based on dict
-                                                in format {to_replace: replace_value}.
-      replace_period_character (str, optional): Character to replace '.' with. Defaults to '__'.
-
-    Returns:
-      DataFrame: Cleaned DataFrame
-    """
-    # replace these with an empty string
-    remove_str_dict = {c: "" for c in remove_substrings_from_columns}
-    # combine the two replacement lookups
-    combined_replace_dict = {**replace_column_substrings_dict, **remove_str_dict}
-
-    # Replace '.' the given character in column names so that we don't have to deal with backticks
-    df = df.selectExpr(
-        *[
-            f" `{col}` as `{col.replace('.', replace_period_character)}`"
-            for col in df.columns
-        ]
-    )
-
-    # Iterate through the columns and replace dict to construct column mapping
-    new_col_dict = {}
-    for col in df.columns:
-        # skip if in ignore list
-        if len(remove_columns_with_substrings) > 0 and re.search(
-            "|".join(remove_columns_with_substrings), col
-        ):
-            continue
-        new_col = col
-        for pattern, replacement in combined_replace_dict.items():
-            new_col = re.sub(pattern, replacement, new_col)
-        new_col_dict[col] = new_col
-
-    # Replace column names according to constructed replace dict
-    df_clean = df.selectExpr(
-        *[f" `{old_col}` as `{new_col}`" for old_col, new_col in new_col_dict.items()]
-    )
-    return df_clean
-
-
-# move into a new bsb.py util
 def get_schema_diffs(schemas: list[StructType]) -> StructType:
     """
     Given a list of schemas:
@@ -242,7 +179,7 @@ def clean_bsb_output_cols(bsb_df: DataFrame) -> DataFrame:
         "step_failures",
     ]
 
-    return clean_columns(
+    return data_cleaning.edit_columns(
         df=bsb_df.drop(*drop_cols),
         remove_columns_with_substrings=[
             "report_simulation_output_emissions_",
@@ -318,3 +255,7 @@ def get_clean_rastock_df() -> DataFrame:
     rastock_df = clean_bsb_output_cols(rastock_df)
     rastock_df = convert_column_units(rastock_df)
     return rastock_df
+
+
+
+

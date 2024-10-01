@@ -42,7 +42,7 @@ from cloudpathlib import CloudPath
 from pyspark.sql import DataFrame
 import pyspark.sql.functions as F
 
-from src import util
+from src.dmutils import bsb, data_cleaning
 
 # COMMAND ----------
 
@@ -106,7 +106,7 @@ def extract_building_metadata() -> DataFrame:
     )
 
     # rename and remove columns
-    building_metadata_cleaned = util.clean_columns(
+    building_metadata_cleaned = data_cleaning.edit_columns(
         df=building_metadata,
         remove_substrings_from_columns=["in__"],
         remove_columns_with_substrings=[
@@ -132,7 +132,7 @@ def extract_resstock_annual_outputs() -> DataFrame:
     ).transform(transform_pkeys)
 
     # rename and remove columns
-    annual_energy_consumption_cleaned = util.clean_columns(
+    annual_energy_consumption_cleaned = data_cleaning.edit_columns(
         df=annual_energy_consumption_with_metadata,
         remove_substrings_from_columns=["in__", "out__", "__energy_consumption__kwh"],
         remove_columns_with_substrings=[
@@ -155,7 +155,7 @@ def extract_rastock_annual_outputs() -> DataFrame:
     """
     # TODO: if we ever add GSHP to sumo, we need to mark homes without ducts as inapplicable
     # 1. get annual outputs for all RAStock upgrades and apply common post-processing
-    rastock_outputs = util.get_clean_rastock_df()
+    rastock_outputs = bsb.get_clean_rastock_df()
 
     # 2. apply custom sumo post-processing to align with ResStock outputs
     # cast pkeys to the right type
@@ -185,7 +185,7 @@ def extract_rastock_annual_outputs() -> DataFrame:
         **{"natural_gas": "methane_gas", "permanent_spa": "hot_tub"},
     }
     # apply reformatting to match ResStock
-    rastock_outputs_cleaned = util.clean_columns(
+    rastock_outputs_cleaned = data_cleaning.edit_columns(
         df=rastock_outputs,
         remove_columns_with_substrings=[columns_to_remove_match_pattern],
         remove_substrings_from_columns=["out_", "_energy_consumption_kwh"],
