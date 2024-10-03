@@ -146,20 +146,16 @@ def transform_weather_features() -> DataFrame:
 # COMMAND ----------
 
 # DBTITLE 1,Transform weather features
-weather_data_transformed = transform_weather_features()
+weather_features = transform_weather_features()
 
 # COMMAND ----------
 
-# DBTITLE 1,Create and apply string indexer to generate weather file city index
-
-
-# COMMAND ----------
-
+# DBTITLE 1,Add weather file city index
 # fit the string indexer on the weather feature df
-weather_file_city_indexer = sumo.fit_weather_city_index(df_to_fit=weather_data_transformed)
+weather_file_city_indexer = sumo.fit_weather_city_index(df_to_fit=weather_features)
 # apply indexer to weather feature df to get a weather_file_city_index column
-weather_data_indexed = sumo.transform_weather_city_index(
-    df_to_transform=weather_data_transformed,
+weather_features_indexed = sumo.transform_weather_city_index(
+    df_to_transform=weather_features,
     weather_file_city_indexer=weather_file_city_indexer)
 # apply indexer to building metadata feature df to get a weather_file_city_index column
 building_metadata_with_weather_index = sumo.transform_weather_city_index(
@@ -214,7 +210,7 @@ fe = FeatureEngineeringClient()
 
 # DBTITLE 1,Write out building metadata feature store
 table_name = "ml.surrogate_model.building_features"
-df = building_metadata_applicable_upgrades_with_weather_file_city_index
+df = building_metadata_with_weather_index
 if spark.catalog.tableExists(table_name):
     fe.write_table(name=table_name, df=df, mode="merge")
 else:
@@ -230,7 +226,7 @@ else:
 
 # DBTITLE 1,Write out weather data feature store
 table_name = "ml.surrogate_model.weather_features_hourly"
-df = weather_data_indexed
+df = weather_features_indexed
 if spark.catalog.tableExists(table_name):
     fe.write_table(
         name=table_name,
