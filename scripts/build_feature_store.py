@@ -43,14 +43,7 @@ from pyspark.ml.feature import StringIndexer
 import pyspark.sql.functions as F
 from databricks.feature_engineering import FeatureEngineeringClient
 from pyspark.sql import DataFrame
-# from pyspark.sql.column import Column
-from pyspark.sql.types import (
-    #IntegerType,
-    #DoubleType,
-    StringType,
-    #StructType,
-    #StructField,
-)
+from pyspark.sql.types import StringType
 
 from src.dmutils import sumo, data_cleaning
 

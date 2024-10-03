@@ -572,8 +572,6 @@ def transform_building_features(building_metadata_table_name) -> DataFrame:
     """
     building_metadata_features = (
         spark.read.table("ml.surrogate_model.building_metadata")
-        # add upgrade id for baseline
-        .withColumn("upgrade_id", F.lit(0.0))
         # -- filter to occupied sf homes with modeled fuels and without shared HVAC systems -- #
         # sf homes only
         .where(
@@ -838,9 +836,8 @@ def transform_building_features(building_metadata_table_name) -> DataFrame:
         )
         # subset to all possible features of interest
         .select(
-            # primary keys
+            # primary key
             "building_id",
-            F.col("upgrade_id").cast("double"),
             # foreign key
             "weather_file_city",
             # structure
@@ -1009,7 +1006,7 @@ def apply_upgrades(baseline_building_features: DataFrame, upgrade_id: int) -> Da
         raise ValueError(f"Upgrade id={upgrade_id} is not yet supported")
 
     upgrade_building_features = (
-        baseline_building_features.withColumn("upgrade_id", F.lit(upgrade_id))
+        baseline_building_features.withColumn("upgrade_id", F.lit(upgrade_id).cast('double'))
         .withColumn("has_heat_pump_dryer", F.lit(False))
         .withColumn("has_induction_range", F.lit(False))
     )
