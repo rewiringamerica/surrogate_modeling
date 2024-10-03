@@ -57,9 +57,7 @@ class SurrogateModel:
     def __str__(self):
         return f"{self.catalog}.{self.schema}.{self.name}"
 
-    def create_model(
-        self, train_gen: DataGenerator, layer_params: Dict[str, Any] = None
-    ):
+    def create_model(self, train_gen: DataGenerator, layer_params: Dict[str, Any] = None):
         """
         Create a keras model based on the given data generator and layer parameters.
 
@@ -75,9 +73,7 @@ class SurrogateModel:
         """
 
         # Dense-BatchNorm-LeakyReLU block
-        def dense_batchnorm_leakyrelu(
-            x: tf.keras.layers, n_units: int, name: str, **layer_params
-        ):
+        def dense_batchnorm_leakyrelu(x: tf.keras.layers, n_units: int, name: str, **layer_params):
             x = layers.Dense(n_units, name=f"{name}_dense", **layer_params)(x)
             x = layers.BatchNormalization(name=f"{name}_batchnorm")(x)
             x = layers.LeakyReLU(name=f"{name}_leakyrelu")(x)
@@ -122,16 +118,12 @@ class SurrogateModel:
                     output_mode="one_hot",
                     dtype=layer_params["dtype"],
                 )
-                vocab_tensor = tf.convert_to_tensor(
-                    train_gen.building_feature_vocab_dict[feature]["vocab"]
-                )
+                vocab_tensor = tf.convert_to_tensor(train_gen.building_feature_vocab_dict[feature]["vocab"])
                 encoder.adapt(vocab_tensor)
                 layer = encoder(layer)
             bmo_inputs.append(layer)
 
-        bm = layers.Concatenate(name="concat_layer", dtype=layer_params["dtype"])(
-            bmo_inputs
-        )
+        bm = layers.Concatenate(name="concat_layer", dtype=layer_params["dtype"])(bmo_inputs)
 
         bm = layers.BatchNormalization(name="init_batchnorm")(bm)
         bm = dense_batchnorm_leakyrelu(bm, n_units=128, name="first")
@@ -139,9 +131,7 @@ class SurrogateModel:
         bm = dense_batchnorm_leakyrelu(bm, n_units=32, name="third")
         bm = dense_batchnorm_leakyrelu(bm, n_units=16, name="fourth")
 
-        bmo = models.Model(
-            inputs=bmo_inputs_dict, outputs=bm, name="building_features_model"
-        )
+        bmo = models.Model(inputs=bmo_inputs_dict, outputs=bm, name="building_features_model")
 
         # Weather data model
 
@@ -149,19 +139,13 @@ class SurrogateModel:
         num_cities, num_features, num_hours = train_gen.weather_features_matrix.shape
 
         # Input for the weather_file_city_index (lookup key)
-        weather_file_city_index_input = layers.Input(
-            shape=(1,), dtype="int32", name="weather_file_city_index"
-        )
+        weather_file_city_index_input = layers.Input(shape=(1,), dtype="int32", name="weather_file_city_index")
 
         # Create weather embedding layer
         weather_embedding_layer = layers.Embedding(
             input_dim=num_cities,
             output_dim=num_hours * num_features,
-            weights=[
-                train_gen.weather_features_matrix.reshape(
-                    num_cities, num_hours * num_features
-                )
-            ],
+            weights=[train_gen.weather_features_matrix.reshape(num_cities, num_hours * num_features)],
             trainable=False,
             name="weather_embedding",
         )(weather_file_city_index_input)
@@ -192,15 +176,9 @@ class SurrogateModel:
 
         # Combined model and separate towers for output groups
         cm = layers.Concatenate(name="combine")([bmo.output, wmo.output])
-        cm = layers.Dense(
-            24, name="combine_first_dense", activation="leaky_relu", **layer_params
-        )(cm)
-        cm = layers.Dense(
-            24, name="combine_second_dense", activation="leaky_relu", **layer_params
-        )(cm)
-        cm = layers.Dense(
-            16, name="third_second_dense", activation="leaky_relu", **layer_params
-        )(cm)
+        cm = layers.Dense(24, name="combine_first_dense", activation="leaky_relu", **layer_params)(cm)
+        cm = layers.Dense(24, name="combine_second_dense", activation="leaky_relu", **layer_params)(cm)
+        cm = layers.Dense(16, name="third_second_dense", activation="leaky_relu", **layer_params)(cm)
 
         # building a separate tower for each output group
         final_outputs = {}
@@ -269,17 +247,13 @@ class SurrogateModel:
         """
         latest_version = self.get_latest_model_version()
         if not latest_version:
-            raise ValueError(
-                f"No version of the model {str(self)} has been registered yet"
-            )
+            raise ValueError(f"No version of the model {str(self)} has been registered yet")
         if verbose:
             print(f"Returning URI for latest model version: {latest_version}")
 
         return f"models:/{str(self)}/{latest_version}"
 
-    def get_model_uri(
-        self, run_id: str = None, version: int = None, verbose: bool = True
-    ):
+    def get_model_uri(self, run_id: str = None, version: int = None, verbose: bool = True):
         """
         Returns the URI for model based on:
             * the run id if specified (usually used for an unregistered model)

@@ -96,9 +96,7 @@ def clean_building_metadata(raw_resstock_metadata_df: DataFrame) -> DataFrame:
 
     """
     # Read in data and modify pkey name and dtype
-    building_metadata = raw_resstock_metadata_df.withColumn(
-        "building_id", F.col("bldg_id").cast("int")
-    ).drop("bldg_id")
+    building_metadata = raw_resstock_metadata_df.withColumn("building_id", F.col("bldg_id").cast("int")).drop("bldg_id")
 
     # rename and remove columns
     building_metadata_cleaned = data_cleaning.edit_columns(
@@ -190,10 +188,7 @@ def extract_r_value(construction_type: str, set_none_to_inf: bool = False) -> in
             return 0
     m = re.search(r"\br-?(\d+)\b", construction_type, flags=re.I)
     if not m:
-        raise ValueError(
-            f"Cannot determine R-value of the construction type: "
-            f"{construction_type}"
-        )
+        raise ValueError(f"Cannot determine R-value of the construction type: " f"{construction_type}")
     return int(m.group(1))
 
 
@@ -225,9 +220,7 @@ def extract_cooling_efficiency(cooling_efficiency: str) -> float:
         try:
             return EER_CONVERSION[m.group(1)] * float(m.group(2))
         except (ValueError, KeyError):
-            raise ValueError(
-                f"Cannot extract cooling efficiency from: {cooling_efficiency}"
-            )
+            raise ValueError(f"Cannot extract cooling efficiency from: {cooling_efficiency}")
     # else:
     #     return 0.
     # raise ValueError(
@@ -274,9 +267,7 @@ def extract_heating_efficiency(heating_efficiency: str) -> int:
     if efficiency.endswith("AFUE"):
         return number / 100
     if efficiency.endswith("HSPF"):
-        return round(
-            number / (constants.KILOWATT_HOUR_TO_BRITISH_THERMAL_UNIT / 1000), 3
-        )
+        return round(number / (constants.KILOWATT_HOUR_TO_BRITISH_THERMAL_UNIT / 1000), 3)
 
     # 'Other' - e.g. wood stove - is not supported
     return number / 100
@@ -333,9 +324,7 @@ def extract_energy_factor(ef_string: str) -> int:
 
 #  -- water heater transformation udf and helper functions -- #
 @udf(IntegerType())
-def get_water_heater_capacity_ashrae(
-    n_bedrooms: int, n_bathrooms: float, is_electric: bool
-) -> int:
+def get_water_heater_capacity_ashrae(n_bedrooms: int, n_bathrooms: float, is_electric: bool) -> int:
     """
     Calculates the recommended water heater capacity in gallons based on
     the number of bedrooms, bathrooms, and whether the heater is electric.
@@ -402,18 +391,10 @@ def get_water_heater_capacity_ashrae(
 # Define the schema for the output struct
 wh_schema = StructType(
     [
-        StructField(  # "Storage", "Heat Pump", or "Instantaneous"
-            "water_heater_type", StringType(), True
-        ),
-        StructField(  # Capacity of the tank in gallons
-            "water_heater_tank_volume_gal", IntegerType(), True
-        ),
-        StructField(  # Efficiency Factor (EF)
-            "water_heater_efficiency_ef", DoubleType(), True
-        ),
-        StructField(  # Recovery Efficiency Factor (EF)
-            "water_heater_recovery_efficiency_ef", DoubleType(), True
-        ),
+        StructField("water_heater_type", StringType(), True),  # "Storage", "Heat Pump", or "Instantaneous"
+        StructField("water_heater_tank_volume_gal", IntegerType(), True),  # Capacity of the tank in gallons
+        StructField("water_heater_efficiency_ef", DoubleType(), True),  # Efficiency Factor (EF)
+        StructField("water_heater_recovery_efficiency_ef", DoubleType(), True),  # Recovery Efficiency Factor (EF)
     ]
 )
 
@@ -507,17 +488,13 @@ def get_water_heater_specs(name: str) -> StructType:
 
 def add_water_heater_features(df):
     return (
-        df.withColumn(
-            "wh_struct", get_water_heater_specs(F.col("water_heater_efficiency"))
-        )
+        df.withColumn("wh_struct", get_water_heater_specs(F.col("water_heater_efficiency")))
         .withColumn("water_heater_type", F.col("wh_struct.water_heater_type"))
         .withColumn(
             "water_heater_tank_volume_gal",
             F.col("wh_struct.water_heater_tank_volume_gal"),
         )
-        .withColumn(
-            "water_heater_efficiency_ef", F.col("wh_struct.water_heater_efficiency_ef")
-        )
+        .withColumn("water_heater_efficiency_ef", F.col("wh_struct.water_heater_efficiency_ef"))
         .withColumn(
             "water_heater_recovery_efficiency_ef",
             F.col("wh_struct.water_heater_recovery_efficiency_ef"),
@@ -594,16 +571,11 @@ def transform_building_features(building_metadata_table_name) -> DataFrame:
         # filter out vacant homes
         .where(F.col("vacancy_status") == "Occupied")
         # filter out homes with shared HVAC or water heating systems
-        .where(
-            (F.col("hvac_has_shared_system") == "None")
-            & (F.col("water_heater_in_unit") == "Yes")
-        )
+        .where((F.col("hvac_has_shared_system") == "None") & (F.col("water_heater_in_unit") == "Yes"))
         # -- structure transformations -- #
         .withColumn("n_bedrooms", F.col("bedrooms").cast("int"))
         .withColumn("n_bathrooms", F.col("n_bedrooms") / 2 + 0.5)  # based on docs
-        .withColumn(
-            "orientation_degrees", orientation_degrees_mapping[F.col("orientation")]
-        )
+        .withColumn("orientation_degrees", orientation_degrees_mapping[F.col("orientation")])
         .withColumn(
             "garage_size_n_car",
             F.coalesce(F.split(F.col("geometry_garage"), " ")[0].cast("int"), F.lit(0)),
@@ -612,14 +584,10 @@ def transform_building_features(building_metadata_table_name) -> DataFrame:
             "geometry_wall_exterior_finish",
             F.regexp_replace("geometry_wall_exterior_finish", "Shingle, ", "Shingle-"),
         )
-        .withColumn(
-            "exterior_wall_material", F.split("geometry_wall_exterior_finish", ", ")[0]
-        )
+        .withColumn("exterior_wall_material", F.split("geometry_wall_exterior_finish", ", ")[0])
         .withColumn(
             "exterior_wall_color",
-            F.coalesce(
-                F.split("geometry_wall_exterior_finish", ", ")[1], F.lit("None")
-            ),
+            F.coalesce(F.split("geometry_wall_exterior_finish", ", ")[1], F.lit("None")),
         )
         .withColumn("window_wall_ratio", extract_mean_wwr(F.col("window_areas")))
         .join(WINDOW_DESCRIPTION_TO_SPEC, on="windows")
@@ -630,9 +598,7 @@ def transform_building_features(building_metadata_table_name) -> DataFrame:
         )
         .withColumn(
             "heating_appliance_type",
-            F.when(
-                F.col("heating_appliance_type").contains("Wall Furnace"), "Wall Furnace"
-            )
+            F.when(F.col("heating_appliance_type").contains("Wall Furnace"), "Wall Furnace")
             .when(F.col("heating_appliance_type").contains("Furnace"), "Furnace")
             .when(F.col("heating_appliance_type").contains("Boiler"), "Boiler")
             .when(F.col("heating_appliance_type") == "", "None")
@@ -640,9 +606,7 @@ def transform_building_features(building_metadata_table_name) -> DataFrame:
         )
         .withColumn(
             "heat_pump_sizing_methodology",
-            F.when(F.col("heating_appliance_type") == "ASHP", F.lit("ACCA")).otherwise(
-                "None"
-            ),
+            F.when(F.col("heating_appliance_type") == "ASHP", F.lit("ACCA")).otherwise("None"),
         )
         .withColumn(
             "heating_efficiency_nominal_percentage",
@@ -702,49 +666,31 @@ def transform_building_features(building_metadata_table_name) -> DataFrame:
                 F.col("water_heater_tank_volume_gal_ashrae"),
             ),
         )
-        .withColumn(
-            "has_water_heater_in_unit", yes_no_mapping[F.col("water_heater_in_unit")]
-        )
+        .withColumn("has_water_heater_in_unit", yes_no_mapping[F.col("water_heater_in_unit")])
         # -- duct/infiltration tranformations -- #
         .withColumn("has_ducts", yes_no_mapping[F.col("hvac_has_ducts")])
-        .withColumn(
-            "duct_insulation_r_value", extract_r_value(F.col("ducts"), F.lit(True))
-        )
+        .withColumn("duct_insulation_r_value", extract_r_value(F.col("ducts"), F.lit(True)))
         .withColumn("duct_leakage_percentage", extract_percentage(F.col("ducts")))
-        .withColumn(
-            "infiltration_ach50", F.split(F.col("infiltration"), " ")[0].cast("int")
-        )
+        .withColumn("infiltration_ach50", F.split(F.col("infiltration"), " ")[0].cast("int"))
         # -- insulation tranformations -- #
         .withColumn("wall_material", F.split(F.col("insulation_wall"), ",")[0])
-        .withColumn(
-            "insulation_wall_r_value", extract_r_value(F.col("insulation_wall"))
-        )
+        .withColumn("insulation_wall_r_value", extract_r_value(F.col("insulation_wall")))
         .withColumn(
             "insulation_foundation_wall_r_value",
             extract_r_value(F.col("insulation_foundation_wall")),
         )
-        .withColumn(
-            "insulation_slab_r_value", extract_r_value(F.col("insulation_slab"))
-        )
+        .withColumn("insulation_slab_r_value", extract_r_value(F.col("insulation_slab")))
         .withColumn(
             "insulation_rim_joist_r_value",
             extract_r_value(F.col("insulation_rim_joist")),
         )
-        .withColumn(
-            "insulation_floor_r_value", extract_r_value(F.col("insulation_floor"))
-        )
-        .withColumn(
-            "insulation_ceiling_r_value", extract_r_value(F.col("insulation_ceiling"))
-        )
-        .withColumn(
-            "insulation_roof_r_value", extract_r_value(F.col("insulation_roof"))
-        )
+        .withColumn("insulation_floor_r_value", extract_r_value(F.col("insulation_floor")))
+        .withColumn("insulation_ceiling_r_value", extract_r_value(F.col("insulation_ceiling")))
+        .withColumn("insulation_roof_r_value", extract_r_value(F.col("insulation_roof")))
         #  -- building type transformations -- #
         .withColumn(
             "is_attached",
-            ~F.col("geometry_building_type_acs").isin(
-                ["Single-Family Detached", "Mobile Home"]
-            ),
+            ~F.col("geometry_building_type_acs").isin(["Single-Family Detached", "Mobile Home"]),
         )
         .withColumn(
             "is_mobile_home",
@@ -777,17 +723,13 @@ def transform_building_features(building_metadata_table_name) -> DataFrame:
         # -- other appliances -- #
         .withColumn("has_ceiling_fan", F.col("ceiling_fan") != "None")
         .withColumn("clothes_dryer_fuel", F.split(F.col("clothes_dryer"), ",")[0])
-        .withColumn(
-            "clothes_washer_efficiency", F.split(F.col("clothes_washer"), ",")[0]
-        )
+        .withColumn("clothes_washer_efficiency", F.split(F.col("clothes_washer"), ",")[0])
         .withColumn("cooking_range_fuel", F.split(F.col("cooking_range"), ",")[0])
         .withColumn(
             "dishwasher_efficiency_kwh",
             F.coalesce(F.split(F.col("dishwasher"), " ")[0].cast("int"), F.lit(9999)),
         )
-        .withColumn(
-            "lighting_efficiency", luminous_efficiency_mapping[F.col("lighting")]
-        )
+        .withColumn("lighting_efficiency", luminous_efficiency_mapping[F.col("lighting")])
         .withColumn(
             "refrigerator_extra_efficiency_ef",
             extract_energy_factor(F.col("misc_extra_refrigerator")),
@@ -799,21 +741,15 @@ def transform_building_features(building_metadata_table_name) -> DataFrame:
         .withColumnRenamed("misc_hot_tub_spa", "hot_tub_spa_fuel")
         .withColumnRenamed("misc_pool_heater", "pool_heater_fuel")
         .withColumn("has_well_pump", F.col("misc_well_pump") != "None")
-        .withColumn(
-            "refrigerator_efficiency_ef", extract_energy_factor(F.col("refrigerator"))
-        )
+        .withColumn("refrigerator_efficiency_ef", extract_energy_factor(F.col("refrigerator")))
         .withColumn("plug_load_percentage", extract_percentage(F.col("plug_loads")))
-        .withColumn(
-            "usage_level_appliances", low_medium_high_mapping[F.col("usage_level")]
-        )
+        .withColumn("usage_level_appliances", low_medium_high_mapping[F.col("usage_level")])
         # -- misc transformations -- #
         .withColumn(
             "climate_zone_temp",
             F.substring("ashrae_iecc_climate_zone_2004", 1, 1).astype("int"),
         )
-        .withColumn(
-            "climate_zone_moisture", F.substring("ashrae_iecc_climate_zone_2004", 2, 1)
-        )
+        .withColumn("climate_zone_moisture", F.substring("ashrae_iecc_climate_zone_2004", 2, 1))
         .withColumn(
             "neighbor_distance_ft",
             F.when(F.col("neighbors") == "Left/Right at 15ft", 15.0)
@@ -822,9 +758,7 @@ def transform_building_features(building_metadata_table_name) -> DataFrame:
         )
         .withColumn(
             "n_occupants",
-            F.when(F.col("occupants") == "10+", 11).otherwise(
-                F.col("occupants").cast("int")
-            ),
+            F.when(F.col("occupants") == "10+", 11).otherwise(F.col("occupants").cast("int")),
         )
         .withColumn("vintage", extract_vintage(F.col("vintage")))
         # align names for methane gas across applainces
@@ -1008,9 +942,7 @@ def apply_upgrades(baseline_building_features: DataFrame, upgrade_id: int) -> Da
         raise ValueError(f"Upgrade id={upgrade_id} is not yet supported")
 
     upgrade_building_features = (
-        baseline_building_features.withColumn(
-            "upgrade_id", F.lit(upgrade_id).cast("double")
-        )
+        baseline_building_features.withColumn("upgrade_id", F.lit(upgrade_id).cast("double"))
         .withColumn("has_heat_pump_dryer", F.lit(False))
         .withColumn("has_induction_range", F.lit(False))
     )
@@ -1029,10 +961,7 @@ def apply_upgrades(baseline_building_features: DataFrame, upgrade_id: int) -> Da
                 "insulation_ceiling_r_value",
                 F.when(
                     (F.col("attic_type") == "Vented Attic")
-                    & (
-                        F.col("insulation_ceiling_r_value")
-                        <= F.col("existing_insulation_max_threshold")
-                    ),
+                    & (F.col("insulation_ceiling_r_value") <= F.col("existing_insulation_max_threshold")),
                     F.col("insulation_upgrade"),
                 ).otherwise(F.col("insulation_ceiling_r_value")),
             )
@@ -1040,9 +969,9 @@ def apply_upgrades(baseline_building_features: DataFrame, upgrade_id: int) -> Da
             # Air leakage reduction if high levels of infiltration
             .withColumn(
                 "infiltration_ach50",
-                F.when(
-                    F.col("infiltration_ach50") >= 15, F.col("infiltration_ach50") * 0.7
-                ).otherwise(F.col("infiltration_ach50")),
+                F.when(F.col("infiltration_ach50") >= 15, F.col("infiltration_ach50") * 0.7).otherwise(
+                    F.col("infiltration_ach50")
+                ),
             )
             # Duct sealing: update duct leakage rate to at most 10% and insulation to at least R-8,
             # with the exeption of "0% or 30% Leakage, Uninsulated" which does not get upgrade applied
@@ -1051,11 +980,7 @@ def apply_upgrades(baseline_building_features: DataFrame, upgrade_id: int) -> Da
                 F.when(
                     (
                         (F.col("has_ducts"))
-                        & ~(
-                            F.col("ducts").isin(
-                                ["0% Leakage, Uninsulated", "30% Leakage, Uninsulated"]
-                            )
-                        )
+                        & ~(F.col("ducts").isin(["0% Leakage, Uninsulated", "30% Leakage, Uninsulated"]))
                     ),
                     F.least(F.col("duct_leakage_percentage"), F.lit(0.1)),
                 ).otherwise(F.col("duct_leakage_percentage")),
@@ -1065,11 +990,7 @@ def apply_upgrades(baseline_building_features: DataFrame, upgrade_id: int) -> Da
                 F.when(
                     (
                         (F.col("has_ducts"))
-                        & ~(
-                            F.col("ducts").isin(
-                                ["0% Leakage, Uninsulated", "30% Leakage, Uninsulated"]
-                            )
-                        )
+                        & ~(F.col("ducts").isin(["0% Leakage, Uninsulated", "30% Leakage, Uninsulated"]))
                     ),
                     F.greatest(F.col("duct_insulation_r_value"), F.lit(8.0)),
                 ).otherwise(F.col("duct_insulation_r_value")),
@@ -1113,12 +1034,8 @@ def apply_upgrades(baseline_building_features: DataFrame, upgrade_id: int) -> Da
                 F.col("water_heater_efficiency") == "Electric Tankless",
                 F.col("water_heater_efficiency"),
             )
-            .when(
-                F.col("n_bedrooms") <= 3, F.lit("Electric Heat Pump, 50 gal, 3.45 UEF")
-            )
-            .when(
-                F.col("n_bedrooms") == 4, F.lit("Electric Heat Pump, 66 gal, 3.35 UEF")
-            )
+            .when(F.col("n_bedrooms") <= 3, F.lit("Electric Heat Pump, 50 gal, 3.45 UEF"))
+            .when(F.col("n_bedrooms") == 4, F.lit("Electric Heat Pump, 66 gal, 3.35 UEF"))
             .otherwise(F.lit("Electric Heat Pump, 80 gal, 3.45 UEF")),
         ).transform(add_water_heater_features)
 
@@ -1133,12 +1050,8 @@ def apply_upgrades(baseline_building_features: DataFrame, upgrade_id: int) -> Da
 
     # add indicator features for presence of fuels (not including electricity)
     upgrade_building_features = (
-        upgrade_building_features.withColumn(
-            "appliance_fuel_arr", F.array(APPLIANCE_FUEL_COLS)
-        )
-        .withColumn(
-            "gas_misc_appliance_indicator_arr", F.array(GAS_APPLIANCE_INDICATOR_COLS)
-        )
+        upgrade_building_features.withColumn("appliance_fuel_arr", F.array(APPLIANCE_FUEL_COLS))
+        .withColumn("gas_misc_appliance_indicator_arr", F.array(GAS_APPLIANCE_INDICATOR_COLS))
         .withColumn(
             "has_methane_gas_appliance",
             (
@@ -1146,12 +1059,8 @@ def apply_upgrades(baseline_building_features: DataFrame, upgrade_id: int) -> Da
                 | F.array_contains("gas_misc_appliance_indicator_arr", True)
             ),
         )
-        .withColumn(
-            "has_fuel_oil_appliance", F.array_contains("appliance_fuel_arr", "Fuel Oil")
-        )
-        .withColumn(
-            "has_propane_appliance", F.array_contains("appliance_fuel_arr", "Propane")
-        )
+        .withColumn("has_fuel_oil_appliance", F.array_contains("appliance_fuel_arr", "Fuel Oil"))
+        .withColumn("has_propane_appliance", F.array_contains("appliance_fuel_arr", "Propane"))
         .drop(  # drop columns that were only used for upgrade lookups
             "insulation_wall",
             "ducts",
@@ -1189,9 +1098,7 @@ def build_upgrade_metadata_table(baseline_building_features: DataFrame) -> DataF
     )
 
 
-def drop_non_upgraded_samples(
-    building_features: DataFrame, check_applicability_logic=False
-):
+def drop_non_upgraded_samples(building_features: DataFrame, check_applicability_logic=False):
     """
     Drop upgrade records that had no changed features and therefore weren't upgraded.
 
@@ -1228,33 +1135,25 @@ def drop_non_upgraded_samples(
         # test that the applicability logic matches between the features and targets
         # we ignore 13.01 since they are all flagged as True in the output table
         # even though many do not have the insulation upgrade applied and are therefore identical to 11.05
-        applicability_compare = building_features_applicability_flag.alias(
-            "features"
-        ).join(
+        applicability_compare = building_features_applicability_flag.alias("features").join(
             spark.table("ml.surrogate_model.building_simulation_outputs_annual")
             .select("upgrade_id", "building_id", "applicability")
             .alias("targets"),
             on=["upgrade_id", "building_id"],
         )
         mismatch_count = (
-            applicability_compare.where(
-                F.col("features.applicability") != F.col("targets.applicability")
-            )
+            applicability_compare.where(F.col("features.applicability") != F.col("targets.applicability"))
             .where(F.col("upgrade_id") != 13.01)
             .count()
         )
         if mismatch_count > 0:
-            applicability_compare.where(
-                F.col("features.applicability") != F.col("targets.applicability")
-            ).display()
+            applicability_compare.where(F.col("features.applicability") != F.col("targets.applicability")).display()
             raise ValueError(
                 f"{mismatch_count} cases where applicability based on metadata and simulation applicability flag do not match"
             )
 
     # drop feature rows where upgrade was not applied
-    return building_features_applicability_flag.where(F.col("applicability")).drop(
-        "applicability"
-    )
+    return building_features_applicability_flag.where(F.col("applicability")).drop("applicability")
 
 
 #  -- functions to construct weather city file index -- #
@@ -1263,7 +1162,7 @@ def drop_non_upgraded_samples(
 def fit_weather_city_index(df_to_fit: Optional[DataFrame] = None):
     # read in weather features if df is not passed
     if df_to_fit is None:
-        df_to_fit = spark.table("ml.surrogate_model.weather_features_hourly").drop('weather_file_city_index')
+        df_to_fit = spark.table("ml.surrogate_model.weather_features_hourly").drop("weather_file_city_index")
     # Create the StringIndexer
     indexer = StringIndexer(
         inputCol="weather_file_city",
@@ -1273,9 +1172,7 @@ def fit_weather_city_index(df_to_fit: Optional[DataFrame] = None):
     return indexer.fit(df_to_fit)
 
 
-def transform_weather_city_index(
-    weather_file_city_indexer: StringIndexer, df_to_transform: DataFrame
-):
+def transform_weather_city_index(weather_file_city_indexer: StringIndexer, df_to_transform: DataFrame):
     return weather_file_city_indexer.transform(df_to_transform).withColumn(
         "weather_file_city_index", F.col("weather_file_city_index").cast("int")
     )

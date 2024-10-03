@@ -13,9 +13,7 @@ def check_for_null_values(df: DataFrame) -> None:
     ValueError: If any column contains null values, an error is raised listing those columns and their null counts.
     """
     # count how many null vals are in each column
-    null_counts = df.select(
-        [F.sum(F.when(F.col(c).isNull(), 1).otherwise(0)).alias(c) for c in df.columns]
-    )
+    null_counts = df.select([F.sum(F.when(F.col(c).isNull(), 1).otherwise(0)).alias(c) for c in df.columns])
     # Collect the results as a dictionary
     null_counts_dict = null_counts.collect()[0].asDict()
     # select any items that have non-zero count

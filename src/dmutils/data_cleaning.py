@@ -38,20 +38,13 @@ def edit_columns(
     combined_replace_dict = {**replace_column_substrings_dict, **remove_str_dict}
 
     # Replace '.' the given character in column names so that we don't have to escape w backticks
-    df = df.selectExpr(
-        *[
-            f" `{col}` as `{col.replace('.', replace_period_character)}`"
-            for col in df.columns
-        ]
-    )
+    df = df.selectExpr(*[f" `{col}` as `{col.replace('.', replace_period_character)}`" for col in df.columns])
 
     # Iterate through the columns and replace dict to construct column mapping
     new_col_dict = {}
     for col in df.columns:
         # skip if in ignore list
-        if len(remove_columns_with_substrings) > 0 and re.search(
-            "|".join(remove_columns_with_substrings), col
-        ):
+        if len(remove_columns_with_substrings) > 0 and re.search("|".join(remove_columns_with_substrings), col):
             continue
         new_col = col
         for pattern, replacement in combined_replace_dict.items():
@@ -59,7 +52,5 @@ def edit_columns(
         new_col_dict[col] = new_col
 
     # Replace column names according to constructed replace dict
-    df_clean = df.selectExpr(
-        *[f" `{old_col}` as `{new_col}`" for old_col, new_col in new_col_dict.items()]
-    )
+    df_clean = df.selectExpr(*[f" `{old_col}` as `{new_col}`" for old_col, new_col in new_col_dict.items()])
     return df_clean
