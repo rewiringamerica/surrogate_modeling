@@ -222,7 +222,8 @@ def extract_hourly_weather_data() -> DataFrame:
 # COMMAND ----------
 
 # DBTITLE 1,Extract building metadata
-building_metadata = sumo.extract_building_metadata(BUILDING_METADATA_PARQUET_PATH)
+raw_building_metadata = spark.read.parquet(BUILDING_METADATA_PARQUET_PATH)
+building_metadata = sumo.clean_building_metadata(raw_building_metadata)
 
 # COMMAND ----------
 

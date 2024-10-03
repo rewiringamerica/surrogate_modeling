@@ -3,6 +3,7 @@
 import re
 from typing import List, Dict
 from pyspark.sql import DataFrame
+import pyspark.sql.functions as F
 
 def edit_columns(
     df:DataFrame,

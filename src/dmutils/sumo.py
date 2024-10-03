@@ -3,7 +3,7 @@
 import re
 from functools import reduce
 from itertools import chain
-from typing import Dict
+from typing import Dict, Optional
 import pyspark.sql.functions as F
 from pyspark.sql import DataFrame
 from pyspark.sql.column import Column
@@ -82,19 +82,21 @@ GAS_APPLIANCE_INDICATOR_COLS = [
 
 #  -- resstock reading and preprocessing functions  -- #
 
-def extract_building_metadata(parquet_fpath:str) -> DataFrame:
+def clean_building_metadata(raw_resstock_metadata_df:DataFrame) -> DataFrame:
     """
-    Read in ResStock building metadata and rename and remove columns.
+    Rename and remove columns of a ResStock building metadata dataframe
+
+    Can either pass a parquet file or an existing DataFrame.
 
     Args: 
-        parquet_fpath (str): parquet filepath containing raw resstock metadata
+        raw_resstock_metadata_df (DataFrame): DataFrame containing raw ResStock metadata
     Returns:
         building_metadata_cleaned (DataFrame): cleaned ResStock building metadata
         
     """
     # Read in data and modify pkey name and dtype
     building_metadata = (
-        spark.read.parquet(parquet_fpath)
+            raw_resstock_metadata_df
             .withColumn("building_id", F.col("bldg_id").cast("int"))
             .drop("bldg_id")
     )
