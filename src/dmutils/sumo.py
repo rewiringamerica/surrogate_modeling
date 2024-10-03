@@ -5,6 +5,7 @@ import re
 from functools import reduce
 from itertools import chain
 from typing import Dict, Optional
+from pyspark.ml.feature import StringIndexer
 import pyspark.sql.functions as F
 from pyspark.sql import DataFrame
 from pyspark.sql.column import Column
@@ -926,7 +927,7 @@ def transform_building_features(building_metadata_table_name) -> DataFrame:
 
 
 
-#  -- functions to apply all the upgrade transformations -- #
+#  -- functions to apply upgrade transformations -- #
 
 # Mapping of climate zone temperature  -> threshold, insulation
 # where climate zone temperature is the first character in the ASHRAE IECC climate zone
@@ -1245,3 +1246,30 @@ def drop_non_upgraded_samples(building_features:DataFrame, check_applicability_l
             "applicability"
         )
     )
+
+#  -- functions to construct weather city file index -- #
+
+def fit_weather_city_index(df_to_fit:Optional[DataFrame]=None):
+    # read in weather features if df is not passed
+    if df_to_fit is None:
+        df_to_fit = spark.table("ml.surrogate_model.weather_features_hourly")
+    # Create the StringIndexer
+    indexer = StringIndexer(
+        inputCol="weather_file_city",
+        outputCol="weather_file_city_index",
+        stringOrderType="alphabetAsc",
+    )
+    return indexer.fit(df_to_fit)
+
+def transform_weather_city_index(weather_file_city_indexer:StringIndexer, df_to_transform:DataFrame):
+    return (
+        weather_file_city_indexer
+            .transform(df_to_transform)
+            .withColumn("weather_file_city_index", F.col("weather_file_city_index").cast("int"))
+    )
+
+def add_weather_city_index(df_to_transform:DataFrame):
+
+    return transform_weather_city_index(
+        weather_file_city_indexer = fit_weather_city_index(),
+        df_to_transform = df_to_transform)

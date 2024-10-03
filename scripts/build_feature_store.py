@@ -37,9 +37,7 @@
 # DBTITLE 1,Imports
 import re
 from functools import reduce
-# from typing import Dict
 
-from pyspark.ml.feature import StringIndexer
 import pyspark.sql.functions as F
 from databricks.feature_engineering import FeatureEngineeringClient
 from pyspark.sql import DataFrame
@@ -84,10 +82,6 @@ building_metadata_applicable_upgrades = sumo.drop_non_upgraded_samples(
 # COMMAND ----------
 
 # MAGIC %md #### Summary
-
-# COMMAND ----------
-
-building_metadata_applicable_upgrades
 
 # COMMAND ----------
 
@@ -157,26 +151,20 @@ weather_data_transformed = transform_weather_features()
 # COMMAND ----------
 
 # DBTITLE 1,Create and apply string indexer to generate weather file city index
-# Create the StringIndexer
-indexer = StringIndexer(
-    inputCol="weather_file_city",
-    outputCol="weather_file_city_index",
-    stringOrderType="alphabetAsc",
-)
 
-weather_file_city_indexer = indexer.fit(weather_data_transformed)
 
-weather_data_indexed = weather_file_city_indexer.transform(
-    weather_data_transformed
-).withColumn("weather_file_city_index", F.col("weather_file_city_index").cast("int"))
+# COMMAND ----------
 
-building_metadata_applicable_upgrades_with_weather_file_city_index = (
-    weather_file_city_indexer.transform(
-        building_metadata_applicable_upgrades
-    ).withColumn(
-        "weather_file_city_index", F.col("weather_file_city_index").cast("int")
-    )
-)
+# fit the string indexer on the weather feature df
+weather_file_city_indexer = sumo.fit_weather_city_index(df_to_fit=weather_data_transformed)
+# apply indexer to weather feature df to get a weather_file_city_index column
+weather_data_indexed = sumo.transform_weather_city_index(
+    df_to_transform=weather_data_transformed,
+    weather_file_city_indexer=weather_file_city_indexer)
+# apply indexer to building metadata feature df to get a weather_file_city_index column
+building_metadata_with_weather_index = sumo.transform_weather_city_index(
+    df_to_transform=building_metadata_applicable_upgrades,
+    weather_file_city_indexer=weather_file_city_indexer)
 
 # COMMAND ----------
 
