@@ -18,20 +18,18 @@ from pyspark.sql.window import Window
 
 from databricks.sdk.runtime import spark, udf
 
-from src.dmutils import data_cleaning
+from src.dmutils import data_cleaning, constants
 
 #  -- constants -- #
 # TODO: put this in some kind of shared config that can be used across repos
 # TODO: pull from enums when they are ready
 SUPPORTED_UPGRADES = [0.0, 1.0, 3.0, 4.0, 6.0, 9.0, 11.05, 13.01]
 
-BTU_PER_WH = 3.413
-
 EER_CONVERSION = {
     "EER": 1.0,
-    "SEER": 0.875,
-    "SEER2": 0.91,  # ~=SEER*1.04 (https://www.marathonhvac.com/seer-to-seer2/)
-    "EER2": 1.04,
+    "SEER": constants.SEER_TO_EER,
+    "EER2": constants.EER2_TO_EER,
+    "SEER2": constants.EER2_TO_EER*constants.SEER_TO_EER,
 }
 
 # mapping of window description to ufactor and shgc (solar heat gain coefficient) pulled from options.ts
@@ -275,7 +273,7 @@ def extract_heating_efficiency(heating_efficiency: str) -> int:
     if efficiency.endswith("AFUE"):
         return number / 100
     if efficiency.endswith("HSPF"):
-        return round(number / BTU_PER_WH, 3)
+        return round(number / (constants.KILOWATT_HOUR_TO_BRITISH_THERMAL_UNIT / 1000), 3)
 
     # 'Other' - e.g. wood stove - is not supported
     return number / 100
