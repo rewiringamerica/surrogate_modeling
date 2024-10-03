@@ -180,24 +180,18 @@ class DataGenerator(tf.keras.utils.Sequence):
         self.building_features = building_features or self.building_features
         self.weather_features = weather_features or self.weather_features
 
-        self.consumption_group_dict = (
-            consumption_group_dict or self.consumption_group_dict
-        )
+        self.consumption_group_dict = consumption_group_dict or self.consumption_group_dict
         self.targets = list(self.consumption_group_dict.keys())
 
         self.batch_size = batch_size
         self.dtype = dtype
 
         self.training_set = self.init_training_set(train_data=train_data)
-        self.training_df = self.init_building_features_and_targets(
-            train_data=train_data
-        )
+        self.training_df = self.init_building_features_and_targets(train_data=train_data)
 
         self.weather_features_df = self.init_weather_features()
         self.weather_features_matrix = np.stack(
-            self.weather_features_df.sort_values(by="weather_file_city_index")[
-                self.weather_features
-            ]
+            self.weather_features_df.sort_values(by="weather_file_city_index")[self.weather_features]
             .apply(lambda row: np.stack(row), axis=1)
             .values
         )
@@ -258,8 +252,7 @@ class DataGenerator(tf.keras.utils.Sequence):
         # Join the feature tables
         training_set = self.fe.create_training_set(
             df=train_data,
-            feature_lookups=self.get_building_feature_lookups()
-            + self.get_weather_feature_lookups(),
+            feature_lookups=self.get_building_feature_lookups() + self.get_weather_feature_lookups(),
             label=self.targets,
             exclude_columns=exclude_columns,
         )
@@ -295,13 +288,9 @@ class DataGenerator(tf.keras.utils.Sequence):
         -------
         - pd.DataFrame: The weather features dataframe.
         """
-        weather_features_table = self.fe.read_table(
-            name=self.weather_feature_table_name
-        )
+        weather_features_table = self.fe.read_table(name=self.weather_feature_table_name)
 
-        return weather_features_table.select(
-            "weather_file_city_index", *self.weather_features
-        ).toPandas()
+        return weather_features_table.select("weather_file_city_index", *self.weather_features).toPandas()
 
     def feature_dtype(self, feature_name: str) -> Any:
         """
@@ -351,9 +340,7 @@ class DataGenerator(tf.keras.utils.Sequence):
             bm_dict[feature] = {"dtype": feature_dtype, "vocab": feature_vocab}
         return bm_dict
 
-    def convert_dataframe_to_dict(
-        self, feature_df: pd.DataFrame
-    ) -> Dict[str, np.ndarray]:
+    def convert_dataframe_to_dict(self, feature_df: pd.DataFrame) -> Dict[str, np.ndarray]:
         """
         Converts the training features from a pandas dataframe to a dictionary.
 
@@ -369,10 +356,7 @@ class DataGenerator(tf.keras.utils.Sequence):
                     np.array of shape [len(feature_df)] for building model features
                     and shape [len(feature_df), 8760] for weather features}
         """
-        return {
-            col: np.array(feature_df[col])
-            for col in self.building_features + ["weather_file_city_index"]
-        }
+        return {col: np.array(feature_df[col]) for col in self.building_features + ["weather_file_city_index"]}
 
     def __len__(self) -> int:
         """
@@ -384,9 +368,7 @@ class DataGenerator(tf.keras.utils.Sequence):
         """
         return math.ceil(len(self.training_df) / self.batch_size)
 
-    def __getitem__(
-        self, index: int
-    ) -> Tuple[Dict[str, np.ndarray], Dict[str, np.ndarray]]:
+    def __getitem__(self, index: int) -> Tuple[Dict[str, np.ndarray], Dict[str, np.ndarray]]:
         """
         Generates one batch of data.
 
@@ -401,9 +383,7 @@ class DataGenerator(tf.keras.utils.Sequence):
         - y (dict) : targets for the batch in format {target_name (str): np.array of shape [batch_size]}
         """
         # subset rows of targets and building features to batch
-        batch_df = self.training_df.iloc[
-            self.batch_size * index : self.batch_size * (index + 1)
-        ]
+        batch_df = self.training_df.iloc[self.batch_size * index : self.batch_size * (index + 1)]
         # convert from df to dict
         X = self.convert_dataframe_to_dict(feature_df=batch_df)
         y = {col: np.array(batch_df[col]) for col in self.targets}
@@ -458,9 +438,7 @@ def load_data(
         raise ValueError("Cannot specify both n_train and n_test")
     # Read outputs table and sum over consumption columns within each consumption group
     # join to the bm table to get required keys to join on and filter the building models based on charactaristics
-    sum_str = ", ".join(
-        [f"{'+'.join(v)} AS {k}" for k, v in consumption_group_dict.items()]
-    )
+    sum_str = ", ".join([f"{'+'.join(v)} AS {k}" for k, v in consumption_group_dict.items()])
     data = spark.sql(
         f"""
         SELECT B.building_id, B.upgrade_id, B.weather_file_city, {sum_str}
@@ -478,20 +456,14 @@ def load_data(
 
     # Split the building_ids into train, validation, and test sets (may not exactly match passed proportions)
     p_train = 1 - p_val - p_test
-    train_ids, val_ids, test_ids = unique_building_ids.randomSplit(
-        weights=[p_train, p_val, p_test], seed=seed
-    )
+    train_ids, val_ids, test_ids = unique_building_ids.randomSplit(weights=[p_train, p_val, p_test], seed=seed)
 
     # if n_train or n_test are passed, get the fraction of the train or test subset that this represents
     if n_train or n_test:
-        p_baseline = (  # proportion of data that is the baseline upgrade
-            unique_building_ids.count() / data.count()
-        )
+        p_baseline = unique_building_ids.count() / data.count()  # proportion of data that is the baseline upgrade
 
         if n_train:
-            frac = np.clip(
-                n_train * p_baseline / train_ids.count(), a_max=1.0, a_min=0.0
-            )
+            frac = np.clip(n_train * p_baseline / train_ids.count(), a_max=1.0, a_min=0.0)
         elif n_test:
             frac = np.clip(n_test * p_baseline / test_ids.count(), a_max=1.0, a_min=0.0)
     else:

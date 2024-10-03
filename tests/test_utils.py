@@ -45,13 +45,9 @@ class ResStockDataTestCase(unittest.TestCase):
             remove_substrings_from_columns=["shorter_pls"],
             replace_column_substrings_dict={"natural_gas": "methane_gas"},
         )
-        self.assertCountEqual(
-            test_output.columns, ["building__id", "make_me_", "fuck_methane_gas"]
-        )
+        self.assertCountEqual(test_output.columns, ["building__id", "make_me_", "fuck_methane_gas"])
         # check that if we pass no args, we get back the identical schema
-        test_output_no_change = util.clean_columns(
-            df=test_input, replace_period_character="."
-        )
+        test_output_no_change = util.clean_columns(df=test_input, replace_period_character=".")
         self.assertCountEqual(test_output_no_change.columns, test_input.columns)
 
     @unittest.skipIf(
@@ -131,9 +127,7 @@ class ResStockDataTestCase(unittest.TestCase):
             test_output_dict["energy_kwh"],
             constants.BRITISH_THERMAL_UNIT_TO_KILOWATT_HOUR,
         )
-        self.assertAlmostEqual(
-            test_output_dict["kgco2_kg"], constants.POUND_TO_KILOGRAM
-        )
+        self.assertAlmostEqual(test_output_dict["kgco2_kg"], constants.POUND_TO_KILOGRAM)
         self.assertAlmostEqual(
             test_output_dict["power_kw"],
             constants.BRITISH_THERMAL_UNIT_TO_KILOWATT_HOUR,
@@ -145,9 +139,7 @@ if os.environ.get("DATABRICKS_RUNTIME_VERSION", None):
     # If we are developing on databricks we have to manually
     # instatiate a test suite and load all the tests from this module.
     test_suite = unittest.TestSuite()
-    test_suite.addTests(
-        unittest.TestLoader().loadTestsFromModule(sys.modules[__name__])
-    )
+    test_suite.addTests(unittest.TestLoader().loadTestsFromModule(sys.modules[__name__]))
     unittest.TextTestRunner().run(test_suite)
 elif __name__ == "__main__":
     unittest.main()

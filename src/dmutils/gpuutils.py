@@ -89,9 +89,7 @@ def gather_cpu_gpu_metrics(
             intervals_run += 1
 
             if log_interval is not None and intervals_run % log_interval == 0:
-                logger.info(
-                    f"{intervals_run} intervals run in {pd.Timestamp.now() - start_time}."
-                )
+                logger.info(f"{intervals_run} intervals run in {pd.Timestamp.now() - start_time}.")
     finally:
         if has_gpu:
             nvmlShutdown()
