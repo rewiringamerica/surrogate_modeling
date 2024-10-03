@@ -1,6 +1,7 @@
 from pyspark.sql import DataFrame
 import pyspark.sql.functions as F
 
+
 def check_for_null_values(df: DataFrame) -> None:
     """
     Checks for null values in each column of the DataFrame and raises an error if any null values are found.
@@ -13,10 +14,7 @@ def check_for_null_values(df: DataFrame) -> None:
     """
     # count how many null vals are in each column
     null_counts = df.select(
-        [
-            F.sum(F.when(F.col(c).isNull(), 1).otherwise(0)).alias(c)
-            for c in df.columns
-        ]
+        [F.sum(F.when(F.col(c).isNull(), 1).otherwise(0)).alias(c) for c in df.columns]
     )
     # Collect the results as a dictionary
     null_counts_dict = null_counts.collect()[0].asDict()

@@ -255,7 +255,3 @@ def get_clean_rastock_df() -> DataFrame:
     rastock_df = clean_bsb_output_cols(rastock_df)
     rastock_df = convert_column_units(rastock_df)
     return rastock_df
-
-
-
-

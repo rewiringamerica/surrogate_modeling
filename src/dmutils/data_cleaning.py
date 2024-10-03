@@ -4,8 +4,9 @@ import re
 from typing import List, Dict
 from pyspark.sql import DataFrame
 
+
 def edit_columns(
-    df:DataFrame,
+    df: DataFrame,
     remove_columns_with_substrings: List[str] = [],
     remove_substrings_from_columns: List[str] = [],
     replace_column_substrings_dict: Dict[str, str] = {},

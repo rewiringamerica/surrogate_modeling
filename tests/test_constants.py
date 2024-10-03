@@ -55,13 +55,9 @@ class ConstantTestCase(unittest.TestCase):
 
     def test_seer_to_eer(self):
         """Test conversions between SEER and EER."""
-        self.assertLess(
-            constants.SEER_TO_EER, 1.0, "EER is lower than SEER."
-        )
+        self.assertLess(constants.SEER_TO_EER, 1.0, "EER is lower than SEER.")
 
-        self.assertGreater(
-            constants.EER_TO_SEER, 1.0, "SEER is greater than EER."
-        )
+        self.assertGreater(constants.EER_TO_SEER, 1.0, "SEER is greater than EER.")
 
         self.assertAlmostEqual(
             1.0,
@@ -72,13 +68,9 @@ class ConstantTestCase(unittest.TestCase):
 
     def test_eer_to_eer2(self):
         """Test conversions between EER and EER2."""
-        self.assertGreater(
-            constants.EER2_TO_EER, 1.0, "EER is higher than EER2."
-        )
+        self.assertGreater(constants.EER2_TO_EER, 1.0, "EER is higher than EER2.")
 
-        self.assertLess(
-            constants.EER_TO_EER2, 1.0, "EER2 is less than EER."
-        )
+        self.assertLess(constants.EER_TO_EER2, 1.0, "EER2 is less than EER.")
 
         self.assertAlmostEqual(
             1.0,
@@ -86,6 +78,7 @@ class ConstantTestCase(unittest.TestCase):
             places=10,
             msg="Conversions between EER and EER2 should be recipricals.",
         )
+
 
 if os.environ.get("DATABRICKS_RUNTIME_VERSION", None):
     # If we are developing on databricks we have to manually

@@ -31,7 +31,7 @@ EER_CONVERSION = {
     "EER": 1.0,
     "SEER": constants.SEER_TO_EER,
     "EER2": constants.EER2_TO_EER,
-    "SEER2": constants.EER2_TO_EER*constants.SEER_TO_EER,
+    "SEER2": constants.EER2_TO_EER * constants.SEER_TO_EER,
 }
 
 # mapping of window description to ufactor and shgc (solar heat gain coefficient) pulled from options.ts
@@ -82,24 +82,23 @@ GAS_APPLIANCE_INDICATOR_COLS = [
 
 #  -- resstock reading and preprocessing functions  -- #
 
-def clean_building_metadata(raw_resstock_metadata_df:DataFrame) -> DataFrame:
+
+def clean_building_metadata(raw_resstock_metadata_df: DataFrame) -> DataFrame:
     """
     Rename and remove columns of a ResStock building metadata dataframe
 
     Can either pass a parquet file or an existing DataFrame.
 
-    Args: 
+    Args:
         raw_resstock_metadata_df (DataFrame): DataFrame containing raw ResStock metadata
     Returns:
         building_metadata_cleaned (DataFrame): cleaned ResStock building metadata
-        
+
     """
     # Read in data and modify pkey name and dtype
-    building_metadata = (
-            raw_resstock_metadata_df
-            .withColumn("building_id", F.col("bldg_id").cast("int"))
-            .drop("bldg_id")
-    )
+    building_metadata = raw_resstock_metadata_df.withColumn(
+        "building_id", F.col("bldg_id").cast("int")
+    ).drop("bldg_id")
 
     # rename and remove columns
     building_metadata_cleaned = data_cleaning.edit_columns(
@@ -275,7 +274,9 @@ def extract_heating_efficiency(heating_efficiency: str) -> int:
     if efficiency.endswith("AFUE"):
         return number / 100
     if efficiency.endswith("HSPF"):
-        return round(number / (constants.KILOWATT_HOUR_TO_BRITISH_THERMAL_UNIT / 1000), 3)
+        return round(
+            number / (constants.KILOWATT_HOUR_TO_BRITISH_THERMAL_UNIT / 1000), 3
+        )
 
     # 'Other' - e.g. wood stove - is not supported
     return number / 100
@@ -524,6 +525,7 @@ def add_water_heater_features(df):
         .drop("wh_struct")
     )
 
+
 #  -- various mapping expressions -- #
 def make_map_type_from_dict(mapping: Dict) -> Column:
     """
@@ -566,8 +568,8 @@ def transform_building_features(building_metadata_table_name) -> DataFrame:
 
     Args:
         building_metadata_table_name : name of building metadata delta table
-    
-    Returns: 
+
+    Returns:
         Dataframe: dataframe of building metadata features
     """
     building_metadata_features = (
@@ -926,7 +928,6 @@ def transform_building_features(building_metadata_table_name) -> DataFrame:
     return building_metadata_features
 
 
-
 #  -- functions to apply upgrade transformations -- #
 
 # Mapping of climate zone temperature  -> threshold, insulation
@@ -944,6 +945,7 @@ BASIC_ENCLOSURE_INSULATION = spark.createDataFrame(
     ],
     ("climate_zone_temp", "existing_insulation_max_threshold", "insulation_upgrade"),
 )
+
 
 def upgrade_to_hp(
     baseline_building_features: DataFrame,
@@ -1006,7 +1008,9 @@ def apply_upgrades(baseline_building_features: DataFrame, upgrade_id: int) -> Da
         raise ValueError(f"Upgrade id={upgrade_id} is not yet supported")
 
     upgrade_building_features = (
-        baseline_building_features.withColumn("upgrade_id", F.lit(upgrade_id).cast('double'))
+        baseline_building_features.withColumn(
+            "upgrade_id", F.lit(upgrade_id).cast("double")
+        )
         .withColumn("has_heat_pump_dryer", F.lit(False))
         .withColumn("has_induction_range", F.lit(False))
     )
@@ -1160,14 +1164,14 @@ def apply_upgrades(baseline_building_features: DataFrame, upgrade_id: int) -> Da
     return upgrade_building_features
 
 
-def build_upgrade_metadata_table(baseline_building_features:DataFrame) -> DataFrame:
+def build_upgrade_metadata_table(baseline_building_features: DataFrame) -> DataFrame:
     """
     Applied upgrade logic to baseline features table to create a DataFrame with features for each supported upgrade.
-    
-    This function iterates over each upgrade specified in `SUPPORTED_UPGRADES`, 
-    applies these upgrades to the baseline building metadata, and then unions the resulting DataFrames 
+
+    This function iterates over each upgrade specified in `SUPPORTED_UPGRADES`,
+    applies these upgrades to the baseline building metadata, and then unions the resulting DataFrames
     to create a comprehensive DataFrame that includes the baseline and all upgrades.
-    
+
     Args:
         building_features_baseline (DataFrame): A Spark DataFrame containing baseline building metadata for a set of building samples.
     Returns:
@@ -1177,19 +1181,23 @@ def build_upgrade_metadata_table(baseline_building_features:DataFrame) -> DataFr
         DataFrame.unionByName,
         [
             apply_upgrades(
-                baseline_building_features=baseline_building_features, upgrade_id=upgrade
+                baseline_building_features=baseline_building_features,
+                upgrade_id=upgrade,
             )
             for upgrade in SUPPORTED_UPGRADES
         ],
     )
 
-def drop_non_upgraded_samples(building_features:DataFrame, check_applicability_logic=False):
-    """
-    Drop upgrade records that had no changed features and therefore weren't upgraded. 
 
-    Note that a record is are marked as a non-upgraded duplicate if the sample's metadata is 
+def drop_non_upgraded_samples(
+    building_features: DataFrame, check_applicability_logic=False
+):
+    """
+    Drop upgrade records that had no changed features and therefore weren't upgraded.
+
+    Note that a record is are marked as a non-upgraded duplicate if the sample's metadata is
     identical that of a lower upgrade. For example, if the metadata is identical for say 11.05
-    and 13.01 for a given sample, the 13.01 record will be dropped. 
+    and 13.01 for a given sample, the 13.01 record will be dropped.
 
     Args:
         building_metadata_upgrades (DataFrame): The DataFrame containing building metadata upgrades.
@@ -1201,7 +1209,7 @@ def drop_non_upgraded_samples(building_features:DataFrame, check_applicability_l
 
     Raises:
         ValueError: If check_applicability_logic=True and the applicability logic
-        does not match between the features and targets. Upgrade 13.01 is ignored. 
+        does not match between the features and targets. Upgrade 13.01 is ignored.
 
     """
     partition_cols = building_features.drop("upgrade_id").columns
@@ -1223,10 +1231,9 @@ def drop_non_upgraded_samples(building_features:DataFrame, check_applicability_l
         applicability_compare = building_features_applicability_flag.alias(
             "features"
         ).join(
-             spark.table("ml.surrogate_model.building_simulation_outputs_annual")
-             .select("upgrade_id", "building_id", "applicability").alias(
-                "targets"
-            ),
+            spark.table("ml.surrogate_model.building_simulation_outputs_annual")
+            .select("upgrade_id", "building_id", "applicability")
+            .alias("targets"),
             on=["upgrade_id", "building_id"],
         )
         mismatch_count = (
@@ -1237,19 +1244,23 @@ def drop_non_upgraded_samples(building_features:DataFrame, check_applicability_l
             .count()
         )
         if mismatch_count > 0:
-            applicability_compare.where(F.col('features.applicability') != F.col('targets.applicability')).display()
-            raise ValueError(f"{mismatch_count} cases where applicability based on metadata and simulation applicability flag do not match")
+            applicability_compare.where(
+                F.col("features.applicability") != F.col("targets.applicability")
+            ).display()
+            raise ValueError(
+                f"{mismatch_count} cases where applicability based on metadata and simulation applicability flag do not match"
+            )
 
     # drop feature rows where upgrade was not applied
-    return (
-        building_features_applicability_flag.where(F.col("applicability")).drop(
-            "applicability"
-        )
+    return building_features_applicability_flag.where(F.col("applicability")).drop(
+        "applicability"
     )
+
 
 #  -- functions to construct weather city file index -- #
 
-def fit_weather_city_index(df_to_fit:Optional[DataFrame]=None):
+
+def fit_weather_city_index(df_to_fit: Optional[DataFrame] = None):
     # read in weather features if df is not passed
     if df_to_fit is None:
         df_to_fit = spark.table("ml.surrogate_model.weather_features_hourly")
@@ -1261,15 +1272,18 @@ def fit_weather_city_index(df_to_fit:Optional[DataFrame]=None):
     )
     return indexer.fit(df_to_fit)
 
-def transform_weather_city_index(weather_file_city_indexer:StringIndexer, df_to_transform:DataFrame):
-    return (
-        weather_file_city_indexer
-            .transform(df_to_transform)
-            .withColumn("weather_file_city_index", F.col("weather_file_city_index").cast("int"))
+
+def transform_weather_city_index(
+    weather_file_city_indexer: StringIndexer, df_to_transform: DataFrame
+):
+    return weather_file_city_indexer.transform(df_to_transform).withColumn(
+        "weather_file_city_index", F.col("weather_file_city_index").cast("int")
     )
 
-def add_weather_city_index(df_to_transform:DataFrame):
+
+def add_weather_city_index(df_to_transform: DataFrame):
 
     return transform_weather_city_index(
-        weather_file_city_indexer = fit_weather_city_index(),
-        df_to_transform = df_to_transform)
+        weather_file_city_indexer=fit_weather_city_index(),
+        df_to_transform=df_to_transform,
+    )
