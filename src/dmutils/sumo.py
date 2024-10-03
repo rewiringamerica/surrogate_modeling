@@ -1263,7 +1263,7 @@ def drop_non_upgraded_samples(
 def fit_weather_city_index(df_to_fit: Optional[DataFrame] = None):
     # read in weather features if df is not passed
     if df_to_fit is None:
-        df_to_fit = spark.table("ml.surrogate_model.weather_features_hourly")
+        df_to_fit = spark.table("ml.surrogate_model.weather_features_hourly").drop('weather_file_city_index')
     # Create the StringIndexer
     indexer = StringIndexer(
         inputCol="weather_file_city",
