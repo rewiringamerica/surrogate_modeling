@@ -36,7 +36,7 @@ def edit_columns(
     # combine the two replacement lookups
     combined_replace_dict = {**replace_column_substrings_dict, **remove_str_dict}
 
-    # Replace '.' the given character in column names so that we don't have to deal with backticks
+    # Replace '.' the given character in column names so that we don't have to escape w backticks
     df = df.selectExpr(
         *[
             f" `{col}` as `{col.replace('.', replace_period_character)}`"
@@ -62,3 +62,28 @@ def edit_columns(
         *[f" `{old_col}` as `{new_col}`" for old_col, new_col in new_col_dict.items()]
     )
     return df_clean
+
+
+def check_null_values(df: DataFrame) -> None:
+    """
+    Checks for null values in each column of the DataFrame and raises an error if any null values are found.
+
+    Args:
+    df (DataFrame): The DataFrame to check for null values.
+
+    Raises:
+    ValueError: If any column contains null values, an error is raised listing those columns and their null counts.
+    """
+    # count how many null vals are in each column
+    null_counts = df.select(
+        [
+            F.sum(F.when(F.col(c).isNull(), 1).otherwise(0)).alias(c)
+            for c in df.columns
+        ]
+    )
+    # Collect the results as a dictionary
+    null_counts_dict = null_counts.collect()[0].asDict()
+    # select any items that have non-zero count
+    null_count_items = {k: v for k, v in null_counts_dict.items() if v > 0}
+    if len(null_count_items) > 0:
+        raise ValueError(f"Columns with null values: {null_count_items}")
