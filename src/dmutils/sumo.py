@@ -1,4 +1,5 @@
 # TODO: Move this into dmutils
+# TODO: Run tests using doctest
 
 import re
 from functools import reduce
@@ -1215,11 +1216,6 @@ def drop_non_upgraded_samples(building_features:DataFrame, check_applicability_l
     )
 
     if check_applicability_logic:
-
-        # read in outputs so that we can test applicability logic
-        # annual_outputs = spark.table(
-           
-        # ).where(F.col("upgrade_id").isin(SUPPORTED_UPGRADES))
         # test that the applicability logic matches between the features and targets
         # we ignore 13.01 since they are all flagged as True in the output table
         # even though many do not have the insulation upgrade applied and are therefore identical to 11.05

@@ -45,7 +45,7 @@ from databricks.feature_engineering import FeatureEngineeringClient
 from pyspark.sql import DataFrame
 from pyspark.sql.types import StringType
 
-from src.dmutils import sumo, data_cleaning
+from src.dmutils import sumo, qa_utils
 
 # COMMAND ----------
 
@@ -87,8 +87,12 @@ building_metadata_applicable_upgrades = sumo.drop_non_upgraded_samples(
 
 # COMMAND ----------
 
+building_metadata_applicable_upgrades
+
+# COMMAND ----------
+
 # DBTITLE 1,Make sure there are no Null Features
-data_cleaning.check_null_values(building_metadata_applicable_upgrades)
+qa_utils.check_for_null_values(building_metadata_applicable_upgrades)
 
 # COMMAND ----------
 
