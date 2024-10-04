@@ -1,0 +1,74 @@
+# Run our tests whenever a branch is pushed.
+
+name: Run tests
+
+on:
+  push:
+    branches-ignore:
+      - main
+
+  # Allows you to run this workflow manually from the Actions tab
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    # See https://github.com/google-github-actions/auth#usage
+    permissions:
+      contents: 'read'
+      id-token: 'write'
+
+    steps:        
+    - uses: actions/checkout@v4
+
+    # See https://github.com/google-github-actions/auth#usage
+    - id: 'auth'
+      uses: 'google-github-actions/auth@v2'
+      with:
+        token_format: 'access_token'
+        project_id: 'cube-machine-learning'
+        service_account: 'datascience-dev@cube-machine-learning.iam.gserviceaccount.com'
+        workload_identity_provider: 'projects/777182164725/locations/global/workloadIdentityPools/github/providers/ra-github-repo'
+
+    # We download a lot of dependencies. So free up some space
+    # by removing tools we don't need.
+    - name: Free up disk space
+      run: |
+        ls -F /opt/hostedtoolcache 
+        df /opt/hostedtoolcache
+        rm -rf /opt/hostedtoolcache/Java*
+        rm -rf /opt/hostedtoolcache/Ruby
+        rm -rf /opt/hostedtoolcache/go
+        rm -rf /opt/hostedtoolcache/node
+        df /opt/hostedtoolcache
+  
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.11"
+
+    - name: Install keyring auth
+      run: |
+        pip install keyring keyrings-google-artifactregistry-auth
+
+    - name: Check keyring
+      run: |
+        keyring --list-backends
+
+    - name: Install pytest
+      run: |
+        pip install pytest
+
+    - name: Install dependencies.
+      run: |
+        if [ -f requirements-test.txt ]; then \
+          pip install \
+            --index-url https://us-central1-python.pkg.dev/cube-machine-learning/rewiring-america-python-repo/simple \
+            --extra-index-url https://pypi.org/simple/ \
+            --keyring-provider import \
+            -r ./requirements-test.txt; \
+        fi
+    - name: Test with pytest
+      run: |
+        pytest
