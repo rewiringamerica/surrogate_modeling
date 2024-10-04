@@ -30,21 +30,16 @@ class ConstantTestCase(unittest.TestCase):
 
         self.assertAlmostEqual(
             1.0,
-            constants.KILOWATT_HOUR_TO_BRITISH_THERMAL_UNIT
-            * constants.BRITISH_THERMAL_UNIT_TO_KILOWATT_HOUR,
+            constants.KILOWATT_HOUR_TO_BRITISH_THERMAL_UNIT * constants.BRITISH_THERMAL_UNIT_TO_KILOWATT_HOUR,
             places=10,
             msg="Conversions between btu and kwh should be recipricals.",
         )
 
     def test_lb_to_kg(self):
         """Test conversions between kwh and btu."""
-        self.assertGreater(
-            constants.KILOGRAM_TO_POUND, 1.0, "A pound is more than a kilo."
-        )
+        self.assertGreater(constants.KILOGRAM_TO_POUND, 1.0, "A pound is more than a kilo.")
 
-        self.assertLess(
-            constants.POUND_TO_KILOGRAM, 1.0, "A kilo is less than a pound."
-        )
+        self.assertLess(constants.POUND_TO_KILOGRAM, 1.0, "A kilo is less than a pound.")
 
         self.assertAlmostEqual(
             1.0,
@@ -58,9 +53,7 @@ if os.environ.get("DATABRICKS_RUNTIME_VERSION", None):
     # If we are developing on databricks we have to manually
     # instantiate a test suite and load all the tests from this module.
     test_suite = unittest.TestSuite()
-    test_suite.addTests(
-        unittest.TestLoader().loadTestsFromModule(sys.modules[__name__])
-    )
+    test_suite.addTests(unittest.TestLoader().loadTestsFromModule(sys.modules[__name__]))
     unittest.TextTestRunner().run(test_suite)
 elif __name__ == "__main__":
     unittest.main()

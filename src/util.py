@@ -47,20 +47,13 @@ def clean_columns(
     combined_replace_dict = {**replace_column_substrings_dict, **remove_str_dict}
 
     # Replace '.' the given character in column names so that we don't have to deal with backticks
-    df = df.selectExpr(
-        *[
-            f" `{col}` as `{col.replace('.', replace_period_character)}`"
-            for col in df.columns
-        ]
-    )
+    df = df.selectExpr(*[f" `{col}` as `{col.replace('.', replace_period_character)}`" for col in df.columns])
 
     # Iterate through the columns and replace dict to construct column mapping
     new_col_dict = {}
     for col in df.columns:
         # skip if in ignore list
-        if len(remove_columns_with_substrings) > 0 and re.search(
-            "|".join(remove_columns_with_substrings), col
-        ):
+        if len(remove_columns_with_substrings) > 0 and re.search("|".join(remove_columns_with_substrings), col):
             continue
         new_col = col
         for pattern, replacement in combined_replace_dict.items():
@@ -68,9 +61,7 @@ def clean_columns(
         new_col_dict[col] = new_col
 
     # Replace column names according to constructed replace dict
-    df_clean = df.selectExpr(
-        *[f" `{old_col}` as `{new_col}`" for old_col, new_col in new_col_dict.items()]
-    )
+    df_clean = df.selectExpr(*[f" `{old_col}` as `{new_col}`" for old_col, new_col in new_col_dict.items()])
     return df_clean
 
 
@@ -185,18 +176,9 @@ def read_combine_sims():
         11.04: BSB_DATA_FPATH / "med_hp_no_setback" / "MAX" / "all parquets",
         11.05: BSB_DATA_FPATH / "med_hp_no_setback" / "HERS" / "all parquets",
         11.06: BSB_DATA_FPATH / "med_hp_no_setback" / "ACCA_MAX" / "all parquets",
-        13.01: BSB_DATA_FPATH
-        / "med_hp_weatherization"
-        / "no_setpoint_setback"
-        / "all parquets",
-        14.01: BSB_DATA_FPATH
-        / "gshp_full_data"
-        / "ground_source_heatpump_HERS_maxload"
-        / "all parquets",
-        14.02: BSB_DATA_FPATH
-        / "gshp_full_data"
-        / "hers_no_setpoint_setback"
-        / "all parquets",
+        13.01: BSB_DATA_FPATH / "med_hp_weatherization" / "no_setpoint_setback" / "all parquets",
+        14.01: BSB_DATA_FPATH / "gshp_full_data" / "ground_source_heatpump_HERS_maxload" / "all parquets",
+        14.02: BSB_DATA_FPATH / "gshp_full_data" / "hers_no_setpoint_setback" / "all parquets",
     }
 
     # Get the schema for each individual file
@@ -216,9 +198,7 @@ def read_combine_sims():
         for fpath in dbutils.fs.ls(str(fpath_dir))
     ]
 
-    united_df = reduce(
-        partial(DataFrame.unionByName, allowMissingColumns=True), dataframes
-    )
+    united_df = reduce(partial(DataFrame.unionByName, allowMissingColumns=True), dataframes)
 
     return united_df
 
@@ -296,13 +276,9 @@ def convert_column_units(bsb_df: DataFrame) -> DataFrame:
             if col_name.endswith(suffix):
                 new_col_name = col_name.replace(suffix, f"_{new_unit}")
                 conversion_expr = (
-                    (F.col(new_col_name) * factor)
-                    if new_unit != "c"
-                    else ((F.col(new_col_name) - 32) * 5 / 9)
+                    (F.col(new_col_name) * factor) if new_unit != "c" else ((F.col(new_col_name) - 32) * 5 / 9)
                 )
-                bsb_df = bsb_df.withColumnRenamed(col_name, new_col_name).withColumn(
-                    new_col_name, conversion_expr
-                )
+                bsb_df = bsb_df.withColumnRenamed(col_name, new_col_name).withColumn(new_col_name, conversion_expr)
     return bsb_df
 
 
