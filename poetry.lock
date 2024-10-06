@@ -1266,34 +1266,6 @@ tabulate = ">=0.7.7"
 urllib3 = ">=1.26.7,<3"
 
 [[package]]
-name = "databricks-connect"
-version = "13.1.0"
-description = "Databricks Connect Client"
-optional = false
-python-versions = ">=3.9"
-files = [
-    {file = "databricks_connect-13.1.0-py2.py3-none-any.whl", hash = "sha256:1d75a2bd092f87c15838ee41606e922034e6216a5bf4c2857fe64d4fc1a5e7bb"},
-]
-
-[package.dependencies]
-databricks-sdk = ">=0.1.2"
-googleapis-common-protos = ">=1.56.4"
-grpcio = ">=1.48.1"
-grpcio-status = ">=1.48.1"
-numpy = ">=1.15"
-pandas = ">=1.0.5"
-py4j = "0.10.9.7"
-pyarrow = ">=1.0.0"
-six = "*"
-
-[package.extras]
-connect = ["googleapis-common-protos (>=1.56.4)", "grpcio (>=1.48.1)", "grpcio-status (>=1.48.1)", "numpy (>=1.15)", "pandas (>=1.0.5)", "pyarrow (>=1.0.0)"]
-ml = ["numpy (>=1.15)"]
-mllib = ["numpy (>=1.15)"]
-pandas-on-spark = ["numpy (>=1.15)", "pandas (>=1.0.5)", "pyarrow (>=1.0.0)"]
-sql = ["numpy (>=1.15)", "pandas (>=1.0.5)", "pyarrow (>=1.0.0)"]
-
-[[package]]
 name = "databricks-feature-engineering"
 version = "0.2.0"
 description = "Databricks Feature Engineering Client"
@@ -1541,13 +1513,13 @@ files = [
 
 [[package]]
 name = "dmlbootstrap"
-version = "0.1.3"
+version = "0.2.0"
 description = "Bootstrapping project for dml-utils."
 optional = false
 python-versions = ">=3.10,<4.0"
 files = [
-    {file = "dmlbootstrap-0.1.3-py3-none-any.whl", hash = "sha256:84dbab0ceb1276981c21775eaf0d70f63edbebde0f32a72c30d3362fca85b2e2"},
-    {file = "dmlbootstrap-0.1.3.tar.gz", hash = "sha256:379d2f9214e12ea5f74986910bb43406f2d382b1bbba6b9b9f35e680cfbbf014"},
+    {file = "dmlbootstrap-0.2.0-py3-none-any.whl", hash = "sha256:033a102f82d68d9be7f8192fd906a6d33801b6e2b764c81de73b8c55debe40bc"},
+    {file = "dmlbootstrap-0.2.0.tar.gz", hash = "sha256:83501534edee3e1c4cd247b204cd05abb73392679733da926512ec596397a0bf"},
 ]
 
 [package.dependencies]
@@ -1562,19 +1534,17 @@ reference = "rewiring-america-python-repo"
 
 [[package]]
 name = "dmlutils"
-version = "0.7.0"
+version = "0.8.0"
 description = "RA internal data and machine learning utilities."
 optional = false
 python-versions = ">=3.10,<4.0"
 files = [
-    {file = "dmlutils-0.7.0-py3-none-any.whl", hash = "sha256:b4396841459f469921668511229e0b5fc5f71d40fe4bbcda8faca7598022c0b8"},
-    {file = "dmlutils-0.7.0.tar.gz", hash = "sha256:ae726e45dcefdb311437824bb0680e575ced5ff4caea963ddb78e2df4c7a44cf"},
+    {file = "dmlutils-0.8.0-py3-none-any.whl", hash = "sha256:aead2d8ec26245a8e894f9d1fbb2ac2a196909f838251d70176b7c6ce04496da"},
+    {file = "dmlutils-0.8.0.tar.gz", hash = "sha256:7f031f86c17730625a4ed6c1b321de1b7127b72dcef25cdd261d1a481fe71a6b"},
 ]
 
 [package.dependencies]
 cloudpathlib = ">=0.16.0,<0.17.0"
-databricks-connect = ">=12.2.33,<16.0.0"
-dmlbootstrap = ">=0.1.3,<0.2.0"
 duckdb = ">=1,<2"
 fsspec = ">=2023.5.0,<2024.0.0"
 gcsfs = ">=2023.5.0,<2024.0.0"
@@ -8921,4 +8891,4 @@ testing = ["flake8 (<5)", "func-timeout", "jaraco.functools", "jaraco.itertools"
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.10, <3.11"
-content-hash = "3e46352122afa83a5616807f3fb87915449092f9215a2483f61fd6e585594e41"
+content-hash = "dd7d1a7b30dc442d7ef3e97e24eaebd123b36f97d49cbe46635fe107c7e11461"

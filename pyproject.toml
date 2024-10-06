@@ -26,8 +26,8 @@ priority = "primary"
 python = ">=3.10, <3.11"
 
 # These are RA projects in an internal repo.
-dmlutils = "^0.7.0"
-dmlbootstrap = "^0.1.3"
+dmlutils = "^0.8.0"
+dmlbootstrap = "^0.2.0"
 
 # This is to depend on essentially all the pinned
 # versions of things found in the Databricks 14.3
