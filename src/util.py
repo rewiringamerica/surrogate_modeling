@@ -15,6 +15,7 @@ import constants
 if os.environ.get("DATABRICKS_RUNTIME_VERSION", None):
     from databricks.sdk.runtime import *
 
+
 # move into a new resstock.py util?
 def clean_columns(
     df,
