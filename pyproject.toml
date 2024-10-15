@@ -8,6 +8,7 @@ version = "0.1.0"
 description = "Surrogate modeling."
 authors = ["Miki Verma <miki@rewiringamerica.org>"]
 readme = "README.md"
+package-mode = false
 
 # The priorities of these are backwards relative to what they should
 # actually be. See

@@ -3,15 +3,17 @@
 from cloudpathlib import CloudPath
 import collections
 from functools import reduce, partial
+import os
 import re
 from typing import List, Dict
 from pyspark.sql import DataFrame
 import pyspark.sql.functions as F
 from pyspark.sql.types import BooleanType, DoubleType, LongType, StructField, StructType
 
-from src import constants
+import constants
 
-from databricks.sdk.runtime import *
+if os.environ.get("DATABRICKS_RUNTIME_VERSION", None):
+    from databricks.sdk.runtime import *
 
 # move into a new resstock.py util?
 def clean_columns(
