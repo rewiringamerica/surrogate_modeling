@@ -331,4 +331,3 @@ def save_figure_to_gcfs(fig, gcspath, figure_format="png", dpi=200, transparent=
     bucket = client.get_bucket(gcspath.bucket)
     blob = bucket.blob(gcspath.blob)
     blob.upload_from_file(buf, content_type=figure_format, rewind=True)
-
