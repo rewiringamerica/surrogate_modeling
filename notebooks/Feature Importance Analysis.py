@@ -21,8 +21,7 @@ from sklearn.model_selection import train_test_split
 import shap
 from cloudpathlib import CloudPath
 
-sys.path.append("../src")
-from src.util import save_figure_to_gcfs
+from dmlutils.gcs import save_fig_to_gcs
 
 # COMMAND ----------
 
@@ -86,8 +85,7 @@ def plot_shap_values(shap_values, fig_title, gcspath, n_feature_display=None):
     fig = plt.gcf()
     fig.set_size_inches(12, 9)
     fig.tight_layout()
-    save_figure_to_gcfs(fig=fig, gcspath=gcspath, dpi=200, transparent=False)
-
+    save_fig_to_gcs(fig=fig, gcspath=gcspath, dpi=200, transparent=False)
 
 
 def fit_and_plot_shap_values(df, categorical_features, numeric_features, target, title_detail, n_feature_display=None):
@@ -258,3 +256,7 @@ fit_and_plot_shap_values(
     n_feature_display=15,
     title_detail="National"
 )
+
+# COMMAND ----------
+
+

@@ -299,35 +299,3 @@ def get_clean_rastock_df() -> DataFrame:
     rastock_df = clean_bsb_output_cols(rastock_df)
     rastock_df = convert_column_units(rastock_df)
     return rastock_df
-
-
-# already in dmutils
-def save_figure_to_gcfs(fig, gcspath, figure_format="png", dpi=200, transparent=False):
-    """
-    Write out a figure to google cloud storage
-
-    Args:
-        fig (matplotlib.figure.Figure): figure object to write out
-        gcspath (cloudpathlib.gs.gspath.GSPath): filepath to write to in GCFS
-        figure_format (str): file format in ['pdf', 'svg', 'png', 'jpg']. Defaults to 'png'.
-        dpi (int): resolution in dots per inch. Only relevant if format non-vector ('png', 'jpg'). Defaults to 200.
-
-    Returns:
-        pyspark.sql.dataframe.DataFrame
-
-    Modified from source:
-    https://stackoverflow.com/questions/54223769/writing-figure-to-google-cloud-storage-instead-of-local-drive
-    """
-    supported_formats = ["pdf", "svg", "png", "jpg"]
-    if figure_format not in supported_formats:
-        raise ValueError(f"Please pass supported format in {supported_formats}")
-
-    # Save figure image to a bytes buffer
-    buf = io.BytesIO()
-    fig.savefig(buf, format=figure_format, dpi=dpi, transparent=transparent)
-
-    # init GCS client and upload buffer contents
-    client = storage.Client()
-    bucket = client.get_bucket(gcspath.bucket)
-    blob = bucket.blob(gcspath.blob)
-    blob.upload_from_file(buf, content_type=figure_format, rewind=True)
