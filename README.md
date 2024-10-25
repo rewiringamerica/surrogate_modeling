@@ -23,7 +23,7 @@ so you should read an understand the conventions and usage patterns described in
 the `README.md` found there. We currently run this project on clusters with DB
 14.3 LTS runtime (Python 3.10, R 4.2).
 
-You should add `install-db-requirements.sh` as your cluster init script by uploading it in Advanced Options > Init Script in your cluster menu. 
+You should add `install-db-requirements.sh` as your cluster init script by uploading it in Advanced Options > Init Script in your cluster menu. The cluster will need to be restarted for changes to take effect. 
 
 ### Updating Requirements
 
