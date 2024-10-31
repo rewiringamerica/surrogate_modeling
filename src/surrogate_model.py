@@ -284,26 +284,26 @@ class SurrogateModel:
     def save_keras_model(self, run_id):
         """
         Saves the keras model for the given run ID to Google Cloud Storage.
-        
+
         Parameters:
         - run_id (str): The unique identifier for the MLflow run associated with the model to be saved.
 
         """
-        fname = f'sumo_{self.name}_{run_id}.keras'
-        gcp_model_dir = 'gs://the-cube/export/surrogate_model/'
+        fname = f"sumo_{self.name}_{run_id}.keras"
+        gcp_model_dir = "gs://the-cube/export/surrogate_model/"
 
         # load mlflow model
         mlflow_model = mlflow.pyfunc.load_model(model_uri=self.get_model_uri(run_id=run_id))
         # extract keras model
         keras_model = mlflow_model.unwrap_python_model().model
-        
+
         # save locally
         keras_model.save(fname)
         # then copy to gcp
-        with file_io.FileIO(fname, mode='rb') as f_local:
-            with file_io.FileIO(os.path.join(gcp_model_dir, fname), mode='wb+') as f_gcp:
+        with file_io.FileIO(fname, mode="rb") as f_local:
+            with file_io.FileIO(os.path.join(gcp_model_dir, fname), mode="wb+") as f_gcp:
                 f_gcp.write(f_local.read())
-        #delete local file
+        # delete local file
         os.remove(fname)
 
     def score_batch(
