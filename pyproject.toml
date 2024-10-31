@@ -33,11 +33,12 @@ dmlbootstrap = "^0.2.0"
 # This is to depend on essentially all the pinned
 # versions of things found in the Databricks 14.3
 # runtime. This means this project should only be
-# run on 14.3 runtimes, possibly including the ML
-# version. The minor .Z version tacked on the end
-# is our internal revision number of the cluster 
-# libraries.
-radbcluster = "==14.3.1"
+# run on 14.3 runtimes. The minor .Z version tacked
+# on the end is our internal revision number of the
+# cluster libraries.
+#
+# Note that we use the ML version (name ends in ml).
+radbclusterml = "==14.3.1"
 
 # These are from PyPi
 usingversion = "^0.1.2"
