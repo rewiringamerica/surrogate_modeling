@@ -352,9 +352,7 @@ class DataGenerator(tf.keras.utils.Sequence):
 
         Returns
         -------
-            Dict[str,np.ndarray]: The preprocessed feature data in format {feature_name (str):
-                    np.array of shape [len(feature_df)] for building model features
-                    and shape [len(feature_df), 8760] for weather features}
+            Dict[str,np.ndarray]: preprocessed feature data in format {feature_name (str): np.array of shape [N]}
         """
         return {col: np.array(feature_df[col]) for col in self.building_features + ["weather_file_city_index"]}
 
@@ -378,8 +376,7 @@ class DataGenerator(tf.keras.utils.Sequence):
 
         Returns
         -------
-        - X (dict): features for batch in format {feature_name (str):
-              np.array of shape [batch_size] for building model features and shape [batch_size, 8760] for weather features}
+        - X (dict): features for batch in format {feature_name (str): np.array of shape [batch_size]}
         - y (dict) : targets for the batch in format {target_name (str): np.array of shape [batch_size]}
         """
         # subset rows of targets and building features to batch
