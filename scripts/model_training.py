@@ -32,13 +32,18 @@
 # MAGIC
 # MAGIC ---
 # MAGIC #### Cluster/ User Requirements
-# MAGIC - Access Mode: Single User or Shared (Not No Isolation Shared)
-# MAGIC - Runtime: >= Databricks Runtime 14.3 ML (or >= Databricks Runtime 14.3 +  `%pip install databricks-feature-engineering`)
-# MAGIC - Node type: Single Node. Because of [this issue](https://kb.databricks.com/en_US/libraries/apache-spark-jobs-fail-with-environment-directory-not-found-error), worker nodes cannot access the directory needed to run inference on a keras trained model, meaning that the `score_batch()` function throws and OSError.
 # MAGIC - Can be run on CPU or GPU, with 2x speedup on GPU
-# MAGIC - Cluster-level packages: `gcsfs==2023.5.0`, `mlflow==2.13.0` (newer than default, which is required to pass a `code_paths` in logging)
 # MAGIC - `USE CATALOG`, `CREATE SCHEMA` privleges on the `ml` Unity Catalog (Ask Miki if for access)
 # MAGIC
+
+# COMMAND ----------
+
+# we need a newer version of MLFlow in order to use a custom loss
+%pip install mlflow==2.13.0
+
+# COMMAND ----------
+
+dbutils.library.restartPython()
 
 # COMMAND ----------
 
@@ -208,8 +213,7 @@ class SurrogateModelingWrapper(mlflow.pyfunc.PythonModel):
                         for weather features contain len 8760 arrays.
 
         Returns:
-        - The preprocessed feature data in format {feature_name (str) :
-                np.array of shape [N] for building model features and shape [N,8760] for weather features}
+        - The preprocessed feature data in format {feature_name (str) : np.array of shape [N]
         """
         return {
             col: np.array(feature_df[col])
@@ -282,6 +286,9 @@ with mlflow.start_run() as run:
     )
     # skip registering model for now..
     # mlflow.register_model(f"runs:/{run_id}/{sm.artifact_path}", str(sm))
+
+    # serialize the keras model and save to GCP
+    sm.save_keras_model(run_id = run_id)
 
 # COMMAND ----------
 
