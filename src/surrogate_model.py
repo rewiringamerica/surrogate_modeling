@@ -210,6 +210,8 @@ class SurrogateModel:
 
         final_model.compile(
             loss=masked_mae,
+            # Allows for deserialization on Mac w M1 chip
+            # https://github.com/keras-team/tf-keras/issues/46#issuecomment-1740702701
             optimizer=tf.keras.optimizers.Adam(),
             # metrics=[mape],
         )
