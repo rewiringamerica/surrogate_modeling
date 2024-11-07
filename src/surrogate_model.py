@@ -210,7 +210,7 @@ class SurrogateModel:
 
         final_model.compile(
             loss=masked_mae,
-            optimizer=tf.keras.optimizers.Adam()
+            optimizer=tf.keras.optimizers.Adam(),
             # metrics=[mape],
         )
         return final_model
