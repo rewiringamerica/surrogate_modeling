@@ -9,10 +9,10 @@ import unittest
 
 if os.environ.get("DATABRICKS_RUNTIME_VERSION", None):
     sys.path.append("../src")
+    sys.path.append("../src/dmutils")
 
 
-import util
-import constants
+import bsb, data_cleaning, constants
 
 # TODO: Remove skips for unit test once we have spark testing working on git:
 # https://www.notion.so/rewiringamerica/Local-Spark-Testing-4aef885e20034c18b1a2fba6c355e82c?pvs=4
@@ -39,7 +39,7 @@ class ResStockDataTestCase(unittest.TestCase):
         )
 
         # check the each of the the supported operations
-        test_output = util.clean_columns(
+        test_output = data_cleaning.edit_columns(
             df=test_input,
             remove_columns_with_substrings=["remove__me"],
             remove_substrings_from_columns=["shorter_pls"],
@@ -47,7 +47,7 @@ class ResStockDataTestCase(unittest.TestCase):
         )
         self.assertCountEqual(test_output.columns, ["building__id", "make_me_", "fuck_methane_gas"])
         # check that if we pass no args, we get back the identical schema
-        test_output_no_change = util.clean_columns(df=test_input, replace_period_character=".")
+        test_output_no_change = data_cleaning.edit_columns(df=test_input, replace_period_character=".")
         self.assertCountEqual(test_output_no_change.columns, test_input.columns)
 
     @unittest.skipIf(
@@ -86,7 +86,7 @@ class ResStockDataTestCase(unittest.TestCase):
         )
 
         # check that the columns of the output dataframe are as expected
-        test_output = util.clean_bsb_output_cols(bsb_df=test_input)
+        test_output = bsb.clean_bsb_output_cols(bsb_df=test_input)
         self.assertCountEqual(
             test_output.columns,
             [
@@ -119,7 +119,7 @@ class ResStockDataTestCase(unittest.TestCase):
         )
 
         # apply conversion
-        test_output_df = util.convert_column_units(test_input)
+        test_output_df = bsb.convert_column_units(test_input)
         # transform df into a dictionary for easier access
         test_output_dict = test_output_df.collect()[0].asDict()
         # check that the column names and values were transformed as expected

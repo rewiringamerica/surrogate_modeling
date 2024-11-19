@@ -38,14 +38,14 @@ building_metadata = spark.table('ml.megastock.building_metadata_5m')
 bq_features_write_path = 'cube-machine-learning.ds_api_datasets.megastock_features'
 building_features = spark.table('ml.megastock.building_features_5m')
 
-# (building_features
-#     .write
-#     .format("bigquery")
-#     .mode("overwrite")
-#     .option("table", bq_features_write_path)
-#     .option("temporaryGcsBucket", "the-cube")
-#     .save()
-# )
+(building_features
+    .write
+    .format("bigquery")
+    .mode("overwrite")
+    .option("table", bq_features_write_path)
+    .option("temporaryGcsBucket", "the-cube")
+    .save()
+)
 
 
 # COMMAND ----------

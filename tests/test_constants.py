@@ -9,6 +9,7 @@ if os.environ.get("DATABRICKS_RUNTIME_VERSION", None):
 import unittest
 from dmutils import constants
 
+
 class ConstantTestCase(unittest.TestCase):
     """Test various constants."""
 
