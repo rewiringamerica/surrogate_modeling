@@ -1,6 +1,7 @@
 # TODO: Move this into dmutils
 
 import sys
+import os
 from cloudpathlib import CloudPath
 import collections
 from functools import reduce, partial
@@ -12,7 +13,9 @@ sys.path.append("../src")
 
 from dmutils import constants, data_cleaning
 
-from databricks.sdk.runtime import *
+# TODO: get this working with crated spark session once this gets moved to dmutils
+if not os.environ.get("DATABRICKS_RUNTIME_VERSION"):
+    from databricks.sdk.runtime import *
 
 
 def get_schema_diffs(schemas: list[StructType]) -> StructType:
