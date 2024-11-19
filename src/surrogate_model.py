@@ -1,5 +1,6 @@
 import numpy as np
-from typing import Any, Dict, List, Tuple
+import os
+from typing import Any, Dict, List, Tuple, Optional
 
 import mlflow
 import pyspark.sql.functions as F
@@ -9,6 +10,7 @@ from pyspark.sql import DataFrame
 from pyspark.sql.types import ArrayType, DoubleType
 from tensorflow import keras
 from tensorflow.keras import layers, models
+from tensorflow.python.lib.io import file_io
 
 from src.datagen import DataGenerator
 
@@ -208,7 +210,9 @@ class SurrogateModel:
 
         final_model.compile(
             loss=masked_mae,
-            optimizer="adam",
+            # Allows for deserialization on Mac w M1 chip
+            # https://github.com/keras-team/tf-keras/issues/46#issuecomment-1740702701
+            optimizer=tf.keras.optimizers.Adam(),
             # metrics=[mape],
         )
         return final_model
@@ -278,6 +282,31 @@ class SurrogateModel:
             return self.get_latest_registered_model_uri(verbose=verbose)
         else:
             return f"runs:/{run_id}/{self.artifact_path}"
+
+    def save_keras_model(self, run_id):
+        """
+        Saves the keras model for the given run ID to Google Cloud Storage.
+
+        Parameters:
+        - run_id (str): The unique identifier for the MLflow run associated with the model to be saved.
+
+        """
+        fname = f"sumo_{self.name}_{run_id}.keras"
+        gcp_model_dir = "gs://the-cube/export/surrogate_model/"
+
+        # load mlflow model
+        mlflow_model = mlflow.pyfunc.load_model(model_uri=self.get_model_uri(run_id=run_id))
+        # extract keras model
+        keras_model = mlflow_model.unwrap_python_model().model
+
+        # save locally
+        keras_model.save(fname)
+        # then copy to gcp
+        with file_io.FileIO(fname, mode="rb") as f_local:
+            with file_io.FileIO(os.path.join(gcp_model_dir, fname), mode="wb+") as f_gcp:
+                f_gcp.write(f_local.read())
+        # delete local file
+        os.remove(fname)
 
     def score_batch(
         self,
