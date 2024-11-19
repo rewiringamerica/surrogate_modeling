@@ -13,10 +13,8 @@ sys.path.append("../src")
 
 from dmutils import constants, data_cleaning
 
-# TODO: get this working with crated spark session once this gets moved to dmutils
-if not os.environ.get("DATABRICKS_RUNTIME_VERSION"):
+if os.environ.get("DATABRICKS_RUNTIME_VERSION"):
     from databricks.sdk.runtime import *
-
 
 def get_schema_diffs(schemas: list[StructType]) -> StructType:
     """
