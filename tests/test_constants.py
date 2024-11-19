@@ -4,7 +4,7 @@ import os
 import sys
 
 if os.environ.get("DATABRICKS_RUNTIME_VERSION", None):
-    sys.path.append("../src")
+    sys.path.append("src")
 
 import unittest
 from dmutils import constants
