@@ -16,6 +16,7 @@ from dmutils import constants, data_cleaning
 if os.environ.get("DATABRICKS_RUNTIME_VERSION"):
     from databricks.sdk.runtime import *
 
+
 def get_schema_diffs(schemas: list[StructType]) -> StructType:
     """
     Given a list of schemas:
