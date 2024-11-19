@@ -23,11 +23,6 @@ N_SAMPLE_TAG = dbutils.widgets.get("n_sample_tag")
 
 # COMMAND ----------
 
-# from dohyo import county_gisjoin_to_geoid
-
-# Import is not working :  ModuleNotFoundError: No module named 'dohyo' when trying to apply fn later on
-
-# copying function here from dohyo.py TODO: sort out imports
 @udf(StringType())
 def county_gisjoin_to_geoid(gisjoin: str) -> str:
     # Ensure GISJOIN starts with 'G' and is the correct length
@@ -224,7 +219,7 @@ metadata_2022_format = process_raw_to_match_2022format(RESSTOCK_SAMPLED_DATA_PAT
 
 # COMMAND ----------
 
-building_metadata = sumo.clean_building_metadata(metadata_2022_format)
+building_metadata = feature_utils.clean_building_metadata(metadata_2022_format)
 
 # COMMAND ----------
 
@@ -232,7 +227,15 @@ building_metadata = sumo.clean_building_metadata(metadata_2022_format)
 
 # COMMAND ----------
 
+
+
+# COMMAND ----------
+
 # DBTITLE 1,write out sampled building metadata
 table_name = f"ml.megastock.building_metadata_{N_SAMPLE_TAG}"
 building_metadata.write.saveAsTable(table_name, mode="overwrite", overwriteSchema=True)
 spark.sql(f"OPTIMIZE {table_name}")
+
+# COMMAND ----------
+
+

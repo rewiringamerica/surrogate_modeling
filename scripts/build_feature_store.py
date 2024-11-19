@@ -87,7 +87,10 @@ building_metadata_applicable_upgrades = feature_utils.drop_non_upgraded_samples(
 # COMMAND ----------
 
 # DBTITLE 1,Make sure there are no Null Features
-qa_utils.check_for_null_values(building_metadata_applicable_upgrades)
+n_building_upgrade_samples = building_metadata_applicable_upgrades.count()
+print(n_building_upgrade_samples)
+non_null_df = building_metadata_applicable_upgrades.dropna()
+assert non_null_df.count() == n_building_upgrade_samples, "Null values present, run qa_utils.check_for_null_values(building_metadata_upgrades)"
 
 # COMMAND ----------
 

@@ -8,7 +8,7 @@ import sys
 from databricks.feature_engineering import FeatureEngineeringClient
 import pyspark.sql.functions as F
 
-from dmutils import qa_utils
+from src.dmutils import qa_utils
 from src import feature_utils
 
 # COMMAND ----------
@@ -32,6 +32,7 @@ comparison_dict = qa_utils.compare_dataframes_string_values(
     baseline_building_metadata_transformed)
 
 # NOTE: if there are differences, these should be fixed upstream in the creation of 'ml.megastock.building_metadata_*'
+# This may fail on weather city for small megastocks (e.g, 10K)
 assert (
     len(comparison_dict) == 0
 ), f"MegaStock features have different categorical values than training features \n {comparison_dict}"
