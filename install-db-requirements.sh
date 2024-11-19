@@ -18,16 +18,25 @@ cython==0.29.32 ; python_version >= "3.10" and python_version < "3.11"
 distro==1.9.0 ; python_version >= "3.10" and python_version < "3.11"
 dmlbootstrap==0.2.0 ; python_version >= "3.10" and python_version < "3.11"
 dmlutils==0.8.0 ; python_version >= "3.10" and python_version < "3.11"
+<<<<<<< HEAD
 duckdb==1.1.3 ; python_version >= "3.10" and python_version < "3.11"
 et-xmlfile==2.0.0 ; python_version >= "3.10" and python_version < "3.11"
+=======
+duckdb==1.1.1 ; python_version >= "3.10" and python_version < "3.11"
+et-xmlfile==1.1.0 ; python_version >= "3.10" and python_version < "3.11"
+>>>>>>> main
 flask==2.2.5 ; python_version >= "3.10" and python_version < "3.11"
 fsspec[http]==2023.6.0 ; python_version >= "3.10" and python_version < "3.11"
 gcsfs==2023.6.0 ; python_version >= "3.10" and python_version < "3.11"
 gitpython==3.1.27 ; python_version >= "3.10" and python_version < "3.11"
 google-api-core[grpc]==2.15.0 ; python_version >= "3.10" and python_version < "3.11"
+<<<<<<< HEAD
 google-cloud-bigquery-storage==2.27.0 ; python_version >= "3.10" and python_version < "3.11"
 google-cloud-bigquery==3.27.0 ; python_version >= "3.10" and python_version < "3.11"
 google-cloud-secret-manager==2.21.1 ; python_version >= "3.10" and python_version < "3.11"
+=======
+google-cloud-secret-manager==2.20.2 ; python_version >= "3.10" and python_version < "3.11"
+>>>>>>> main
 googleapis-common-protos[grpc]==1.62.0 ; python_version >= "3.10" and python_version < "3.11"
 greenlet==3.1.1 ; python_version >= "3.10" and (platform_machine == "aarch64" or platform_machine == "ppc64le" or platform_machine == "x86_64" or platform_machine == "amd64" or platform_machine == "AMD64" or platform_machine == "win32" or platform_machine == "WIN32") and python_version < "3.11"
 grpc-google-iam-v1==0.13.1 ; python_version >= "3.10" and python_version < "3.11"
@@ -45,7 +54,11 @@ mlflow-skinny[databricks]==2.9.2 ; python_version >= "3.10" and python_version <
 notebook-shim==0.2.2 ; python_version >= "3.10" and python_version < "3.11"
 openpyxl==3.1.5 ; python_version >= "3.10" and python_version < "3.11"
 pillow==9.4.0 ; python_version >= "3.10" and python_version < "3.11"
+<<<<<<< HEAD
 proto-plus==1.25.0 ; python_version >= "3.10" and python_version < "3.11"
+=======
+proto-plus==1.24.0 ; python_version >= "3.10" and python_version < "3.11"
+>>>>>>> main
 py4j==0.10.9.7 ; python_version >= "3.10" and python_version < "3.11"
 py==1.11.0 ; python_version >= "3.10" and python_version < "3.11" and implementation_name == "pypy"
 pygments==2.11.2 ; python_version >= "3.10" and python_version < "3.11"
@@ -55,8 +68,13 @@ pyspark==3.5.3 ; python_version >= "3.10" and python_version < "3.11"
 pytoolconfig[global]==1.2.5 ; python_version >= "3.10" and python_version < "3.11"
 pywavelets==1.4.1 ; python_version >= "3.10" and python_version < "3.11"
 pywin32-ctypes==0.2.3 ; python_version >= "3.10" and python_version < "3.11" and sys_platform == "win32"
+<<<<<<< HEAD
 pywin32==308 ; sys_platform == "win32" and platform_python_implementation != "PyPy" and python_version >= "3.10" and python_version < "3.11"
 pywinpty==2.0.14 ; python_version >= "3.10" and python_version < "3.11" and os_name == "nt"
+=======
+pywin32==307 ; sys_platform == "win32" and platform_python_implementation != "PyPy" and python_version >= "3.10" and python_version < "3.11"
+pywinpty==2.0.13 ; python_version >= "3.10" and python_version < "3.11" and os_name == "nt"
+>>>>>>> main
 pyyaml==6.0 ; python_version >= "3.10" and python_version < "3.11"
 radbcluster==14.3.1 ; python_version >= "3.10" and python_version < "3.11"
 secretstorage==3.3.1 ; python_version >= "3.10" and python_version < "3.11"

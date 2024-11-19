@@ -7,9 +7,7 @@ if os.environ.get("DATABRICKS_RUNTIME_VERSION", None):
     sys.path.append("../src")
 
 import unittest
-
 from dmutils import constants
-
 
 class ConstantTestCase(unittest.TestCase):
     """Test various constants."""
