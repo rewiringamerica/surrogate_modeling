@@ -43,7 +43,8 @@ from databricks.feature_engineering import FeatureEngineeringClient
 from pyspark.sql import DataFrame
 from pyspark.sql.types import StringType
 
-from src.dmutils import sumo, qa_utils
+from src.dmutils import qa_utils
+from src import feature_utils
 
 # COMMAND ----------
 
@@ -59,7 +60,7 @@ from src.dmutils import sumo, qa_utils
 # COMMAND ----------
 
 # DBTITLE 1,Transform building metadata
-baseline_building_metadata_transformed = sumo.transform_building_features('ml.surrogate_model.building_metadata')
+baseline_building_metadata_transformed = feature_utils.transform_building_features('ml.surrogate_model.building_metadata')
 
 # COMMAND ----------
 
@@ -70,12 +71,12 @@ baseline_building_metadata_transformed = sumo.transform_building_features('ml.su
 # COMMAND ----------
 
 # DBTITLE 1,Build metadata table for all samples and upgrades
-building_metadata_upgrades = sumo.build_upgrade_metadata_table(baseline_building_metadata_transformed)
+building_metadata_upgrades = feature_utils.build_upgrade_metadata_table(baseline_building_metadata_transformed)
 
 # COMMAND ----------
 
 # DBTITLE 1,Drop rows where upgrade was not applied
-building_metadata_applicable_upgrades = sumo.drop_non_upgraded_samples(
+building_metadata_applicable_upgrades = feature_utils.drop_non_upgraded_samples(
     building_metadata_upgrades,
     check_applicability_logic=True)
 
@@ -152,13 +153,13 @@ weather_features = transform_weather_features()
 
 # DBTITLE 1,Add weather file city index
 # fit the string indexer on the weather feature df
-weather_file_city_indexer = sumo.fit_weather_city_index(df_to_fit=weather_features)
+weather_file_city_indexer = feature_utils.fit_weather_city_index(df_to_fit=weather_features)
 # apply indexer to weather feature df to get a weather_file_city_index column
-weather_features_indexed = sumo.transform_weather_city_index(
+weather_features_indexed = feature_utils.transform_weather_city_index(
     df_to_transform=weather_features,
     weather_file_city_indexer=weather_file_city_indexer)
 # apply indexer to building metadata feature df to get a weather_file_city_index column
-building_metadata_with_weather_index = sumo.transform_weather_city_index(
+building_metadata_with_weather_index = feature_utils.transform_weather_city_index(
     df_to_transform=building_metadata_applicable_upgrades,
     weather_file_city_indexer=weather_file_city_indexer)
 

@@ -8,8 +8,8 @@ import sys
 from databricks.feature_engineering import FeatureEngineeringClient
 import pyspark.sql.functions as F
 
-sys.path.append("../../src")
-from dmutilslocal import sumo, qa_utils
+from dmutils import qa_utils
+from src import feature_utils
 
 # COMMAND ----------
 
@@ -22,7 +22,7 @@ N_SAMPLE_TAG = dbutils.widgets.get("n_sample_tag")
 
 # COMMAND ----------
 
-baseline_building_metadata_transformed = sumo.transform_building_features(f"ml.megastock.building_metadata_{N_SAMPLE_TAG}")
+baseline_building_metadata_transformed = feature_utils.transform_building_features(f"ml.megastock.building_metadata_{N_SAMPLE_TAG}")
 
 # COMMAND ----------
 
@@ -38,15 +38,15 @@ assert (
 
 # COMMAND ----------
 
-building_metadata_upgrades = sumo.build_upgrade_metadata_table(baseline_building_metadata_transformed)
+building_metadata_upgrades = feature_utils.build_upgrade_metadata_table(baseline_building_metadata_transformed)
 
 # COMMAND ----------
 
-building_metadata_upgrades = sumo.add_weather_city_index(building_metadata_upgrades)
+building_metadata_upgrades = feature_utils.add_weather_city_index(building_metadata_upgrades)
 
 # COMMAND ----------
 
-building_metadata_applicable_upgrades = sumo.drop_non_upgraded_samples(
+building_metadata_applicable_upgrades = feature_utils.drop_non_upgraded_samples(
     building_metadata_upgrades, check_applicability_logic=False
 )
 

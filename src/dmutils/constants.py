@@ -36,7 +36,7 @@ See https://energy-models.com/tools/how-convert-seer-eer-or-cop-kwton-hspf
 EER2_TO_EER = 1.04
 """
 Conversion of SEER2 to SEER (Seasonal Energy Efficiency Ratio)
-for Packaged Air Conditioner and Heat Pump. 
+for Packaged Air Conditioner and Heat Pump.
 The same conversion can be used for SEER2 to SEER.
 
 See https://www.marathonhvac.com/seer-to-seer2

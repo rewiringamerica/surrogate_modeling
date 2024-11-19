@@ -29,7 +29,8 @@ def edit_columns(
                                                 in format {to_replace: replace_value}.
       replace_period_character (str, optional): Character to replace '.' with. Defaults to '__'.
 
-    Returns:
+    Returns
+    -------
       DataFrame: Cleaned DataFrame
     """
     # replace these with an empty string

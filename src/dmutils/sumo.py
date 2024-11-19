@@ -1,3 +1,6 @@
+# copied from surrogate_modeling repo, branch mev/refactor_feature_building
+#  src/dmutils/sumo.py
+
 # TODO: Move this into dmutils
 # TODO: Run tests using doctest
 
@@ -111,7 +114,31 @@ def clean_building_metadata(raw_resstock_metadata_df: DataFrame) -> DataFrame:
         ],
     )
 
-    return building_metadata_cleaned
+    # Filter to homes of interest: occupied sf homes with modeled fuels and without shared HVAC systems
+    filtered_building_metadata = (
+        building_metadata_cleaned
+        # only single family, mobile home, or multifam with < 5 units
+        .where(
+            F.col("geometry_building_type_acs").isin(
+                [
+                    "Single-Family Detached",
+                    "Single-Family Attached",
+                    "Mobile Home",
+                    "2 Unit",
+                    "3 or 4 Unit",
+                ]
+            )
+        )
+        # other fuels are not modeled in resstock,
+        # and this filter is sufficienct to remove units that have other fuels for any applaince
+        .where(F.col("heating_fuel") != "Other Fuel").where(F.col("water_heater_fuel") != "Other Fuel")
+        # filter out vacant homes
+        .where(F.col("vacancy_status") == "Occupied")
+        # filter out homes with shared HVAC or water heating systems
+        .where((F.col("hvac_has_shared_system") == "None") & (F.col("water_heater_in_unit") == "Yes"))
+    )
+
+    return filtered_building_metadata
 
 
 #  -- feature transformation udfs -- #
@@ -157,9 +184,12 @@ def extract_r_value(construction_type: str, set_none_to_inf: bool = False) -> in
 
     Assumption: all baseline walls have similar R-value of ~4.
     The returned value is for additional insulation only. Examples:
-        Uninsulated brick, 3w, 12": ~4 (https://ncma.org/resource/rvalues-of-multi-wythe-concrete-masonry-walls/)
-        Uninsulated wood studs: ~4 (assuming 2x4 studs and 1.25/inch (air gap has higher R-value than wood), 3.5*1.25=4.375)
-        Hollow Concrete Masonry Unit, Uninsulated: ~4 per 6" (https://ncma.org/resource/rvalues-ufactors-of-single-wythe-concrete-masonry-walls/)
+        Uninsulated brick, 3w, 12": ~4
+            (https://ncma.org/resource/rvalues-of-multi-wythe-concrete-masonry-walls/)
+        Uninsulated wood studs: ~4
+            (assuming 2x4 studs and 1.25/inch (air gap has higher R-value than wood), 3.5*1.25=4.375)
+        Hollow Concrete Masonry Unit, Uninsulated: ~4 per 6"
+            (https://ncma.org/resource/rvalues-ufactors-of-single-wythe-concrete-masonry-walls/)
 
     >>> extract_r_value('Finished, R-13')
     13
@@ -317,7 +347,7 @@ def extract_energy_factor(ef_string: str) -> int:
     >>> extract_energy_factor("None")
     99.
     """
-    if ef_string == "None":
+    if "None" in ef_string:
         return 99.0
     return float(ef_string.split(",")[0][3:])
 
@@ -397,6 +427,7 @@ wh_schema = StructType(
         StructField("water_heater_recovery_efficiency_ef", DoubleType(), True),  # Recovery Efficiency Factor (EF)
     ]
 )
+
 
 # pulled from options.tsv
 @udf(wh_schema)
@@ -538,6 +569,7 @@ luminous_efficiency_mapping = make_map_type_from_dict(
     }
 )
 
+
 #  -- function to apply all the baseline transformations -- #
 def transform_building_features(building_metadata_table_name) -> DataFrame:
     """
@@ -550,28 +582,7 @@ def transform_building_features(building_metadata_table_name) -> DataFrame:
         Dataframe: dataframe of building metadata features
     """
     building_metadata_features = (
-        spark.read.table("ml.surrogate_model.building_metadata")
-        # -- filter to occupied sf homes with modeled fuels and without shared HVAC systems -- #
-        # sf homes only
-        .where(
-            F.col("geometry_building_type_acs").isin(
-                [
-                    "Single-Family Detached",
-                    "Single-Family Attached",
-                    "Mobile Home",
-                    "2 Unit",
-                    "3 or 4 Unit",
-                ]
-            )
-        )
-        # other fuels are not modeled in resstock,
-        # and this filter is sufficienct to remove units that have other fuels for any applaince
-        .where(F.col("heating_fuel") != "Other Fuel")
-        .where(F.col("water_heater_fuel") != "Other Fuel")
-        # filter out vacant homes
-        .where(F.col("vacancy_status") == "Occupied")
-        # filter out homes with shared HVAC or water heating systems
-        .where((F.col("hvac_has_shared_system") == "None") & (F.col("water_heater_in_unit") == "Yes"))
+        spark.read.table(building_metadata_table_name)
         # -- structure transformations -- #
         .withColumn("n_bedrooms", F.col("bedrooms").cast("int"))
         .withColumn("n_bathrooms", F.col("n_bedrooms") / 2 + 0.5)  # based on docs
@@ -780,7 +791,7 @@ def transform_building_features(building_metadata_table_name) -> DataFrame:
             "n_bedrooms",
             "n_bathrooms",
             F.col("geometry_attic_type").alias("attic_type"),
-            "sqft",
+            F.col("sqft").cast("double"),
             F.col("geometry_foundation_type").alias("foundation_type"),
             "garage_size_n_car",
             F.col("geometry_stories").cast("int").alias("n_stories"),
@@ -889,7 +900,8 @@ def upgrade_to_hp(
 ) -> DataFrame:
     """
     Upgrade the baseline building features to an air source heat pump (ASHP) with specified efficiencies.
-    Note that all baseline hps in Resstock are lower efficiency than specified upgrade thresholds (<=SEER 15; <=HSPF 8.5)
+    Note that all baseline hps in Resstock are lower efficiency than specified upgrade thresholds
+        (<=SEER 15; <=HSPF 8.5)
 
     Args:
         baseline_building_features (DataFrame): The baseline building features.
@@ -926,7 +938,8 @@ def upgrade_to_hp(
 def apply_upgrades(baseline_building_features: DataFrame, upgrade_id: int) -> DataFrame:
     """
     Modify building features to reflect the upgrade. Source:
-    https://oedi-data-lake.s3.amazonaws.com/nrel-pds-building-stock/end-use-load-profiles-for-us-building-stock/2022/EUSS_ResRound1_Technical_Documentation.pdf
+    https://oedi-data-lake.s3.amazonaws.com/nrel-pds-building-stock/end-use-load-profiles-for-us-building-stock
+         /2022/EUSS_ResRound1_Technical_Documentation.pdf
     In case of contradictions, consult: https://github.com/NREL/resstock/blob/run/euss/EUSS-project-file_2018_10k.yml.
 
     Args:
@@ -1082,7 +1095,8 @@ def build_upgrade_metadata_table(baseline_building_features: DataFrame) -> DataF
     to create a comprehensive DataFrame that includes the baseline and all upgrades.
 
     Args:
-        building_features_baseline (DataFrame): A Spark DataFrame containing baseline building metadata for a set of building samples.
+        building_features_baseline (DataFrame): A Spark DataFrame containing baseline building metadata
+          for a set of building samples.
     Returns:
         DataFrame: A Spark DataFrame containing building metadata for each upgrade including baseline.
     """
@@ -1109,7 +1123,8 @@ def drop_non_upgraded_samples(building_features: DataFrame, check_applicability_
     Args:
         building_metadata_upgrades (DataFrame): The DataFrame containing building metadata upgrades.
         check_applicability_logic (bool, optional): Flag indicating whether to check whether the applicabilitity logic
-                matches between the metadata (i.e, non-unique set of metadata) the applicability flag output by the simulation. Should only be passed if running on Resstock EUSS data. Defaults to False.
+                matches between the metadata (i.e, non-unique set of metadata) the applicability flag output by the
+                simulation. Should only be passed if running on Resstock EUSS data. Defaults to False.
 
     Returns:
         DataFrame: The DataFrame with non-upgraded samples dropped.
@@ -1149,7 +1164,8 @@ def drop_non_upgraded_samples(building_features: DataFrame, check_applicability_
         if mismatch_count > 0:
             applicability_compare.where(F.col("features.applicability") != F.col("targets.applicability")).display()
             raise ValueError(
-                f"{mismatch_count} cases where applicability based on metadata and simulation applicability flag do not match"
+                f"{mismatch_count} cases where applicability based on metadata and simulation applicability flag\
+                      do not match"
             )
 
     # drop feature rows where upgrade was not applied
@@ -1168,6 +1184,7 @@ def fit_weather_city_index(df_to_fit: Optional[DataFrame] = None):
         inputCol="weather_file_city",
         outputCol="weather_file_city_index",
         stringOrderType="alphabetAsc",
+        handleInvalid="skip",
     )
     return indexer.fit(df_to_fit)
 

@@ -1,7 +1,3 @@
-# copied from surrogate_modeling repo, branch mev/refactor_feature_building
-#  src/dmutils/sumo.py
-
-# TODO: Move this into dmutils
 # TODO: Run tests using doctest
 
 import re
@@ -23,7 +19,7 @@ from pyspark.sql.window import Window
 
 from databricks.sdk.runtime import spark, udf
 
-from src.dmutilslocal import data_cleaning, constants
+from src.dmutils import data_cleaning, constants
 
 #  -- constants -- #
 # TODO: put this in some kind of shared config that can be used across repos

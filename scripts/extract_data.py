@@ -35,14 +35,14 @@
 # COMMAND ----------
 
 # DBTITLE 1,Imports
-import os
 from typing import List
 
 from cloudpathlib import CloudPath
 from pyspark.sql import DataFrame
 import pyspark.sql.functions as F
 
-from src.dmutils import bsb, data_cleaning, sumo
+from src.dmutils import bsb, data_cleaning
+from src import feature_utils
 
 # COMMAND ----------
 
@@ -223,7 +223,7 @@ def extract_hourly_weather_data() -> DataFrame:
 
 # DBTITLE 1,Extract building metadata
 raw_building_metadata = spark.read.parquet(BUILDING_METADATA_PARQUET_PATH)
-building_metadata = sumo.clean_building_metadata(raw_building_metadata)
+building_metadata = feature_utils.clean_building_metadata(raw_building_metadata)
 
 # COMMAND ----------
 
