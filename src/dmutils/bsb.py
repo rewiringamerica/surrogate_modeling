@@ -1,5 +1,6 @@
 # TODO: Move this into dmutils
 
+import sys
 from cloudpathlib import CloudPath
 import collections
 from functools import reduce, partial
@@ -7,7 +8,9 @@ from pyspark.sql import DataFrame
 import pyspark.sql.functions as F
 from pyspark.sql.types import BooleanType, DoubleType, LongType, StructField, StructType
 
-from src.dmutils import constants, data_cleaning
+sys.path.append("../src")
+
+from dmutils import constants, data_cleaning
 
 from databricks.sdk.runtime import *
 
