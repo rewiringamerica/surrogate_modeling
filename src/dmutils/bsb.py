@@ -1,3 +1,4 @@
+"""Functions for processing BSB (BuildStockBatch) outputs"""
 # TODO: Move this into dmutils
 
 import sys
