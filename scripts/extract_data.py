@@ -35,14 +35,14 @@
 # COMMAND ----------
 
 # DBTITLE 1,Imports
-import os
 from typing import List
 
 from cloudpathlib import CloudPath
 from pyspark.sql import DataFrame
 import pyspark.sql.functions as F
 
-from src import util
+from src.dmutils import bsb, data_cleaning
+from src import feature_utils
 
 # COMMAND ----------
 
@@ -82,57 +82,24 @@ HOURLY_WEATHER_CSVS_PATH = str(RESSTOCK_PATH / "weather" / "state=*/*_TMY3.csv")
 # COMMAND ----------
 
 # DBTITLE 1,Functions for loading and preprocessing raw data
-def transform_pkeys(df):
-    return (
-        df.withColumn("building_id", F.col("bldg_id").cast("int"))
+def extract_resstock_annual_outputs() -> DataFrame:
+    """
+    Read in ResStock annual energy consumption outputs and rename and remove columns.
+
+    Returns:
+        resstock_outputs_cleaned (DataFrame): cleaned ResStock annual outputs
+
+    """
+    # Read all scenarios at once by reading baseline and all 9 upgrade files in the directory
+    annual_energy_consumption_with_metadata = (
+        spark.read.parquet(ANNUAL_OUTPUT_PARQUET_PATH)
+        .withColumn("building_id", F.col("bldg_id").cast("int"))
         .withColumn("upgrade_id", F.col("upgrade").cast("double"))
         .drop("bldg_id", "upgrade")
     )
 
-
-def extract_building_metadata() -> DataFrame:
-    """
-    Extract and lightly preprocess ResStock building metadata:
-    rename and remove columns.
-
-    Returns:
-        building_metadata_cleaned (DataFrame): cleaned ResStock building metadata
-
-    TODO: Maybe add type conversions?.
-    """
-    # Read in data and do some standard renames
-    building_metadata = spark.read.parquet(BUILDING_METADATA_PARQUET_PATH).transform(
-        transform_pkeys
-    )
-
     # rename and remove columns
-    building_metadata_cleaned = util.clean_columns(
-        df=building_metadata,
-        remove_substrings_from_columns=["in__"],
-        remove_columns_with_substrings=[
-            "simulation_control_run",
-            "emissions",
-            "weight",
-            "applicability",
-            "upgrade_id",
-        ],
-    )
-
-    return building_metadata_cleaned
-
-
-def extract_resstock_annual_outputs() -> DataFrame:
-    """
-    Extract and lightly preprocess annual energy consumption outputs:
-    rename and remove columns.
-    """
-    # Read all scenarios at once by reading baseline and all 9 upgrade files in the directory
-    annual_energy_consumption_with_metadata = spark.read.parquet(
-        ANNUAL_OUTPUT_PARQUET_PATH
-    ).transform(transform_pkeys)
-
-    # rename and remove columns
-    annual_energy_consumption_cleaned = util.clean_columns(
+    annual_energy_consumption_cleaned = data_cleaning.edit_columns(
         df=annual_energy_consumption_with_metadata,
         remove_substrings_from_columns=["in__", "out__", "__energy_consumption__kwh"],
         remove_columns_with_substrings=[
@@ -149,13 +116,16 @@ def extract_resstock_annual_outputs() -> DataFrame:
 
 def extract_rastock_annual_outputs() -> DataFrame:
     """
-    Extract and lightly preprocess RAStock annual energy consumption outputs:
-    rename and remove columns so that is matches format output by extract_resstock_annual_outputs()
+    Read in RAStock annual energy consumption outputs and rename and remove columns
+    so that it matches format output by extract_resstock_annual_outputs()
+
+    Returns:
+        rastock_outputs_cleaned (DataFrame): cleaned RAStock annual outputs
 
     """
     # TODO: if we ever add GSHP to sumo, we need to mark homes without ducts as inapplicable
     # 1. get annual outputs for all RAStock upgrades and apply common post-processing
-    rastock_outputs = util.get_clean_rastock_df()
+    rastock_outputs = bsb.get_clean_rastock_df()
 
     # 2. apply custom sumo post-processing to align with ResStock outputs
     # cast pkeys to the right type
@@ -182,10 +152,11 @@ def extract_rastock_annual_outputs() -> DataFrame:
     # construct the the substring replacement dict to align colnames with ResStock
     replace_column_substrings_dict = {
         **{f + "_": f + "__" for f in modeled_fuel_types},
-        **{"natural_gas": "methane_gas", "permanent_spa": "hot_tub"},
+        **{"natural_gas": "methane_gas",
+           "permanent_spa": "hot_tub"},
     }
     # apply reformatting to match ResStock
-    rastock_outputs_cleaned = util.clean_columns(
+    rastock_outputs_cleaned = data_cleaning.edit_columns(
         df=rastock_outputs,
         remove_columns_with_substrings=[columns_to_remove_match_pattern],
         remove_substrings_from_columns=["out_", "_energy_consumption_kwh"],
@@ -251,7 +222,8 @@ def extract_hourly_weather_data() -> DataFrame:
 # COMMAND ----------
 
 # DBTITLE 1,Extract building metadata
-building_metadata = extract_building_metadata()
+raw_building_metadata = spark.read.parquet(BUILDING_METADATA_PARQUET_PATH)
+building_metadata = feature_utils.clean_building_metadata(raw_building_metadata)
 
 # COMMAND ----------
 

@@ -4,11 +4,10 @@ import os
 import sys
 
 if os.environ.get("DATABRICKS_RUNTIME_VERSION", None):
-    sys.path.append("../src")
+    sys.path.append("src")
 
 import unittest
-
-import constants
+from dmutils import constants
 
 
 class ConstantTestCase(unittest.TestCase):
@@ -46,6 +45,32 @@ class ConstantTestCase(unittest.TestCase):
             constants.KILOGRAM_TO_POUND * constants.POUND_TO_KILOGRAM,
             places=10,
             msg="Conversions between pounds and kilos should be recipricals.",
+        )
+
+    def test_seer_to_eer(self):
+        """Test conversions between SEER and EER."""
+        self.assertLess(constants.SEER_TO_EER, 1.0, "EER is lower than SEER.")
+
+        self.assertGreater(constants.EER_TO_SEER, 1.0, "SEER is greater than EER.")
+
+        self.assertAlmostEqual(
+            1.0,
+            constants.SEER_TO_EER * constants.EER_TO_SEER,
+            places=10,
+            msg="Conversions between SEER and EER should be recipricals.",
+        )
+
+    def test_eer_to_eer2(self):
+        """Test conversions between EER and EER2."""
+        self.assertGreater(constants.EER2_TO_EER, 1.0, "EER is higher than EER2.")
+
+        self.assertLess(constants.EER_TO_EER2, 1.0, "EER2 is less than EER.")
+
+        self.assertAlmostEqual(
+            1.0,
+            constants.EER_TO_EER2 * constants.EER2_TO_EER,
+            places=10,
+            msg="Conversions between EER and EER2 should be recipricals.",
         )
 
 
