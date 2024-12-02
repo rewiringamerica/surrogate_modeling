@@ -55,29 +55,29 @@ building_features = spark.table(f'ml.megastock.building_features_{N_SAMPLE_TAG}'
 
 # COMMAND ----------
 
-# Add "__m" suffix to all columns in metadata table except "building_id"
-building_metadata_renamed = building_metadata.select(
-    [F.col(c).alias(f"{c}__m") if c != "building_id" else F.col(c) for c in building_metadata.columns]
-)
-
-# COMMAND ----------
-
 # get distinct climate zones
-climate_zone_list = list(map(lambda row: row['ashrae_iecc_climate_zone_2004__m'], building_metadata_renamed.select('ashrae_iecc_climate_zone_2004__m').distinct().collect()))
+climate_zone_list = list(map(lambda row: row['ashrae_iecc_climate_zone_2004'], building_metadata.select('ashrae_iecc_climate_zone_2004').distinct().collect()))
 
 # Mapping dictionary
-climate_zone_mapping = {cz: i for i, cz in enumerate(climate_zone_list, 1)}
+climate_zone_mapping = {cz: i for i, cz in (enumerate(sorted(climate_zone_list), 1))}
 
 # Define UDF
 cz_mapping_expr = F.create_map([F.lit(x) for x in chain(*climate_zone_mapping.items())])
 
 # Apply UDF to create new column
-building_metadata_with_int_cz = building_metadata_renamed.withColumn("climate_zone_int", cz_mapping_expr[F.col('ashrae_iecc_climate_zone_2004__m')])
+building_metadata_with_int_cz = building_metadata.withColumn("climate_zone_int", cz_mapping_expr[F.col('ashrae_iecc_climate_zone_2004')])
+
+# COMMAND ----------
+
+# Add "__m" suffix to all columns in metadata table except "building_id"
+building_metadata_renamed = building_metadata_with_int_cz.select(
+    [F.col(c).alias(f"{c}__m") if c != "building_id" else F.col(c) for c in building_metadata_with_int_cz.columns]
+)
 
 # COMMAND ----------
 
 # Subset features to baseline only and join the tables on building_id
-combined_df_baseline = building_metadata_with_int_cz.join(
+combined_df_baseline = building_metadata_renamed.join(
     building_features.where(F.col('upgrade_id') == 0).drop('upgrade_id'),
     on="building_id", how="inner")
 
@@ -94,6 +94,12 @@ combined_df_baseline = building_metadata_with_int_cz.join(
 )
 
 # COMMAND ----------
+
+# Drop table
+query = f"""
+DROP TABLE `{bq_write_path}`"""
+query_job = client.query(query)
+query_job.result()
 
 # optimize the table by partitioning and clustering
 query = f"""
@@ -134,3 +140,7 @@ rows = query_job.result()  # Waits for query to finish
 
 for row in rows:
     print(row) #3,234,218
+
+# COMMAND ----------
+
+
