@@ -95,16 +95,10 @@ combined_df_baseline = building_metadata_renamed.join(
 
 # COMMAND ----------
 
-# Drop table
-query = f"""
-DROP TABLE `{bq_write_path}`"""
-query_job = client.query(query)
-query_job.result()
-
 # optimize the table by partitioning and clustering
 query = f"""
 CREATE TABLE `{bq_write_path}_optimized`
-PARTITION BY RANGE_BUCKET(climate_zone_int, GENERATE_ARRAY(1, {len(climate_zone_mapping)+1}, 1))
+PARTITION BY RANGE_BUCKET(climate_zone_int__m, GENERATE_ARRAY(1, {len(climate_zone_mapping)+1}, 1))
 CLUSTER BY  heating_fuel__m, geometry_building_type_acs__m, geometry_floor_area__m, vintage__m AS
 SELECT *,
 FROM `{bq_write_path}`
@@ -140,6 +134,21 @@ rows = query_job.result()  # Waits for query to finish
 
 for row in rows:
     print(row) #3,234,218
+
+# COMMAND ----------
+
+# check that tables are there
+QUERY = f"""select climate_zone_int__m from `{bq_write_path}` WHERE building_id=1"""
+query_job = client.query(QUERY)  # API request
+rows = query_job.result()  # Waits for query to finish
+
+# COMMAND ----------
+
+
+
+# COMMAND ----------
+
+rows.to_dataframe()
 
 # COMMAND ----------
 
