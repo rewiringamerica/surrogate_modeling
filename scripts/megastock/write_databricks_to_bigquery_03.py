@@ -122,8 +122,7 @@ query_job = client.query(query)
 query_job.result()
 
 # Drop non-optimized table
-query = f"""
-DROP TABLE `{bq_write_path}`"""
+query = f"""DROP TABLE `{bq_write_path}`"""
 query_job = client.query(query)
 query_job.result()
 
