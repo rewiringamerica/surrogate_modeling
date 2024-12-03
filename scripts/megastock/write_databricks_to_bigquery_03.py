@@ -36,6 +36,24 @@ from pyspark.sql.types import IntegerType
 
 N_SAMPLE_TAG = dbutils.widgets.get("n_sample_tag")
 
+CLIMATE_ZONE_TO_INDEX = {
+    "1A": 1,
+    "2A": 2,
+    "2B": 3,
+    "3A": 4,
+    "3B": 5,
+    "3C": 6,
+    "4A": 7,
+    "4B": 8,
+    "4C": 9,
+    "5A": 10,
+    "5B": 11,
+    "6A": 12,
+    "6B": 13,
+    "7A": 14,
+    "7B": 15,
+}
+
 # COMMAND ----------
 
 # Initialize a BigQuery client
@@ -55,14 +73,8 @@ building_features = spark.table(f'ml.megastock.building_features_{N_SAMPLE_TAG}'
 
 # COMMAND ----------
 
-# get distinct climate zones
-climate_zone_list = list(map(lambda row: row['ashrae_iecc_climate_zone_2004'], building_metadata.select('ashrae_iecc_climate_zone_2004').distinct().collect()))
-
-# Mapping dictionary
-climate_zone_mapping = {cz: i for i, cz in (enumerate(sorted(climate_zone_list), 1))}
-
 # Define UDF
-cz_mapping_expr = F.create_map([F.lit(x) for x in chain(*climate_zone_mapping.items())])
+cz_mapping_expr = F.create_map([F.lit(x) for x in chain(*CLIMATE_ZONE_TO_INDEX.items())])
 
 # Apply UDF to create new column
 building_metadata_with_int_cz = building_metadata.withColumn("climate_zone_int", cz_mapping_expr[F.col('ashrae_iecc_climate_zone_2004')])
@@ -141,14 +153,6 @@ for row in rows:
 QUERY = f"""select climate_zone_int__m from `{bq_write_path}` WHERE building_id=1"""
 query_job = client.query(QUERY)  # API request
 rows = query_job.result()  # Waits for query to finish
-
-# COMMAND ----------
-
-
-
-# COMMAND ----------
-
-rows.to_dataframe()
 
 # COMMAND ----------
 
