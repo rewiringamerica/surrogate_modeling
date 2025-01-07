@@ -1,5 +1,6 @@
 import numpy as np
 import os
+import tempfile
 from typing import Any, Dict, List, Tuple, Optional
 
 import mlflow
@@ -10,7 +11,8 @@ from pyspark.sql import DataFrame
 from pyspark.sql.types import ArrayType, DoubleType
 from tensorflow import keras
 from tensorflow.keras import layers, models
-from tensorflow.python.lib.io import file_io
+from tensorflow.io import gfile
+
 
 from src.datagen import DataGenerator
 
@@ -299,14 +301,16 @@ class SurrogateModel:
         # extract keras model
         keras_model = mlflow_model.unwrap_python_model().model
 
-        # save locally
-        keras_model.save(fname)
-        # then copy to gcp
-        with file_io.FileIO(fname, mode="rb") as f_local:
-            with file_io.FileIO(os.path.join(gcp_model_dir, fname), mode="wb+") as f_gcp:
-                f_gcp.write(f_local.read())
-        # delete local file
-        os.remove(fname)
+        with tempfile.TemporaryDirectory() as temp_dir:
+            # Save to temporary directory
+            local_path = os.path.join(temp_dir, fname)
+            keras_model.save(local_path) 
+            
+            # Copy to GCP
+            gcp_path = os.path.join(gcp_model_dir, fname)
+            with gfile.GFile(local_path, "rb") as f_local:
+                with gfile.GFile(gcp_path, "wb") as f_gcp:
+                    f_gcp.write(f_local.read())
 
     def score_batch(
         self,
