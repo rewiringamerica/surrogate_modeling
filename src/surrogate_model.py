@@ -304,8 +304,8 @@ class SurrogateModel:
         with tempfile.TemporaryDirectory() as temp_dir:
             # Save to temporary directory
             local_path = os.path.join(temp_dir, fname)
-            keras_model.save(local_path) 
-            
+            keras_model.save(local_path)
+
             # Copy to GCP
             gcp_path = os.path.join(gcp_model_dir, fname)
             with gfile.GFile(local_path, "rb") as f_local:
