@@ -1038,17 +1038,18 @@ def apply_upgrades(baseline_building_features: DataFrame, upgrade_id: int) -> Da
         )
     if upgrade_id in [6, 9]:
         upgrade_building_features = (
-            upgrade_building_features
-                .withColumn("water_heater_fuel", F.lit("Electricity"))
-                .withColumn("water_heater_efficiency",
-                    F.when(  # electric tankless don't get upgraded due to likely size constraints
-                        F.col("water_heater_efficiency") == "Electric Tankless",
-                        F.col("water_heater_efficiency"),
-                    )
-                    .when(F.col("n_bedrooms") <= 3, F.lit("Electric Heat Pump, 50 gal, 3.45 UEF"))
-                    .when(F.col("n_bedrooms") == 4, F.lit("Electric Heat Pump, 66 gal, 3.35 UEF"))
-                    .otherwise(F.lit("Electric Heat Pump, 80 gal, 3.45 UEF")))
-                .transform(add_water_heater_features)
+            upgrade_building_features.withColumn("water_heater_fuel", F.lit("Electricity"))
+            .withColumn(
+                "water_heater_efficiency",
+                F.when(  # electric tankless don't get upgraded due to likely size constraints
+                    F.col("water_heater_efficiency") == "Electric Tankless",
+                    F.col("water_heater_efficiency"),
+                )
+                .when(F.col("n_bedrooms") <= 3, F.lit("Electric Heat Pump, 50 gal, 3.45 UEF"))
+                .when(F.col("n_bedrooms") == 4, F.lit("Electric Heat Pump, 66 gal, 3.35 UEF"))
+                .otherwise(F.lit("Electric Heat Pump, 80 gal, 3.45 UEF")),
+            )
+            .transform(add_water_heater_features)
         )
 
     if upgrade_id in [8.1, 9]:
