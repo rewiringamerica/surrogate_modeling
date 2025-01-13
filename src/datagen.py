@@ -131,6 +131,8 @@ class DataGenerator(tf.keras.utils.Sequence):
         "neighbor_distance_ft",
         "n_occupants",
         "vintage",
+        "has_heat_pump_dryer",
+        "has_induction_range",
         # fuel indicators -- these must be present for post-processing to work!!
         "has_methane_gas_appliance",
         "has_fuel_oil_appliance",
