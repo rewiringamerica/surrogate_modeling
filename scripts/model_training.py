@@ -98,7 +98,7 @@ EXPERIMENT_LOCATION = "/Shared/surrogate_model/"
 # COMMAND ----------
 
 # DBTITLE 1,Load data
-train_data, val_data, test_data = load_data(n_train=1000 if DEBUG else None, upgrade_ids=[0,1,3,4,6,9,11.05])
+train_data, val_data, test_data = load_data(n_train=1000 if DEBUG else None, upgrade_ids=[0,1,4,6,9,11.05,13.01])
 
 # COMMAND ----------
 
