@@ -98,7 +98,7 @@ EXPERIMENT_LOCATION = "/Shared/surrogate_model/"
 # COMMAND ----------
 
 # DBTITLE 1,Load data
-train_data, val_data, test_data = load_data(n_train=1000 if DEBUG else None)
+train_data, val_data, test_data = load_data(n_train=1000 if DEBUG else None, upgrade_ids=[0,1,3,4,6,9,11.05])
 
 # COMMAND ----------
 
@@ -324,3 +324,7 @@ print(model_loaded.predict(input_data))
 # DBTITLE 1,Pass Run ID to next notebook if running in job
 if not DEBUG:
     dbutils.jobs.taskValues.set(key="run_id", value=run_id)
+
+# COMMAND ----------
+
+
