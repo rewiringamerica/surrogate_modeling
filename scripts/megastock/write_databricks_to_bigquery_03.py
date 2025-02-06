@@ -110,7 +110,7 @@ combined_df_baseline = building_metadata_renamed.join(
 # optimize the table by partitioning and clustering
 query = f"""
 CREATE TABLE `{bq_write_path}_optimized`
-PARTITION BY RANGE_BUCKET(climate_zone_int__m, GENERATE_ARRAY(1, {len(climate_zone_mapping)+1}, 1))
+PARTITION BY RANGE_BUCKET(climate_zone_int__m, GENERATE_ARRAY(1, {len(CLIMATE_ZONE_TO_INDEX)+1}, 1))
 CLUSTER BY  heating_fuel__m, geometry_building_type_acs__m, geometry_floor_area__m, vintage__m AS
 SELECT *,
 FROM `{bq_write_path}`
