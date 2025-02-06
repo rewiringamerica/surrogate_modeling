@@ -62,7 +62,7 @@ client = bigquery.Client()
 # set up paths to write to 
 bq_project = "cube-machine-learning"
 bq_dataset = "ds_api_datasets"
-bq_megastock_table = 'megastock_combined_baseline_{N_SAMPLE_TAG}'
+bq_megastock_table = f'megastock_combined_baseline_{N_SAMPLE_TAG}'
 bq_write_path = f"{bq_project}.{bq_dataset}.{bq_megastock_table}"
 
 # COMMAND ----------
