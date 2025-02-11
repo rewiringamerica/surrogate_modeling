@@ -84,13 +84,11 @@ fe = FeatureEngineeringClient()
 # DBTITLE 1,Write out building metadata feature store
 table_name = f"ml.megastock.building_features_{N_SAMPLE_TAG}"
 df = building_metadata_upgrades
-if spark.catalog.tableExists(table_name):
-    fe.write_table(name=table_name, df=df, mode="merge")
-else:
-    fe.create_table(
-        name=table_name,
-        primary_keys=["building_id", "upgrade_id", "weather_file_city"],
-        df=df,
-        schema=df.schema,
-        description="megastock building metadata features",
-    )
+spark.sql(f"DROP TABLE IF EXISTS {table_name}")
+fe.create_table(
+    name=table_name,
+    primary_keys=["building_id", "upgrade_id", "weather_file_city"],
+    df=df,
+    schema=df.schema,
+    description="megastock building metadata features",
+)

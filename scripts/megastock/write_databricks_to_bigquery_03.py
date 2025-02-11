@@ -16,7 +16,7 @@
 # MAGIC - `ml.megastock.building_features_{n_sample_tag}`
 # MAGIC
 # MAGIC ## Outputs: tables on BigQuery
-# MAGIC - `cube-machine-learning.ds_api_datasets.megastock_combined_baseline`
+# MAGIC - `cube-machine-learning.ds_api_datasets.megastock_combined_baseline_{n_sample_tag}`
 # MAGIC
 
 # COMMAND ----------
@@ -62,7 +62,7 @@ client = bigquery.Client()
 # set up paths to write to 
 bq_project = "cube-machine-learning"
 bq_dataset = "ds_api_datasets"
-bq_megastock_table = 'megastock_combined_baseline'
+bq_megastock_table = f'megastock_combined_baseline_{N_SAMPLE_TAG}'
 bq_write_path = f"{bq_project}.{bq_dataset}.{bq_megastock_table}"
 
 # COMMAND ----------
@@ -110,7 +110,7 @@ combined_df_baseline = building_metadata_renamed.join(
 # optimize the table by partitioning and clustering
 query = f"""
 CREATE TABLE `{bq_write_path}_optimized`
-PARTITION BY RANGE_BUCKET(climate_zone_int__m, GENERATE_ARRAY(1, {len(climate_zone_mapping)+1}, 1))
+PARTITION BY RANGE_BUCKET(climate_zone_int__m, GENERATE_ARRAY(1, {len(CLIMATE_ZONE_TO_INDEX)+1}, 1))
 CLUSTER BY  heating_fuel__m, geometry_building_type_acs__m, geometry_floor_area__m, vintage__m AS
 SELECT *,
 FROM `{bq_write_path}`
@@ -144,7 +144,7 @@ query_job = client.query(QUERY)  # API request
 rows = query_job.result()  # Waits for query to finish
 
 for row in rows:
-    print(row) #3,234,218
+    print(row)
 
 # COMMAND ----------
 
