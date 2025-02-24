@@ -20,18 +20,12 @@ from pyspark.sql.window import Window
 from databricks.sdk.runtime import spark, udf
 
 from src.dmutils import data_cleaning, constants
+from src.dmutils import sumo_feature_transformation
 
 #  -- constants -- #
 # TODO: put this in some kind of shared config that can be used across repos
 # TODO: pull from enums when they are ready
 SUPPORTED_UPGRADES = [0.0, 1.0, 3.0, 4.0, 6.0, 9.0, 11.05, 13.01]
-
-EER_CONVERSION = {
-    "EER": 1.0,
-    "SEER": constants.SEER_TO_EER,
-    "EER2": constants.EER2_TO_EER,
-    "SEER2": constants.EER2_TO_EER * constants.SEER_TO_EER,
-}
 
 # mapping of window description to ufactor and shgc (solar heat gain coefficient) pulled from options.ts
 WINDOW_DESCRIPTION_TO_SPEC = spark.createDataFrame(
@@ -61,26 +55,7 @@ WINDOW_DESCRIPTION_TO_SPEC = spark.createDataFrame(
     ("windows", "window_ufactor", "window_shgc"),
 )
 
-# list of columns containing fuel types for appliances
-APPLIANCE_FUEL_COLS = [
-    "clothes_dryer_fuel",
-    "cooking_range_fuel",
-    "heating_fuel",
-    "hot_tub_spa_fuel",
-    "pool_heater_fuel",
-    "water_heater_fuel",
-]
-
-# list of columns containing fuel types for appliances
-GAS_APPLIANCE_INDICATOR_COLS = [
-    "has_gas_fireplace",
-    "has_gas_grill",
-    "has_gas_lighting",
-]
-
-
 #  -- resstock reading and preprocessing functions  -- #
-
 
 def clean_building_metadata(raw_resstock_metadata_df: DataFrame) -> DataFrame:
     """
@@ -175,128 +150,131 @@ def extract_vintage(vintage: str) -> int:
 
 
 @udf(returnType=IntegerType())
-def extract_r_value(construction_type: str, set_none_to_inf: bool = False) -> int:
-    """Extract R-value from an unformatted string
+def extract_r_valueUDF(construction_type: str, set_none_to_inf: bool = False) -> int:
+    return sumo_feature_transformation.extract_r_value(construction_type, set_none_to_inf)
+# def extract_r_value(construction_type: str, set_none_to_inf: bool = False) -> int:
+#     """Extract R-value from an unformatted string
 
-    Assumption: all baseline walls have similar R-value of ~4.
-    The returned value is for additional insulation only. Examples:
-        Uninsulated brick, 3w, 12": ~4
-            (https://ncma.org/resource/rvalues-of-multi-wythe-concrete-masonry-walls/)
-        Uninsulated wood studs: ~4
-            (assuming 2x4 studs and 1.25/inch (air gap has higher R-value than wood), 3.5*1.25=4.375)
-        Hollow Concrete Masonry Unit, Uninsulated: ~4 per 6"
-            (https://ncma.org/resource/rvalues-ufactors-of-single-wythe-concrete-masonry-walls/)
+#     Assumption: all baseline walls have similar R-value of ~4.
+#     The returned value is for additional insulation only. Examples:
+#         Uninsulated brick, 3w, 12": ~4
+#             (https://ncma.org/resource/rvalues-of-multi-wythe-concrete-masonry-walls/)
+#         Uninsulated wood studs: ~4
+#             (assuming 2x4 studs and 1.25/inch (air gap has higher R-value than wood), 3.5*1.25=4.375)
+#         Hollow Concrete Masonry Unit, Uninsulated: ~4 per 6"
+#             (https://ncma.org/resource/rvalues-ufactors-of-single-wythe-concrete-masonry-walls/)
 
-    >>> extract_r_value('Finished, R-13')
-    13
-    >>> extract_r_value('Brick, 12-in, 3-wythe, R-15')
-    15
-    >>> extract_r_value('2ft R10 Under, Horizontal')
-    10
-    >>> extract_r_value('R-5, Exterior')
-    5
-    >>> extract_r_value('Ceiling R-19')
-    19
-    >>> extract_r_value('CMU, 6-in Hollow, Uninsulated')
-    0
-    >>> extract_r_value('None')
-    0
-    >>> extract_r_value('None', set_none_to_inf=True)
-    999
+#     >>> extract_r_value('Finished, R-13')
+#     13
+#     >>> extract_r_value('Brick, 12-in, 3-wythe, R-15')
+#     15
+#     >>> extract_r_value('2ft R10 Under, Horizontal')
+#     10
+#     >>> extract_r_value('R-5, Exterior')
+#     5
+#     >>> extract_r_value('Ceiling R-19')
+#     19
+#     >>> extract_r_value('CMU, 6-in Hollow, Uninsulated')
+#     0
+#     >>> extract_r_value('None')
+#     0
+#     >>> extract_r_value('None', set_none_to_inf=True)
+#     999
 
-    """
-    if "uninsulated" in construction_type.lower():
-        return 0
-    if construction_type.lower() == "none":
-        if set_none_to_inf:
-            return 999
-        else:
-            return 0
-    m = re.search(r"\br-?(\d+)\b", construction_type, flags=re.I)
-    if not m:
-        raise ValueError(f"Cannot determine R-value of the construction type: " f"{construction_type}")
-    return int(m.group(1))
-
-
-# TODO: figure out why raise value error is triggering
-@udf(returnType=DoubleType())
-def extract_cooling_efficiency(cooling_efficiency: str) -> float:
-    """Convert a ResStock cooling efficiency into EER value
-
-    >>> extract_cooling_efficiency('AC, SEER 13') / EER_CONVERSION['SEER']
-    13.0
-    >>> extract_cooling_efficiency('ASHP, SEER 20, 7.7 HSPF') / EER_CONVERSION['SEER']
-    20.0
-    >>> extract_cooling_efficiency('Room AC, EER 10.7')
-    10.7
-    >>> extract_cooling_efficiency('Shared Cooling')
-    13.0
-    >>> extract_cooling_efficiency('None') >= 99
-    True
-    """
-    if cooling_efficiency == "None":
-        # "infinitely" high efficiency to mimic a nonexistent cooling
-        return 999.0
-    # mapping of HVAC Shared Efficiencies -> cooling_system_cooling_efficiency from options.tsv
-    if cooling_efficiency == "Shared Cooling":
-        cooling_efficiency = "SEER 13"
-
-    m = re.search(r"\b(SEER2|SEER|EER)\s+(\d+\.?\d*)", cooling_efficiency)
-    if m:
-        try:
-            return EER_CONVERSION[m.group(1)] * float(m.group(2))
-        except (ValueError, KeyError):
-            raise ValueError(f"Cannot extract cooling efficiency from: {cooling_efficiency}")
-    # else:
-    #     return 0.
-    # raise ValueError(
-    #         f'Cannot extract cooling efficiency from: {cooling_efficiency}')
+#     """
+#     if "uninsulated" in construction_type.lower():
+#         return 0
+#     if construction_type.lower() == "none":
+#         if set_none_to_inf:
+#             return 999
+#         else:
+#             return 0
+#     m = re.search(r"\br-?(\d+)\b", construction_type, flags=re.I)
+#     if not m:
+#         raise ValueError(f"Cannot determine R-value of the construction type: " f"{construction_type}")
+#     return int(m.group(1))
 
 
-@udf(returnType=DoubleType())
-def extract_heating_efficiency(heating_efficiency: str) -> int:
-    """
-    Extract heating efficiency from string and convert to nominal percent efficiency
-    Source: https://www.energyguru.com/EnergyEfficiencyInformation.htm
-    >>> extract_heating_efficiency('Fuel Furnace, 80% AFUE')
-    .8
-    >>> extract_heating_efficiency('ASHP, SEER 15, 8.5 HSPF')
-    2.49
-    >>> extract_heating_efficiency('None') >= 9
-    True
-    >>> extract_heating_efficiency('Electric Baseboard, 100% Efficiency')
-    1.0
-    >>> extract_heating_efficiency('Fan Coil Heating And Cooling, Natural Gas')
-    .78
-    >>> extract_heating_efficiency('Other')  # doctest: +IGNORE_EXCEPTION_DETAIL
-    Traceback (most recent call last):
-        ...
-    ValueError: Cannot extract heating efficiency from: ...
-    """
-    efficiency = heating_efficiency.rsplit(", ", 1)[-1]
-    if efficiency == "None":
-        return 9.0
-    # mapping of HVAC Shared Efficiencies -> heating_system_heating_efficiency from options.tsv
-    if efficiency == "Electricity":
-        return 1.0
-    if efficiency in ["Fuel Oil", "Natural Gas", "Propane"]:
-        return 0.78
 
-    try:
-        number = float(efficiency.strip().split(" ", 1)[0].strip("%"))
-    except ValueError:
-        return None
-        # raise ValueError(
-        #     f"Cannot extract heating efficiency from: {heating_efficiency}"
-        # )
+extract_cooling_efficiencyUDF = udf(lambda x: sumo_feature_transformation.extract_cooling_efficiency(x),DoubleType())
+# @udf(returnType=DoubleType())
+# def extract_cooling_efficiency(cooling_efficiency: str) -> float:
+#     """Convert a ResStock cooling efficiency into EER value
 
-    if efficiency.endswith("AFUE"):
-        return number / 100
-    if efficiency.endswith("HSPF"):
-        return round(number / (constants.KILOWATT_HOUR_TO_BRITISH_THERMAL_UNIT / 1000), 3)
+#     >>> extract_cooling_efficiency('AC, SEER 13') / sumo_feature_transformation.EER_CONVERSION['SEER']
+#     13.0
+#     >>> extract_cooling_efficiency('ASHP, SEER 20, 7.7 HSPF') / sumo_feature_transformation.EER_CONVERSION['SEER']
+#     20.0
+#     >>> extract_cooling_efficiency('Room AC, EER 10.7')
+#     10.7
+#     >>> extract_cooling_efficiency('Shared Cooling')
+#     13.0
+#     >>> extract_cooling_efficiency('None') >= 99
+#     True
+#     """
+#     if cooling_efficiency == "None":
+#         # "infinitely" high efficiency to mimic a nonexistent cooling
+#         return 999.0
+#     # mapping of HVAC Shared Efficiencies -> cooling_system_cooling_efficiency from options.tsv
+#     if cooling_efficiency == "Shared Cooling":
+#         cooling_efficiency = "SEER 13"
 
-    # 'Other' - e.g. wood stove - is not supported
-    return number / 100
+#     m = re.search(r"\b(SEER2|SEER|EER)\s+(\d+\.?\d*)", cooling_efficiency)
+#     if m:
+#         try:
+#             return sumo_feature_transformation.EER_CONVERSION[m.group(1)] * float(m.group(2))
+#         except (ValueError, KeyError):
+#             raise ValueError(f"Cannot extract cooling efficiency from: {cooling_efficiency}")
+#     # else:
+#     #     return 0.
+#     # raise ValueError(
+#     #         f'Cannot extract cooling efficiency from: {cooling_efficiency}')
+
+extract_heating_efficiencyUDF = udf(lambda x: sumo_feature_transformation.extract_heating_efficiency(x),DoubleType())
+# @udf(returnType=DoubleType())
+# def extract_heating_efficiency(heating_efficiency: str) -> int:
+#     """
+#     Extract heating efficiency from string and convert to nominal percent efficiency
+#     Source: https://www.energyguru.com/EnergyEfficiencyInformation.htm
+#     >>> extract_heating_efficiency('Fuel Furnace, 80% AFUE')
+#     .8
+#     >>> extract_heating_efficiency('ASHP, SEER 15, 8.5 HSPF')
+#     2.49
+#     >>> extract_heating_efficiency('None') >= 9
+#     True
+#     >>> extract_heating_efficiency('Electric Baseboard, 100% Efficiency')
+#     1.0
+#     >>> extract_heating_efficiency('Fan Coil Heating And Cooling, Natural Gas')
+#     .78
+#     >>> extract_heating_efficiency('Other')  # doctest: +IGNORE_EXCEPTION_DETAIL
+#     Traceback (most recent call last):
+#         ...
+#     ValueError: Cannot extract heating efficiency from: ...
+#     """
+#     efficiency = heating_efficiency.rsplit(", ", 1)[-1]
+#     if efficiency == "None":
+#         return 9.0
+#     # mapping of HVAC Shared Efficiencies -> heating_system_heating_efficiency from options.tsv
+#     if efficiency == "Electricity":
+#         return 1.0
+#     if efficiency in ["Fuel Oil", "Natural Gas", "Propane"]:
+#         return 0.78
+
+#     try:
+#         number = float(efficiency.strip().split(" ", 1)[0].strip("%"))
+#     except ValueError:
+#         return None
+#         # raise ValueError(
+#         #     f"Cannot extract heating efficiency from: {heating_efficiency}"
+#         # )
+
+#     if efficiency.endswith("AFUE"):
+#         return number / 100
+#     if efficiency.endswith("HSPF"):
+#         return round(number / (constants.KILOWATT_HOUR_TO_BRITISH_THERMAL_UNIT / 1000), 3)
+
+#     # 'Other' - e.g. wood stove - is not supported
+#     return number / 100
 
 
 @udf(returnType=DoubleType())
@@ -617,7 +595,7 @@ def transform_building_features(building_metadata_table_name) -> DataFrame:
         )
         .withColumn(
             "heating_efficiency_nominal_percentage",
-            extract_heating_efficiency(F.col("hvac_heating_efficiency")),
+            extract_heating_efficiencyUDF(F.col("hvac_heating_efficiency")),
         )
         .withColumn(
             "heating_setpoint_degrees_f",
@@ -646,7 +624,7 @@ def transform_building_features(building_metadata_table_name) -> DataFrame:
         )
         .withColumn(
             "cooling_efficiency_eer",
-            extract_cooling_efficiency(F.col("cooling_efficiency_eer_str")),
+            extract_cooling_efficiencyUDF(F.col("cooling_efficiency_eer_str")),
         )
         .withColumn(
             "cooling_setpoint_degrees_f",
@@ -676,24 +654,24 @@ def transform_building_features(building_metadata_table_name) -> DataFrame:
         .withColumn("has_water_heater_in_unit", yes_no_mapping[F.col("water_heater_in_unit")])
         # -- duct/infiltration tranformations -- #
         .withColumn("has_ducts", yes_no_mapping[F.col("hvac_has_ducts")])
-        .withColumn("duct_insulation_r_value", extract_r_value(F.col("ducts"), F.lit(True)))
+        .withColumn("duct_insulation_r_value", extract_r_valueUDF(F.col("ducts"), F.lit(True)))
         .withColumn("duct_leakage_percentage", extract_percentage(F.col("ducts")))
         .withColumn("infiltration_ach50", F.split(F.col("infiltration"), " ")[0].cast("int"))
         # -- insulation tranformations -- #
         .withColumn("wall_material", F.split(F.col("insulation_wall"), ",")[0])
-        .withColumn("insulation_wall_r_value", extract_r_value(F.col("insulation_wall")))
+        .withColumn("insulation_wall_r_value", extract_r_valueUDF(F.col("insulation_wall")))
         .withColumn(
             "insulation_foundation_wall_r_value",
-            extract_r_value(F.col("insulation_foundation_wall")),
+            extract_r_valueUDF(F.col("insulation_foundation_wall")),
         )
-        .withColumn("insulation_slab_r_value", extract_r_value(F.col("insulation_slab")))
+        .withColumn("insulation_slab_r_value", extract_r_valueUDF(F.col("insulation_slab")))
         .withColumn(
             "insulation_rim_joist_r_value",
-            extract_r_value(F.col("insulation_rim_joist")),
+            extract_r_valueUDF(F.col("insulation_rim_joist")),
         )
-        .withColumn("insulation_floor_r_value", extract_r_value(F.col("insulation_floor")))
-        .withColumn("insulation_ceiling_r_value", extract_r_value(F.col("insulation_ceiling")))
-        .withColumn("insulation_roof_r_value", extract_r_value(F.col("insulation_roof")))
+        .withColumn("insulation_floor_r_value", extract_r_valueUDF(F.col("insulation_floor")))
+        .withColumn("insulation_ceiling_r_value", extract_r_valueUDF(F.col("insulation_ceiling")))
+        .withColumn("insulation_roof_r_value", extract_r_valueUDF(F.col("insulation_roof")))
         #  -- building type transformations -- #
         .withColumn(
             "is_attached",
@@ -775,7 +753,7 @@ def transform_building_features(building_metadata_table_name) -> DataFrame:
                 "Gas": "Methane Gas",
                 "Electric": "Electricity",
             },
-            subset=APPLIANCE_FUEL_COLS,
+            subset=sumo_feature_transformation.APPLIANCE_FUEL_COLS,
         )
         # subset to all possible features of interest
         .select(
@@ -874,18 +852,7 @@ def transform_building_features(building_metadata_table_name) -> DataFrame:
 # Mapping of climate zone temperature  -> threshold, insulation
 # where climate zone temperature is the first character in the ASHRAE IECC climate zone
 # ('1', 13, 30) means units in climate zones 1A (1-anything) with R13 insulation or less are upgraded to R30
-BASIC_ENCLOSURE_INSULATION = spark.createDataFrame(
-    [
-        ("1", 13, 30),
-        ("2", 30, 49),
-        ("3", 30, 49),
-        ("4", 38, 60),
-        ("5", 38, 60),
-        ("6", 38, 60),
-        ("7", 38, 60),
-    ],
-    ("climate_zone_temp", "existing_insulation_max_threshold", "insulation_upgrade"),
-)
+BASIC_ENCLOSURE_INSULATION = spark.createDataFrame(sumo_feature_transformation.BASIC_ENCLOSURE_INSULATION)
 
 
 def upgrade_to_hp(
@@ -914,16 +881,16 @@ def upgrade_to_hp(
             "heating_efficiency_nominal_percentage",
             F.when(
                 F.col("has_ducts"),
-                extract_heating_efficiency(F.lit(ducted_efficiency)),
-            ).otherwise(extract_heating_efficiency(F.lit(non_ducted_efficiency))),
+                extract_heating_efficiencyUDF(F.lit(ducted_efficiency)))
+            .otherwise(extract_heating_efficiencyUDF(F.lit(non_ducted_efficiency)))
         )
         .withColumn("has_ducted_heating", F.col("has_ducts"))
         .withColumn(
             "cooling_efficiency_eer",
             F.when(
                 F.col("has_ducts"),
-                extract_cooling_efficiency(F.lit(ducted_efficiency)),
-            ).otherwise(extract_cooling_efficiency(F.lit(non_ducted_efficiency))),
+                extract_cooling_efficiencyUDF(F.lit(ducted_efficiency)),
+            ).otherwise(extract_cooling_efficiencyUDF(F.lit(non_ducted_efficiency))),
         )
         .withColumn("ac_type", F.lit("Heat Pump"))
         .withColumn("cooled_space_percentage", F.lit(1.0))
@@ -1009,7 +976,7 @@ def apply_upgrades(baseline_building_features: DataFrame, upgrade_id: int) -> Da
                 "insulation_wall_r_value",
                 F.when(
                     F.col("insulation_wall") == "Wood Stud, Uninsulated",
-                    extract_r_value(F.lit("Wood Stud, R-13")),
+                    extract_r_valueUDF(F.lit("Wood Stud, R-13")),
                 ).otherwise(F.col("insulation_wall_r_value")),
             )
         )
@@ -1063,8 +1030,8 @@ def apply_upgrades(baseline_building_features: DataFrame, upgrade_id: int) -> Da
 
     # add indicator features for presence of fuels (not including electricity)
     upgrade_building_features = (
-        upgrade_building_features.withColumn("appliance_fuel_arr", F.array(APPLIANCE_FUEL_COLS))
-        .withColumn("gas_misc_appliance_indicator_arr", F.array(GAS_APPLIANCE_INDICATOR_COLS))
+        upgrade_building_features.withColumn("appliance_fuel_arr", F.array(sumo_feature_transformation.APPLIANCE_FUEL_COLS))
+        .withColumn("gas_misc_appliance_indicator_arr", F.array(sumo_feature_transformation.GAS_APPLIANCE_INDICATOR_COLS))
         .withColumn(
             "has_methane_gas_appliance",
             (
@@ -1162,7 +1129,12 @@ def drop_non_upgraded_samples(building_features: DataFrame, check_applicability_
             .count()
         )
         if mismatch_count > 0:
-            applicability_compare.where(F.col("features.applicability") != F.col("targets.applicability")).display()
+            (
+                applicability_compare
+                    .where(F.col("features.applicability") != F.col("targets.applicability"))
+                    .withColumnRenamed("features.applicability", "features_applicability")
+                    .withColumnRenamed("targets.applicability", "targets_applicability")
+            ).display()
             raise ValueError(
                 f"{mismatch_count} cases where applicability based on metadata and simulation applicability flag\
                       do not match"

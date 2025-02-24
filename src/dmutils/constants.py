@@ -1,4 +1,4 @@
-# TODO: move into constants.py util
+#TODO: delete this file once dmutils is updated
 KILOWATT_HOUR_TO_BRITISH_THERMAL_UNIT = 3412.14
 """
 The number of kilowatt-hours in British thermal units (BTU)
