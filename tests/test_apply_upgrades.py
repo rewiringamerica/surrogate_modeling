@@ -11,8 +11,7 @@ from pyspark.sql import DataFrame
 
 if os.environ.get("DATABRICKS_RUNTIME_VERSION", None):
     sys.path.append("src")
-
-from feature_utils import apply_upgrades
+    from feature_utils import apply_upgrades
 
 # TODO: modify to read data from dmlutils
 class ApplyUpgrades(unittest.TestCase):
