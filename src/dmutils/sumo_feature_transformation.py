@@ -1,4 +1,4 @@
-#TODO: delete this file once dmutils is updated
+# TODO: delete this file once dmutils is updated
 import pandas as pd
 import re
 from src.dmutils import constants
@@ -35,6 +35,7 @@ BASIC_ENCLOSURE_INSULATION = pd.DataFrame(
         "insulation_upgrade": [30, 49, 49, 60, 60, 60, 60],
     }
 )
+
 
 def extract_r_value(construction_type: str, set_none_to_inf: bool = False) -> int:
     """
@@ -95,7 +96,6 @@ def extract_r_value(construction_type: str, set_none_to_inf: bool = False) -> in
     if not m:
         raise ValueError(f"Cannot determine R-value of the construction type: {construction_type}")
     return int(m.group(1))
-
 
 
 def extract_cooling_efficiency(cooling_efficiency: str) -> float:

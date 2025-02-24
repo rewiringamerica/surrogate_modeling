@@ -57,6 +57,7 @@ WINDOW_DESCRIPTION_TO_SPEC = spark.createDataFrame(
 
 #  -- resstock reading and preprocessing functions  -- #
 
+
 def clean_building_metadata(raw_resstock_metadata_df: DataFrame) -> DataFrame:
     """
     Rename and remove columns of a ResStock building metadata dataframe
@@ -153,9 +154,11 @@ def extract_vintage(vintage: str) -> int:
 def extract_r_valueUDF(construction_type: str, set_none_to_inf: bool = False) -> int:
     return sumo_feature_transformation.extract_r_value(construction_type, set_none_to_inf)
 
-extract_cooling_efficiencyUDF = udf(lambda x: sumo_feature_transformation.extract_cooling_efficiency(x),DoubleType())
 
-extract_heating_efficiencyUDF = udf(lambda x: sumo_feature_transformation.extract_heating_efficiency(x),DoubleType())
+extract_cooling_efficiencyUDF = udf(lambda x: sumo_feature_transformation.extract_cooling_efficiency(x), DoubleType())
+
+extract_heating_efficiencyUDF = udf(lambda x: sumo_feature_transformation.extract_heating_efficiency(x), DoubleType())
+
 
 @udf(returnType=DoubleType())
 def extract_temp(temperature_string) -> float:
@@ -759,10 +762,9 @@ def upgrade_to_hp(
         .withColumn("heating_fuel", F.lit("Electricity"))
         .withColumn(
             "heating_efficiency_nominal_percentage",
-            F.when(
-                F.col("has_ducts"),
-                extract_heating_efficiencyUDF(F.lit(ducted_efficiency)))
-            .otherwise(extract_heating_efficiencyUDF(F.lit(non_ducted_efficiency)))
+            F.when(F.col("has_ducts"), extract_heating_efficiencyUDF(F.lit(ducted_efficiency))).otherwise(
+                extract_heating_efficiencyUDF(F.lit(non_ducted_efficiency))
+            ),
         )
         .withColumn("has_ducted_heating", F.col("has_ducts"))
         .withColumn(
@@ -910,8 +912,12 @@ def apply_upgrades(baseline_building_features: DataFrame, upgrade_id: int) -> Da
 
     # add indicator features for presence of fuels (not including electricity)
     upgrade_building_features = (
-        upgrade_building_features.withColumn("appliance_fuel_arr", F.array(sumo_feature_transformation.APPLIANCE_FUEL_COLS))
-        .withColumn("gas_misc_appliance_indicator_arr", F.array(sumo_feature_transformation.GAS_APPLIANCE_INDICATOR_COLS))
+        upgrade_building_features.withColumn(
+            "appliance_fuel_arr", F.array(sumo_feature_transformation.APPLIANCE_FUEL_COLS)
+        )
+        .withColumn(
+            "gas_misc_appliance_indicator_arr", F.array(sumo_feature_transformation.GAS_APPLIANCE_INDICATOR_COLS)
+        )
         .withColumn(
             "has_methane_gas_appliance",
             (
@@ -1010,10 +1016,9 @@ def drop_non_upgraded_samples(building_features: DataFrame, check_applicability_
         )
         if mismatch_count > 0:
             (
-                applicability_compare
-                    .where(F.col("features.applicability") != F.col("targets.applicability"))
-                    .withColumnRenamed("features.applicability", "features_applicability")
-                    .withColumnRenamed("targets.applicability", "targets_applicability")
+                applicability_compare.where(F.col("features.applicability") != F.col("targets.applicability"))
+                .withColumnRenamed("features.applicability", "features_applicability")
+                .withColumnRenamed("targets.applicability", "targets_applicability")
             ).display()
             raise ValueError(
                 f"{mismatch_count} cases where applicability based on metadata and simulation applicability flag\

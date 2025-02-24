@@ -25,23 +25,28 @@ class ApplyUpgrades(unittest.TestCase):
     )
     def test_clean_columns(self):
         """Test column cleaning."""
-        df_features = pd.read_csv('extended_test_apply_upgrades.csv', keep_default_na=False, na_values=[''])
-        df_out_expected = pd.read_csv('test_output.csv', keep_default_na=False, na_values=[''])
+        df_features = pd.read_csv("extended_test_apply_upgrades.csv", keep_default_na=False, na_values=[""])
+        df_out_expected = pd.read_csv("test_output.csv", keep_default_na=False, na_values=[""])
 
         # apply upgrades to baseline features by upgrade group
-        df_out = reduce(DataFrame.unionByName,
+        df_out = (
+            reduce(
+                DataFrame.unionByName,
                 [
                     apply_upgrades(
                         baseline_building_features=spark.createDataFrame(g),
                         upgrade_id=upgrade_id,
                     )
-                    for upgrade_id, g in df_features.groupby('upgrade_id_input')
-                ]
-        ).toPandas().reset_index(drop=True)
+                    for upgrade_id, g in df_features.groupby("upgrade_id_input")
+                ],
+            )
+            .toPandas()
+            .reset_index(drop=True)
+        )
 
         # bool columns (prefixed 'has_' don't play well with nulls
-        # so just maps nulls to False and so that we can compare 
-        has_cols = [col for col in df_out.columns if 'has' in col]
+        # so just maps nulls to False and so that we can compare
+        has_cols = [col for col in df_out.columns if "has" in col]
         df_out[has_cols] = df_out[has_cols].fillna(False).astype(bool)
         df_out_expected[has_cols] = df_out_expected[has_cols].fillna(False).astype(bool)
 
