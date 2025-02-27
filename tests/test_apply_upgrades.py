@@ -9,14 +9,12 @@ from pandas.testing import assert_frame_equal
 
 from pyspark.sql import DataFrame
 
-from dmlutils.surrogate_model.apply_upgrades import (
-    read_test_baseline_inputs, 
-    read_test_upgraded_outputs
-)
+from dmlutils.surrogate_model.apply_upgrades import read_test_baseline_inputs, read_test_upgraded_outputs
 
 if os.environ.get("DATABRICKS_RUNTIME_VERSION", None):
     sys.path.append("src")
     from src.feature_utils import apply_upgrades
+
 
 class ApplyUpgrades(unittest.TestCase):
     """Test feautre upgrade tranformations."""

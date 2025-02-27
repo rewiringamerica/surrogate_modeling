@@ -22,12 +22,12 @@ from src.dmutils import data_cleaning
 
 from dmlutils import constants
 from dmlutils.surrogate_model.apply_upgrades import (
-    extract_r_value, 
-    extract_cooling_efficiency, 
+    extract_r_value,
+    extract_cooling_efficiency,
     extract_heating_efficiency,
     BASIC_ENCLOSURE_INSULATION,
-    APPLIANCE_FUEL_COLS, 
-    GAS_APPLIANCE_INDICATOR_COLS
+    APPLIANCE_FUEL_COLS,
+    GAS_APPLIANCE_INDICATOR_COLS,
 )
 
 #  -- constants -- #
@@ -920,12 +920,8 @@ def apply_upgrades(baseline_building_features: DataFrame, upgrade_id: int) -> Da
 
     # add indicator features for presence of fuels (not including electricity)
     upgrade_building_features = (
-        upgrade_building_features.withColumn(
-            "appliance_fuel_arr", F.array(APPLIANCE_FUEL_COLS)
-        )
-        .withColumn(
-            "gas_misc_appliance_indicator_arr", F.array(GAS_APPLIANCE_INDICATOR_COLS)
-        )
+        upgrade_building_features.withColumn("appliance_fuel_arr", F.array(APPLIANCE_FUEL_COLS))
+        .withColumn("gas_misc_appliance_indicator_arr", F.array(GAS_APPLIANCE_INDICATOR_COLS))
         .withColumn(
             "has_methane_gas_appliance",
             (
