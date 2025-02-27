@@ -1,4 +1,4 @@
-"""Tests utility functions."""
+"""Tests feature upgrade function."""
 
 from functools import reduce
 import os
@@ -25,8 +25,8 @@ class ApplyUpgrades(unittest.TestCase):
         os.environ.get("DATABRICKS_RUNTIME_VERSION", None) is None,
         reason="Only runs on databricks cluster.",
     )
-    def test_clean_columns(self):
-        """Test column cleaning."""
+    def test_apply_upgrades(self):
+        """Test feautre upgrade tranformations match expected output."""
         baseline_features = read_test_baseline_inputs()
         df_out_expected = read_test_upgraded_outputs()
 
