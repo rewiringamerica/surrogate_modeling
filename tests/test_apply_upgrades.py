@@ -2,18 +2,22 @@
 
 from functools import reduce
 import os
-import pandas as pd
-from pandas.testing import assert_frame_equal
 import sys
 import unittest
+import pandas as pd
+from pandas.testing import assert_frame_equal
 
 from pyspark.sql import DataFrame
 
+from dmlutils.surrogate_model.apply_upgrades import (
+    read_test_baseline_inputs, 
+    read_test_upgraded_outputs
+)
+
 if os.environ.get("DATABRICKS_RUNTIME_VERSION", None):
     sys.path.append("src")
-    from feature_utils import apply_upgrades
+    from src.feature_utils import apply_upgrades
 
-# TODO: modify to read data from dmlutils
 class ApplyUpgrades(unittest.TestCase):
     """Test feautre upgrade tranformations."""
 
@@ -23,8 +27,8 @@ class ApplyUpgrades(unittest.TestCase):
     )
     def test_clean_columns(self):
         """Test column cleaning."""
-        df_features = pd.read_csv("extended_test_apply_upgrades.csv", keep_default_na=False, na_values=[""])
-        df_out_expected = pd.read_csv("test_output.csv", keep_default_na=False, na_values=[""])
+        baseline_features = read_test_baseline_inputs()
+        df_out_expected = read_test_upgraded_outputs()
 
         # apply upgrades to baseline features by upgrade group
         df_out = (
@@ -35,7 +39,7 @@ class ApplyUpgrades(unittest.TestCase):
                         baseline_building_features=spark.createDataFrame(g),
                         upgrade_id=upgrade_id,
                     )
-                    for upgrade_id, g in df_features.groupby("upgrade_id_input")
+                    for upgrade_id, g in baseline_features.groupby("upgrade_id_input")
                 ],
             )
             .toPandas()

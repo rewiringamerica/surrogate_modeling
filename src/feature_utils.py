@@ -20,7 +20,14 @@ from pyspark.sql.window import Window
 from databricks.sdk.runtime import spark, udf
 
 from src.dmutils import data_cleaning, constants
-from src.dmutils import sumo_feature_transformation
+from src.dmutils.sumo_feature_transformation import (
+    extract_r_value, 
+    extract_cooling_efficiency, 
+    extract_heating_efficiency,
+    BASIC_ENCLOSURE_INSULATION,
+    APPLIANCE_FUEL_COLS, 
+    GAS_APPLIANCE_INDICATOR_COLS
+)
 
 #  -- constants -- #
 # TODO: put this in some kind of shared config that can be used across repos
@@ -152,12 +159,12 @@ def extract_vintage(vintage: str) -> int:
 
 @udf(returnType=IntegerType())
 def extract_r_valueUDF(construction_type: str, set_none_to_inf: bool = False) -> int:
-    return sumo_feature_transformation.extract_r_value(construction_type, set_none_to_inf)
+    return extract_r_value(construction_type, set_none_to_inf)
 
 
-extract_cooling_efficiencyUDF = udf(lambda x: sumo_feature_transformation.extract_cooling_efficiency(x), DoubleType())
+extract_cooling_efficiencyUDF = udf(lambda x: extract_cooling_efficiency(x), DoubleType())
 
-extract_heating_efficiencyUDF = udf(lambda x: sumo_feature_transformation.extract_heating_efficiency(x), DoubleType())
+extract_heating_efficiencyUDF = udf(lambda x: extract_heating_efficiency(x), DoubleType())
 
 
 @udf(returnType=DoubleType())
@@ -636,7 +643,7 @@ def transform_building_features(building_metadata_table_name) -> DataFrame:
                 "Gas": "Methane Gas",
                 "Electric": "Electricity",
             },
-            subset=sumo_feature_transformation.APPLIANCE_FUEL_COLS,
+            subset=APPLIANCE_FUEL_COLS,
         )
         # subset to all possible features of interest
         .select(
@@ -735,7 +742,7 @@ def transform_building_features(building_metadata_table_name) -> DataFrame:
 # Mapping of climate zone temperature  -> threshold, insulation
 # where climate zone temperature is the first character in the ASHRAE IECC climate zone
 # ('1', 13, 30) means units in climate zones 1A (1-anything) with R13 insulation or less are upgraded to R30
-BASIC_ENCLOSURE_INSULATION = spark.createDataFrame(sumo_feature_transformation.BASIC_ENCLOSURE_INSULATION)
+BASIC_ENCLOSURE_INSULATION_SPARK = spark.createDataFrame(BASIC_ENCLOSURE_INSULATION)
 
 
 def upgrade_to_hp(
@@ -813,7 +820,7 @@ def apply_upgrades(baseline_building_features: DataFrame, upgrade_id: int) -> Da
             upgrade_building_features
             # Upgrade insulation of ceiling
             # Map the climate zone number to the insulation params for the upgrade
-            .join(BASIC_ENCLOSURE_INSULATION, on="climate_zone_temp")
+            .join(BASIC_ENCLOSURE_INSULATION_SPARK, on="climate_zone_temp")
             # Attic floor insulation if current insulation is below threshold
             .withColumn(
                 "insulation_ceiling_r_value",
@@ -913,10 +920,10 @@ def apply_upgrades(baseline_building_features: DataFrame, upgrade_id: int) -> Da
     # add indicator features for presence of fuels (not including electricity)
     upgrade_building_features = (
         upgrade_building_features.withColumn(
-            "appliance_fuel_arr", F.array(sumo_feature_transformation.APPLIANCE_FUEL_COLS)
+            "appliance_fuel_arr", F.array(APPLIANCE_FUEL_COLS)
         )
         .withColumn(
-            "gas_misc_appliance_indicator_arr", F.array(sumo_feature_transformation.GAS_APPLIANCE_INDICATOR_COLS)
+            "gas_misc_appliance_indicator_arr", F.array(GAS_APPLIANCE_INDICATOR_COLS)
         )
         .withColumn(
             "has_methane_gas_appliance",
