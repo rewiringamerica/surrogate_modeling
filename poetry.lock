@@ -1613,14 +1613,14 @@ reference = "rewiring-america-python-repo"
 
 [[package]]
 name = "dmlutils"
-version = "0.10.14"
+version = "0.10.15"
 description = "RA internal data and machine learning utilities."
 optional = false
 python-versions = ">=3.10,<4.0"
 groups = ["main"]
 files = [
-    {file = "dmlutils-0.10.14-py3-none-any.whl", hash = "sha256:4cf59d1fde2e81acae3274e796a6aceb18e0c38945a4eef282bb901fa2b03c1c"},
-    {file = "dmlutils-0.10.14.tar.gz", hash = "sha256:e17bd205cba202d67364feb600fb411e1d3af1d6ba5bb05773bef056052dc385"},
+    {file = "dmlutils-0.10.15-py3-none-any.whl", hash = "sha256:1bbbbb58b1bf501d61c5c024a5abfabd8036e658f73d975a278c85b6b7c70075"},
+    {file = "dmlutils-0.10.15.tar.gz", hash = "sha256:a218bc28c173ccbb964f956761cce403c3541a769800cdc709682226e493e199"},
 ]
 
 [package.dependencies]
@@ -2270,14 +2270,14 @@ tool = ["click (>=6.0.0)"]
 
 [[package]]
 name = "google-cloud-bigquery"
-version = "3.29.0"
+version = "3.30.0"
 description = "Google BigQuery API client library"
 optional = false
 python-versions = ">=3.7"
 groups = ["main"]
 files = [
-    {file = "google_cloud_bigquery-3.29.0-py2.py3-none-any.whl", hash = "sha256:5453a4eabe50118254eda9778f3d7dad413490de5f7046b5e66c98f5a1580308"},
-    {file = "google_cloud_bigquery-3.29.0.tar.gz", hash = "sha256:fafc2b455ffce3bcc6ce0e884184ef50b6a11350a83b91e327fadda4d5566e72"},
+    {file = "google_cloud_bigquery-3.30.0-py2.py3-none-any.whl", hash = "sha256:f4d28d846a727f20569c9b2d2f4fa703242daadcb2ec4240905aa485ba461877"},
+    {file = "google_cloud_bigquery-3.30.0.tar.gz", hash = "sha256:7e27fbafc8ed33cc200fe05af12ecd74d279fe3da6692585a3cef7aee90575b6"},
 ]
 
 [package.dependencies]
@@ -2297,7 +2297,7 @@ geopandas = ["Shapely (>=1.8.4,<3.0.0dev)", "geopandas (>=0.9.0,<2.0dev)"]
 ipython = ["bigquery-magics (>=0.1.0)"]
 ipywidgets = ["ipykernel (>=6.0.0)", "ipywidgets (>=7.7.0)"]
 opentelemetry = ["opentelemetry-api (>=1.1.0)", "opentelemetry-instrumentation (>=0.20b0)", "opentelemetry-sdk (>=1.1.0)"]
-pandas = ["db-dtypes (>=0.3.0,<2.0.0dev)", "importlib-metadata (>=1.0.0)", "pandas (>=1.1.0)", "pyarrow (>=3.0.0)"]
+pandas = ["db-dtypes (>=0.3.0,<2.0.0dev)", "grpcio (>=1.47.0,<2.0dev)", "grpcio (>=1.49.1,<2.0dev)", "importlib-metadata (>=1.0.0)", "pandas (>=1.1.0)", "pandas-gbq (>=0.26.1)", "pyarrow (>=3.0.0)"]
 tqdm = ["tqdm (>=4.7.4,<5.0.0dev)"]
 
 [[package]]
@@ -9708,4 +9708,4 @@ testing = ["flake8 (<5)", "func-timeout", "jaraco.functools", "jaraco.itertools"
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.10, <3.11"
-content-hash = "232b8cff5a40fe0ce3a33fa4335f7752507848cc4b3e6f5b7364a83d31cb79bb"
+content-hash = "7dad826a22a610d421f9553bb27a3eb08a1a4adcb906269c163eeb007374cae8"
