@@ -4,7 +4,7 @@
 
 [tool.poetry]
 name = "surrogate_modeling"
-version = "0.1.0"
+version = "1.0.0"
 description = "Surrogate modeling."
 authors = ["Miki Verma <miki@rewiringamerica.org>"]
 readme = "README.md"
@@ -30,7 +30,7 @@ google-cloud-bigquery = "^3.26"
 google-cloud-bigquery-storage = "^2.26.0"
 
 # These are RA projects in an internal repo.
-dmlutils = "^0.8.0"
+dmlutils = "^0.10.14"
 dmlbootstrap = "^0.2.0"
 
 # This is to depend on essentially all the pinned
