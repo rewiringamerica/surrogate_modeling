@@ -10,9 +10,11 @@ from pyspark.sql import DataFrame
 import pyspark.sql.functions as F
 from pyspark.sql.types import BooleanType, DoubleType, LongType, StructField, StructType
 
+from dmlutils import constants
+
 sys.path.append("../src")
 
-from dmutils import constants, data_cleaning
+from dmutils import data_cleaning
 
 if os.environ.get("DATABRICKS_RUNTIME_VERSION"):
     from databricks.sdk.runtime import *
