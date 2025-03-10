@@ -29,6 +29,9 @@ python = ">=3.10, <3.11"
 google-cloud-bigquery = "^3.26"
 google-cloud-bigquery-storage = "^2.26.0"
 
+# We need pytest to be added to the init script
+pytest = ">=7.4.4, <9.0.0"
+
 # These are RA projects in an internal repo.
 dmlutils = "^0.10.15"
 dmlbootstrap = "^0.2.0"
