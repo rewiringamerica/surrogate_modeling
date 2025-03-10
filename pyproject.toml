@@ -50,6 +50,7 @@ black = "^22.6.0"
 ruff = "^0.5.5"
 isort = "^5.13.2"
 flake8 = "^6.1.0"
+pytest = ">=7.4.4, <9.0.0"
 keyrings-google-artifactregistry-auth = "^1.1.2"
 
 [tool.poetry.group.test.dependencies]
