@@ -13,12 +13,13 @@
 # MAGIC ### I/Os
 # MAGIC
 # MAGIC ##### Inputs:
+# MAGIC Inputs are read in based on the most recent table versions according to version tagging. We don't necessarily use the the current version in pyproject.toml because the code change in this poetry version may not require modifying the upstream table.
 # MAGIC - `ml.surrogate_model.building_metadata`: Building metadata features indexed by (building_id)
 # MAGIC - `ml.surrogate_model.weather_data_hourly`: Weather data indexed by (weather_file_city) with a 8760-length timeseries vector
 # MAGIC - `ml.surrogate_model.building_upgrade_simulation_outputs_annual`: Annual building model simulation outputs indexed by (building_id, upgrade_id)
 # MAGIC
 # MAGIC ##### Outputs:
-# MAGIC None. The model is logged to the unity catalog with the run id, but as of now is not registered due to issue with signature enforcement slowing down inference.
+# MAGIC None. The model is logged to the unity catalog with the run id and current version number, but as of now is not registered due to issue with signature enforcement slowing down inference. If run in non-test mode, keras model is output to gcs at `gs://the-cube/export/surrogate_model/sumo_{CURRENT_VERSION_NUM}.keras`
 # MAGIC
 # MAGIC ### TODOs:
 # MAGIC
@@ -78,6 +79,7 @@ os.environ["TF_FORCE_GPU_ALLOW_GROWTH"] = "true"
 # MAGIC from tensorflow import keras
 # MAGIC from typing import Tuple, Dict
 # MAGIC
+# MAGIC from src import versioning
 # MAGIC from src.datagen import DataGenerator, load_data
 # MAGIC from src.surrogate_model import SurrogateModel
 # MAGIC
@@ -87,9 +89,16 @@ os.environ["TF_FORCE_GPU_ALLOW_GROWTH"] = "true"
 # COMMAND ----------
 
 # DBTITLE 1,Set experiment location
+# get current poetry version of surrogate model repo to tag tables with
+CURRENT_VERSION = versioning.get_poetry_version_no()
+
+MOST_RECENT_FEATURE_VERSION = versioning.get_most_recent_table_version('ml.surrogate_model.building_features', return_version_number_only=True)
 # location to store the experiment runs if in production mode:
 # specifying this allows for models trained in notebook or job to be written to same place
 EXPERIMENT_LOCATION = "/Shared/surrogate_model/"
+
+if CURRENT_VERSION != MOST_RECENT_FEATURE_VERSION:
+    print("Most recent feature version does not match current version")
 
 # COMMAND ----------
 
@@ -98,13 +107,13 @@ EXPERIMENT_LOCATION = "/Shared/surrogate_model/"
 # COMMAND ----------
 
 # DBTITLE 1,Load data
-train_data, val_data, test_data = load_data(n_train=1000 if DEBUG else None)
+train_data, val_data, test_data = load_data(n_train=1000 if DEBUG else None, version_number = MOST_RECENT_FEATURE_VERSION)
 
 # COMMAND ----------
 
 # DBTITLE 1,Initialize train/val data generators
-train_gen = DataGenerator(train_data=train_data)
-val_gen = DataGenerator(train_data=val_data)
+train_gen = DataGenerator(train_data=train_data, version_number = MOST_RECENT_FEATURE_VERSION)
+val_gen = DataGenerator(train_data=val_data, version_number = MOST_RECENT_FEATURE_VERSION)
 
 # COMMAND ----------
 
@@ -223,7 +232,8 @@ class SurrogateModelingWrapper(mlflow.pyfunc.PythonModel):
 # COMMAND ----------
 
 # DBTITLE 1,Initialize model
-sm = SurrogateModel(name="test" if DEBUG else "mvp")
+sm = SurrogateModel()
+sm.name
 
 # COMMAND ----------
 
@@ -287,8 +297,9 @@ with mlflow.start_run() as run:
     # skip registering model for now..
     # mlflow.register_model(f"runs:/{run_id}/{sm.artifact_path}", str(sm))
 
+if not DEBUG:
     # serialize the keras model and save to GCP
-    sm.save_keras_model(run_id = run_id)
+    sm.save_keras_model(run_id = run_id, include_run_id_in_fname=False)
 
 # COMMAND ----------
 
@@ -324,3 +335,7 @@ print(model_loaded.predict(input_data))
 # DBTITLE 1,Pass Run ID to next notebook if running in job
 if not DEBUG:
     dbutils.jobs.taskValues.set(key="run_id", value=run_id)
+
+# COMMAND ----------
+
+

@@ -11,6 +11,8 @@ from databricks.sdk.runtime import spark
 
 from pyspark.sql import DataFrame
 
+from src import feature_utils, versioning
+
 
 class DataGenerator(tf.keras.utils.Sequence):
     """
@@ -27,8 +29,7 @@ class DataGenerator(tf.keras.utils.Sequence):
     - upgrade_ids (List[str]): ids of upgrades to include in training set. Defaults to class attribute.
     - consumption_group_dict (Dict[str,str]): consumption group dictionary of format {target_name : list of Resstock output columns}.
                                             Defaults to class attribute.
-    - building_feature_table_name (str), building feature table name. Defaults to class attribute.
-    - weather_feature_table_name (str): weather feature table name. Defaults to class attribute.
+    - version_number (str) : Version number of the tables to use (e.g, '01_00_00'). Defaults to current repo version.
     - batch_size (int): Defaults to 64.
     - dtype (numpy.dtype): the data type to be used for numeric features. Defaults to np.float32.
     - targets (List[str]): targets to predict, which are the keys of self.consumption_group_dict.
@@ -45,10 +46,6 @@ class DataGenerator(tf.keras.utils.Sequence):
 
     # init FeatureEngineering client
     fe = FeatureEngineeringClient()
-
-    # table names to pull from
-    building_feature_table_name = "ml.surrogate_model.building_features"
-    weather_feature_table_name = "ml.surrogate_model.weather_features_hourly"
 
     # TODO: put this in some kind of shared config that can be used across srcipts/repos
     # init all of the class attribute defaults
@@ -163,11 +160,10 @@ class DataGenerator(tf.keras.utils.Sequence):
     def __init__(
         self,
         train_data: DataFrame,
+        version_number: str = None,
         building_features: List[str] = None,
         weather_features: List[str] = None,
         consumption_group_dict: Dict[str, str] = None,
-        building_feature_table_name: str = None,
-        weather_feature_table_name: str = None,
         batch_size: int = 256,
         dtype: np.dtype = np.float32,
     ):
@@ -179,6 +175,9 @@ class DataGenerator(tf.keras.utils.Sequence):
         - train_data (DataFrame): the training data containing the targets and keys to join to the feature tables.
         See class docstring for all other parameters.
         """
+        if version_number is None:
+            version_number = versioning.get_poetry_version_no()
+        self.version_number = version_number
         self.building_features = building_features or self.building_features
         self.weather_features = weather_features or self.weather_features
 
@@ -211,7 +210,7 @@ class DataGenerator(tf.keras.utils.Sequence):
         """
         return [
             FeatureLookup(
-                table_name=self.building_feature_table_name,
+                table_name=f"ml.surrogate_model.building_features_{self.version_number}",
                 feature_names=self.building_features + ["weather_file_city_index"],
                 lookup_key=["building_id", "upgrade_id", "weather_file_city"],
             ),
@@ -227,7 +226,7 @@ class DataGenerator(tf.keras.utils.Sequence):
         """
         return [
             FeatureLookup(
-                table_name=self.weather_feature_table_name,
+                table_name=f"ml.surrogate_model.weather_features_hourly_{self.version_number}",
                 feature_names=self.weather_features,
                 lookup_key=["weather_file_city"],
             ),
@@ -290,7 +289,7 @@ class DataGenerator(tf.keras.utils.Sequence):
         -------
         - pd.DataFrame: The weather features dataframe.
         """
-        weather_features_table = self.fe.read_table(name=self.weather_feature_table_name)
+        weather_features_table = self.fe.read_table(name=f"ml.surrogate_model.weather_features_hourly_{self.version_number}")
 
         return weather_features_table.select("weather_file_city_index", *self.weather_features).toPandas()
 
@@ -396,8 +395,8 @@ class DataGenerator(tf.keras.utils.Sequence):
 
 
 def load_data(
+    version_number=None,
     consumption_group_dict=DataGenerator.consumption_group_dict,
-    building_feature_table_name=DataGenerator.building_feature_table_name,
     upgrade_ids: List[float] = None,
     p_val=0.2,
     p_test=0.1,
@@ -412,10 +411,9 @@ def load_data(
 
     Parameters
     ----------
+        version_number (str): Version number of the tables to use (e.g, '01_00_00'). Defaults to current repo version.
         consumption_group_dict (dict): Dictionary mapping consumption categories (e.g., 'heating') to columns.
             Default is DataGenerator.consumption_by_fuel_dict (too long to write out)
-        building_feature_table_name (str): Name of the building feature table.
-            Default is "ml.surrogate_model.building_features"
         upgrade_ids (list): List of upgrade ids to use. If none (default) all supported upgrades are used.
         p_val (float): Proportion of data to use for validation. Default is 0.2.
         p_test (float): Proportion of data to use for testing. Default is 0.1.
@@ -435,14 +433,16 @@ def load_data(
     """
     if n_train and n_test:
         raise ValueError("Cannot specify both n_train and n_test")
+    if version_number is None:
+        version_number = versioning.get_poetry_version_no()
     # Read outputs table and sum over consumption columns within each consumption group
     # join to the bm table to get required keys to join on and filter the building models based on charactaristics
     sum_str = ", ".join([f"{'+'.join(v)} AS {k}" for k, v in consumption_group_dict.items()])
     data = spark.sql(
         f"""
         SELECT B.building_id, B.upgrade_id, B.weather_file_city, {sum_str}
-        FROM ml.surrogate_model.building_simulation_outputs_annual_tmp O
-        INNER JOIN {building_feature_table_name} B 
+        FROM ml.surrogate_model.building_simulation_outputs_annual_{version_number} O
+        INNER JOIN ml.surrogate_model.building_features_{version_number} B 
             ON B.upgrade_id = O.upgrade_id AND B.building_id == O.building_id
         """
     )

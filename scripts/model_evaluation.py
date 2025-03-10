@@ -8,9 +8,16 @@
 
 # COMMAND ----------
 
+from src import versioning
+
+# get current poetry version of surrogate model repo to tag tables with
+CURRENT_VERSION = versioning.get_poetry_version_no()
+
+# COMMAND ----------
+
 # DBTITLE 1,Widget setup
 dbutils.widgets.dropdown("mode", "test", ["test", "production"])
-dbutils.widgets.text("model_name", "test")
+dbutils.widgets.text("model_name", CURRENT_VERSION)
 dbutils.widgets.text("run_id", "")
 dbutils.widgets.text("test_size", "10000")  # default in test mode
 
@@ -697,3 +704,7 @@ if not DEBUG:
         / "comparison"
         / f"{MODEL_RUN_NAME}_vs_bucketed.png",
     )
+
+# COMMAND ----------
+
+

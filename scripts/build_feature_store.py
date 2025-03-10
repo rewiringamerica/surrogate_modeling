@@ -13,13 +13,15 @@
 # MAGIC ### I/Os
 # MAGIC
 # MAGIC ##### Inputs:
-# MAGIC - `ml.surrogate_model.building_simulation_outputs_annual`: Building simulation outputs indexed by (building_id, upgrade_id)
-# MAGIC - `ml.surrogate_model.building_metadata`: Building metadata indexed by (building_id)
-# MAGIC - `ml.surrogate_model.weather_data_hourly`: Hourly weather data indexed by (weather_file_city, hour datetime)
+# MAGIC Inputs are read in based on the most recent table versions according to version tagging. We don't necessarily use the the current version in pyproject.toml because the code change in this poetry version may not require modifying the upstream table.
+# MAGIC - `ml.surrogate_model.building_simulation_outputs_annual_{MOST_RECENT_VERSION_NUM}`: Building simulation outputs indexed by (building_id, upgrade_id)
+# MAGIC - `ml.surrogate_model.building_metadata__{MOST_RECENT_VERSION_NUM}`: Building metadata indexed by (building_id)
+# MAGIC - `ml.surrogate_model.weather_data_hourly__{MOST_RECENT_VERSION_NUM}`: Hourly weather data indexed by (weather_file_city, hour datetime)
 # MAGIC
 # MAGIC ##### Outputs:
-# MAGIC - `ml.surrogate_model.building_features`: Building metadata features indexed by (building_id)
-# MAGIC - `ml.surrogate_model.weather_features_hourly`: Weather features indexed by (weather_file_city) with a 8760-length timeseries vector for each weather feature column
+# MAGIC Outputs are written based on the current version number of this repo in `pyproject.toml`.
+# MAGIC - `ml.surrogate_model.building_features_{CURRENT_VERSION_NUM}`: Building metadata features indexed by (building_id)
+# MAGIC - `ml.surrogate_model.weather_features_hourly_{CURRENT_VERSION_NUM}`: Weather features indexed by (weather_file_city) with a 8760-length timeseries vector for each weather feature column
 # MAGIC
 # MAGIC ---
 # MAGIC Cluster/ User Requirements
@@ -44,7 +46,12 @@ from pyspark.sql import DataFrame
 from pyspark.sql.types import StringType
 
 from src.dmutils import qa_utils
-from src import feature_utils
+from src import feature_utils, versioning
+
+# COMMAND ----------
+
+# get current poetry version of surrogate model repo to tag tables with
+CURRENT_VERSION = versioning.get_poetry_version_no()
 
 # COMMAND ----------
 
@@ -59,8 +66,15 @@ from src import feature_utils
 
 # COMMAND ----------
 
+# get most recent table version for baseline metadata -- we don't enforce the current version because the code change
+
+building_metadata_table_name = versioning.get_most_recent_table_version('ml.surrogate_model.building_metadata')
+building_metadata_table_name
+
+# COMMAND ----------
+
 # DBTITLE 1,Transform building metadata
-baseline_building_metadata_transformed = feature_utils.transform_building_features('ml.surrogate_model.building_metadata')
+baseline_building_metadata_transformed = feature_utils.transform_building_features(building_metadata_table_name)
 
 # COMMAND ----------
 
@@ -127,15 +141,17 @@ print(
 # COMMAND ----------
 
 # DBTITLE 1,Weather feature transformation function
-def transform_weather_features() -> DataFrame:
+def transform_weather_features(table_name) -> DataFrame:
     """
     Read and transform weather timeseries table. Pivot from long format indexed by (weather_file_city, hour)
     to a table indexed by weather_file_city with a 8760 len array timeseries for each weather feature column
 
+    Parameters:
+        table_name (str): full table name (catalog.database.table) of the processed weather timeseries table
     Returns:
         DataFrame: wide(ish) format dataframe indexed by weather_file_city with timeseries array for each weather feature
     """
-    weather_df = spark.read.table("ml.surrogate_model.weather_data_hourly")
+    weather_df = spark.read.table(table_name)
     weather_pkeys = ["weather_file_city"]
 
     weather_data_arrays = weather_df.groupBy(weather_pkeys).agg(
@@ -150,7 +166,12 @@ def transform_weather_features() -> DataFrame:
 # COMMAND ----------
 
 # DBTITLE 1,Transform weather features
-weather_features = transform_weather_features()
+weather_table_name = versioning.get_most_recent_table_version('ml.surrogate_model.weather_data_hourly')
+weather_table_name
+
+# COMMAND ----------
+
+weather_features = transform_weather_features(weather_table_name)
 
 # COMMAND ----------
 
@@ -176,14 +197,6 @@ building_metadata_with_weather_index = feature_utils.transform_weather_city_inde
 # MAGIC %md ### Create/Use schema in catalog in the Unity Catalog MetaStore
 # MAGIC
 # MAGIC To use an existing catalog, you must have the `USE CATALOG` privilege on the catalog.
-# MAGIC To create a new schema in the catalog, you must have the `CREATE SCHEMA` privilege on the catalog.
-
-# COMMAND ----------
-
-# DBTITLE 1,Check if you have access on ml catalog
-# MAGIC %sql
-# MAGIC -- if you do not see `ml` listed here, this means you do not have permissions
-# MAGIC SHOW CATALOGS
 
 # COMMAND ----------
 
@@ -201,47 +214,35 @@ building_metadata_with_weather_index = feature_utils.transform_weather_city_inde
 
 # COMMAND ----------
 
-# MAGIC %sql
-# MAGIC -- the following code will upsert. To overwrite, uncomment this line to first drop the table
-# MAGIC -- DROP TABLE ml.surrogate_model.building_features
-
-# COMMAND ----------
-
 # DBTITLE 1,Create a FeatureEngineeringClient
 fe = FeatureEngineeringClient()
 
 # COMMAND ----------
 
 # DBTITLE 1,Write out building metadata feature store
-table_name = "ml.surrogate_model.building_features"
-df = building_metadata_with_weather_index
-if spark.catalog.tableExists(table_name):
-    fe.write_table(name=table_name, df=df, mode="merge")
-else:
-    fe.create_table(
-        name=table_name,
-        primary_keys=["building_id", "upgrade_id", "weather_file_city"],
-        df=df,
-        schema=df.schema,
-        description="building metadata features",
-    )
+table_name = f"ml.surrogate_model.building_features_{CURRENT_VERSION}"
+
+fe.create_table(
+    name=table_name,
+    primary_keys=["building_id", "upgrade_id", "weather_file_city"],
+    df=building_metadata_with_weather_index,
+    schema=building_metadata_with_weather_index.schema,
+    description="building metadata features",
+)
 
 # COMMAND ----------
 
 # DBTITLE 1,Write out weather data feature store
-table_name = "ml.surrogate_model.weather_features_hourly"
-df = weather_features_indexed
-if spark.catalog.tableExists(table_name):
-    fe.write_table(
-        name=table_name,
-        df=df,
-        mode="merge",
-    )
-else:
-    fe.create_table(
-        name=table_name,
-        primary_keys=["weather_file_city"],
-        df=df,
-        schema=df.schema,
-        description="hourly weather timeseries array features",
-    )
+table_name = f"ml.surrogate_model.weather_features_hourly_{CURRENT_VERSION}"
+
+fe.create_table(
+    name=table_name,
+    primary_keys=["weather_file_city"],
+    df=weather_features_indexed,
+    schema=weather_features_indexed.schema,
+    description="hourly weather timeseries array features",
+)
+
+# COMMAND ----------
+
+

@@ -13,8 +13,9 @@ from tensorflow import keras
 from tensorflow.keras import layers, models
 from tensorflow.io import gfile
 
-
+from src.versioning import get_poetry_version_no
 from src.datagen import DataGenerator
+
 
 
 class SurrogateModel:
@@ -23,7 +24,7 @@ class SurrogateModel:
 
     Attributes
     ----------
-    - name (str): the name of the model.
+    - name (str): the name of the model. Defaults to the current version number. 
     - batch_size (int): the batch size for training. Defaults to 64.
     - dtype (np.dtype), the data type for the numeric features in the model. Defaults to np.float32.
     - artifact_path (str): name under which mlflow model artifact is saved. Defaults to 'model'.
@@ -45,7 +46,7 @@ class SurrogateModel:
 
     def __init__(
         self,
-        name: str,
+        name: str = None,
         batch_size: int = 64,
         dtype: np.dtype = np.float32,
         artifact_path="model",
@@ -53,6 +54,8 @@ class SurrogateModel:
         """
         See class attributes for details on params.
         """
+        if name is None:
+            name = get_poetry_version_no()
         self.name = name
         self.batch_size = batch_size
         self.dtype = dtype
@@ -285,15 +288,19 @@ class SurrogateModel:
         else:
             return f"runs:/{run_id}/{self.artifact_path}"
 
-    def save_keras_model(self, run_id):
+    def save_keras_model(self, run_id, include_run_id_in_fname = True):
         """
         Saves the keras model for the given run ID to Google Cloud Storage.
 
         Parameters:
         - run_id (str): The unique identifier for the MLflow run associated with the model to be saved.
+        - include_run_id_in_fname (bool, False): Whether to include the run id in the path of the saved model. Defaults to True.
 
         """
-        fname = f"sumo_{self.name}_{run_id}.keras"
+        if include_run_id_in_fname:
+            fname = f"sumo_{self.name}_{run_id}.keras"
+        else:
+            fname = f"sumo_{self.name}.keras"
         gcp_model_dir = "gs://the-cube/export/surrogate_model/"
 
         # load mlflow model

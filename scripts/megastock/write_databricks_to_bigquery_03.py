@@ -12,11 +12,13 @@
 # MAGIC
 # MAGIC
 # MAGIC ## Inputs: delta tables on databricks
-# MAGIC - `ml.megastock.building_metadata_{n_sample_tag}`
-# MAGIC - `ml.megastock.building_features_{n_sample_tag}`
+# MAGIC Inputs are read in based on the current version number of this repo in `pyproject.toml`.
+# MAGIC - `ml.megastock.building_metadata_{n_sample_tag}_{version_num}`
+# MAGIC - `ml.megastock.building_features_{n_sample_tag}_{version_num}`
 # MAGIC
 # MAGIC ## Outputs: tables on BigQuery
-# MAGIC - `cube-machine-learning.ds_api_datasets.megastock_combined_baseline_{n_sample_tag}`
+# MAGIC Outputs are written based on the current version number of this repo in `pyproject.toml`.
+# MAGIC - `cube-machine-learning.ds_api_datasets.megastock_combined_baseline_{n_sample_tag}_{version_num}`
 # MAGIC
 
 # COMMAND ----------
@@ -32,9 +34,14 @@ import pyspark.sql.functions as F
 from pyspark.sql.functions import udf
 from pyspark.sql.types import IntegerType
 
+from src import versioning
+
 # COMMAND ----------
 
+# get number of samples to use
 N_SAMPLE_TAG = dbutils.widgets.get("n_sample_tag")
+# get current poetry version of surrogate model repo to tag tables with
+CURRENT_VERSION = versioning.get_poetry_version_no()
 
 CLIMATE_ZONE_TO_INDEX = {
     "1A": 1,
@@ -62,14 +69,14 @@ client = bigquery.Client()
 # set up paths to write to 
 bq_project = "cube-machine-learning"
 bq_dataset = "ds_api_datasets"
-bq_megastock_table = f'megastock_combined_baseline_{N_SAMPLE_TAG}'
+bq_megastock_table = f'megastock_combined_baseline_{N_SAMPLE_TAG}_{CURRENT_VERSION}'
 bq_write_path = f"{bq_project}.{bq_dataset}.{bq_megastock_table}"
 
 # COMMAND ----------
 
 # read in data
-building_metadata = spark.table(f'ml.megastock.building_metadata_{N_SAMPLE_TAG}')
-building_features = spark.table(f'ml.megastock.building_features_{N_SAMPLE_TAG}')
+building_metadata = spark.table(f'ml.megastock.building_metadata_{N_SAMPLE_TAG}_{CURRENT_VERSION}')
+building_features = spark.table(f'ml.megastock.building_features_{N_SAMPLE_TAG}_{CURRENT_VERSION}')
 
 # COMMAND ----------
 
