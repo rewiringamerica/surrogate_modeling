@@ -1,5 +1,5 @@
 # Databricks notebook source
-# MAGIC %md # Evaluate CNN Model
+# MAGIC %md # Evaluate Surrogate Model
 
 # COMMAND ----------
 
@@ -59,6 +59,7 @@ print(TEST_SIZE)
 # MAGIC import pyspark.sql.functions as F
 # MAGIC import seaborn as sns
 # MAGIC from cloudpathlib import CloudPath
+# MAGIC from pathlib import Path
 # MAGIC from pyspark.sql import DataFrame, Column
 # MAGIC from pyspark.sql.window import Window
 # MAGIC
@@ -71,8 +72,9 @@ print(TEST_SIZE)
 
 # DBTITLE 1,Globals
 MODEL_RUN_NAME = f"{MODEL_NAME}@{RUN_ID}"
-# path to write figures to
-EXPORT_FPATH = CloudPath("gs://the-cube") / "export"  # move to globals after reorg
+
+ARTIFACT_PATH = Path.cwd().parent / 'src' / 'artifacts' / CURRENT_VERSION
+ARTIFACT_PATH.mkdir(exist_ok=True, parents=True)
 
 # COMMAND ----------
 
@@ -242,7 +244,6 @@ pred_by_building_upgrade_fuel_model_with_metadata = (
 # COMMAND ----------
 
 # DBTITLE 1,Calculate error metrics
-
 # define function to calculate absolute prediction error
 @udf("double")
 def APE(abs_error: float, actual: float, eps=1e-3):
@@ -304,7 +305,6 @@ pred_df_savings = (
 # COMMAND ----------
 
 # DBTITLE 1,Define function for aggregating over metrics
-
 # define function to calculate absolute prediction error
 def wMAPE(abs_error_col: Column, actual_col: Column) -> Column:
     """
@@ -412,19 +412,6 @@ metrics_by_upgrade_type.display()
 
 # COMMAND ----------
 
-# DBTITLE 1,Save metrics table
-if not DEBUG:
-    # save the metrics table tagged with the model name and version number
-    (
-        metrics_by_upgrade_type.write.format("delta")
-        .mode("overwrite")
-        .option("overwriteSchema", "true")
-        .option("userMetadata", MODEL_RUN_NAME)
-        .saveAsTable("ml.surrogate_model.evaluation_metrics")
-    )
-
-# COMMAND ----------
-
 # MAGIC %md ## Format for export
 
 # COMMAND ----------
@@ -485,12 +472,15 @@ metrics_by_upgrade_type = metrics_by_upgrade_type_pd.sort_values(["Upgrade ID", 
 # DBTITLE 1,Write results to csv
 if not DEBUG:
     metrics_by_upgrade_type.to_csv(
-        f"gs://the-cube/export/surrogate_model_metrics/comparison/{MODEL_RUN_NAME}_by_upgrade_type.csv"
+        ARTIFACT_PATH / "metrics_by_upgrade_type.csv",
+        index=False
     )
 
 # COMMAND ----------
 
-# MAGIC %md ### Visualize Comparison
+# MAGIC %md ### Visualize
+# MAGIC
+# MAGIC NOTE: not saving these figs anywhere now. I think in the future we'll want a way to visualize the comparison between two model versions runs, and we can adapt this code to do that
 
 # COMMAND ----------
 
@@ -569,19 +559,3 @@ with sns.axes_style("whitegrid"):
     )
 g.fig.subplots_adjust(top=0.93)
 g.fig.suptitle("Model Prediction Comparison: Total Annual Energy Savings")
-
-# COMMAND ----------
-
-# DBTITLE 1,Write out figure
-if not DEBUG:
-    save_fig_to_gcs(
-        g.fig,
-        EXPORT_FPATH
-        / "surrogate_model_metrics"
-        / "comparison"
-        / f"{MODEL_RUN_NAME}_vs_bucketed.png",
-    )
-
-# COMMAND ----------
-
-
