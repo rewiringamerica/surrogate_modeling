@@ -18,7 +18,7 @@ from pyspark.sql.types import (
 from pyspark.sql.window import Window
 from databricks.sdk.runtime import spark, udf
 
-from src.dmutils import data_cleaning
+from src.utils import data_cleaning
 
 from dmlutils import constants
 from dmlutils.surrogate_model.apply_upgrades import (

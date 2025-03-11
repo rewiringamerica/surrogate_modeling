@@ -8,7 +8,7 @@ import sys
 from databricks.feature_engineering import FeatureEngineeringClient
 import pyspark.sql.functions as F
 
-from src.dmutils import qa_utils
+from src.utils import qa_utils
 from src import feature_utils, versioning
 
 # COMMAND ----------

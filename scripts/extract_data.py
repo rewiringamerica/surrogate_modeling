@@ -42,7 +42,7 @@ from cloudpathlib import CloudPath
 from pyspark.sql import DataFrame
 import pyspark.sql.functions as F
 
-from src.dmutils import bsb, data_cleaning
+from src.utils import bsb, data_cleaning
 from src import feature_utils, versioning
 
 # COMMAND ----------

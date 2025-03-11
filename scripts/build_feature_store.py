@@ -45,7 +45,7 @@ from databricks.feature_engineering import FeatureEngineeringClient
 from pyspark.sql import DataFrame
 from pyspark.sql.types import StringType
 
-from src.dmutils import qa_utils
+from src.utils import qa_utils
 from src import feature_utils, versioning
 
 # COMMAND ----------
