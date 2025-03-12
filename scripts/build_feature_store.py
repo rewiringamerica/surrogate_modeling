@@ -20,6 +20,7 @@
 # MAGIC
 # MAGIC ##### Outputs:
 # MAGIC Outputs are written based on the current version number of this repo in `pyproject.toml`.
+# MAGIC - `gs://the-cube/export/surrogate_model/model_artifacts/{CURRENT_VERSION_NUM}/mappings.json`: Feature mappings to be shared by training and inference
 # MAGIC - `ml.surrogate_model.building_features_{CURRENT_VERSION_NUM}`: Building metadata features indexed by (building_id)
 # MAGIC - `ml.surrogate_model.weather_features_hourly_{CURRENT_VERSION_NUM}`: Weather features indexed by (weather_file_city) with a 8760-length timeseries vector for each weather feature column
 # MAGIC
@@ -39,19 +40,16 @@
 # DBTITLE 1,Imports
 import re
 from functools import reduce
+from pathlib import Path
 
 import pyspark.sql.functions as F
 from databricks.feature_engineering import FeatureEngineeringClient
 from pyspark.sql import DataFrame
 from pyspark.sql.types import StringType
 
-from src.utils import qa_utils
+from src.globals import CURRENT_VERSION_NUM, GCS_ARTIFACT_PATH
+from src.utils import qa_utils, data_io
 from src import feature_utils, versioning
-
-# COMMAND ----------
-
-# get current poetry version of surrogate model repo to tag tables with
-CURRENT_VERSION = versioning.get_poetry_version_no()
 
 # COMMAND ----------
 
@@ -66,14 +64,10 @@ CURRENT_VERSION = versioning.get_poetry_version_no()
 
 # COMMAND ----------
 
-# get most recent table version for baseline metadata -- we don't enforce the current version because the code change
-
-building_metadata_table_name = versioning.get_most_recent_table_version('ml.surrogate_model.building_metadata')
-building_metadata_table_name
-
-# COMMAND ----------
-
 # DBTITLE 1,Transform building metadata
+# get most recent table version for baseline metadata -- we don't enforce the current version because the code change
+building_metadata_table_name = versioning.get_most_recent_table_version("ml.surrogate_model.building_metadata")
+print(building_metadata_table_name)
 baseline_building_metadata_transformed = feature_utils.transform_building_features(building_metadata_table_name)
 
 # COMMAND ----------
@@ -91,8 +85,8 @@ building_metadata_upgrades = feature_utils.build_upgrade_metadata_table(baseline
 
 # DBTITLE 1,Drop rows where upgrade was not applied
 building_metadata_applicable_upgrades = feature_utils.drop_non_upgraded_samples(
-    building_metadata_upgrades,
-    check_applicability_logic=True)
+    building_metadata_upgrades, check_applicability_logic=True
+)
 
 # COMMAND ----------
 
@@ -104,7 +98,9 @@ building_metadata_applicable_upgrades = feature_utils.drop_non_upgraded_samples(
 n_building_upgrade_samples = building_metadata_applicable_upgrades.count()
 print(n_building_upgrade_samples)
 non_null_df = building_metadata_applicable_upgrades.dropna()
-assert non_null_df.count() == n_building_upgrade_samples, "Null values present, run qa_utils.check_for_null_values(building_metadata_upgrades)"
+assert (
+    non_null_df.count() == n_building_upgrade_samples
+), "Null values present, run qa_utils.check_for_null_values(building_metadata_upgrades)"
 
 # COMMAND ----------
 
@@ -121,18 +117,14 @@ non_string_columns = [
     if not isinstance(field.dataType, StringType) and field.name not in pkey_cols
 ]
 # count how many distinct vals there are for each categorical feature
-distinct_string_counts = building_metadata_upgrades.select(
-    [F.countDistinct(c).alias(c) for c in string_columns]
-)
+distinct_string_counts = building_metadata_upgrades.select([F.countDistinct(c).alias(c) for c in string_columns])
 # Collect the results as a dictionary
 distinct_string_counts_dict = distinct_string_counts.collect()[0].asDict()
 # print the total number of features:
 print(f"Building Metadata Features: {len(non_string_columns + string_columns)}")
 print(f"\tNumeric Features: {len(non_string_columns)}")
 print(f"\tCategorical Features: {len(string_columns)}")
-print(
-    f"\tFeature Dimensionality: {len(non_string_columns) + sum(distinct_string_counts_dict.values()) }"
-)
+print(f"\tFeature Dimensionality: {len(non_string_columns) + sum(distinct_string_counts_dict.values()) }")
 
 # COMMAND ----------
 
@@ -155,22 +147,15 @@ def transform_weather_features(table_name) -> DataFrame:
     weather_pkeys = ["weather_file_city"]
 
     weather_data_arrays = weather_df.groupBy(weather_pkeys).agg(
-        *[
-            F.collect_list(c).alias(c)
-            for c in weather_df.columns
-            if c not in weather_pkeys + ["datetime_formatted"]
-        ]
+        *[F.collect_list(c).alias(c) for c in weather_df.columns if c not in weather_pkeys + ["datetime_formatted"]]
     )
     return weather_data_arrays
 
 # COMMAND ----------
 
 # DBTITLE 1,Transform weather features
-weather_table_name = versioning.get_most_recent_table_version('ml.surrogate_model.weather_data_hourly')
-weather_table_name
-
-# COMMAND ----------
-
+weather_table_name = versioning.get_most_recent_table_version("ml.surrogate_model.weather_data_hourly")
+print(weather_table_name)
 weather_features = transform_weather_features(weather_table_name)
 
 # COMMAND ----------
@@ -180,12 +165,41 @@ weather_features = transform_weather_features(weather_table_name)
 weather_file_city_indexer = feature_utils.fit_weather_city_index(df_to_fit=weather_features)
 # apply indexer to weather feature df to get a weather_file_city_index column
 weather_features_indexed = feature_utils.transform_weather_city_index(
-    df_to_transform=weather_features,
-    weather_file_city_indexer=weather_file_city_indexer)
+    df_to_transform=weather_features, weather_file_city_indexer=weather_file_city_indexer
+)
 # apply indexer to building metadata feature df to get a weather_file_city_index column
 building_metadata_with_weather_index = feature_utils.transform_weather_city_index(
-    df_to_transform=building_metadata_applicable_upgrades,
-    weather_file_city_indexer=weather_file_city_indexer)
+    df_to_transform=building_metadata_applicable_upgrades, weather_file_city_indexer=weather_file_city_indexer
+)
+
+# COMMAND ----------
+
+# MAGIC %md ## Write out training data mapping artifacts
+# MAGIC
+# MAGIC Write out mapping artifacts that are needed by downstream dohyo
+
+# COMMAND ----------
+
+# Get the mapping weather city to index as a dict -- this is needed for embedding lookup in dohyo
+weather_city_to_index = {label: i for i, label in enumerate(weather_file_city_indexer.labels)}
+
+# COMMAND ----------
+
+# Create an indexer for climate zone -- this is needed for partitioning by climate zone in megastock
+climate_zone_indexer = feature_utils.create_string_indexer(
+    spark.table(building_metadata_table_name), column_name="ashrae_iecc_climate_zone_2004"
+)
+# Get the climate zone to index (1 indexed) as a dict
+climate_zone_to_index = {label: i for i, label in enumerate(climate_zone_indexer.labels, 1)}
+
+# COMMAND ----------
+
+# write to artifacts
+data_io.write_json(
+    GCS_ARTIFACT_PATH / CURRENT_VERSION_NUM / "mappings.json",
+    data={"climate_zone_to_index": climate_zone_to_index, "weather_city_to_index": weather_city_to_index},
+    overwrite=False,
+)
 
 # COMMAND ----------
 
@@ -204,8 +218,10 @@ building_metadata_with_weather_index = feature_utils.transform_weather_city_inde
 # MAGIC %sql
 # MAGIC -- Use existing catalog:
 # MAGIC USE CATALOG ml;
+# MAGIC
 # MAGIC -- Create a new schema
 # MAGIC CREATE SCHEMA IF NOT EXISTS surrogate_model;
+# MAGIC
 # MAGIC USE SCHEMA surrogate_model;
 
 # COMMAND ----------
@@ -220,7 +236,7 @@ fe = FeatureEngineeringClient()
 # COMMAND ----------
 
 # DBTITLE 1,Write out building metadata feature store
-table_name = f"ml.surrogate_model.building_features_{CURRENT_VERSION}"
+table_name = f"ml.surrogate_model.building_features_{CURRENT_VERSION_NUM}"
 
 fe.create_table(
     name=table_name,
@@ -233,7 +249,7 @@ fe.create_table(
 # COMMAND ----------
 
 # DBTITLE 1,Write out weather data feature store
-table_name = f"ml.surrogate_model.weather_features_hourly_{CURRENT_VERSION}"
+table_name = f"ml.surrogate_model.weather_features_hourly_{CURRENT_VERSION_NUM}"
 
 fe.create_table(
     name=table_name,
@@ -242,7 +258,3 @@ fe.create_table(
     schema=weather_features_indexed.schema,
     description="hourly weather timeseries array features",
 )
-
-# COMMAND ----------
-
-

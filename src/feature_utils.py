@@ -1034,20 +1034,36 @@ def drop_non_upgraded_samples(building_features: DataFrame, check_applicability_
 
 
 #  -- functions to construct weather city file index -- #
-
+def create_string_indexer(df: DataFrame, column_name: str) -> StringIndexer:
+    """
+    Create and fit a StringIndexer for the distinct values in a given column.
+    
+    Args:
+        df (spark.DataFrame): The DataFrame containing the column.
+        column_name (str): The name of the column for which to create the index mapping.
+    
+    Returns:
+        The fitted StringIndexer.
+    """
+    # Create a StringIndexer for the given column
+    indexer = StringIndexer(
+        inputCol=column_name, 
+        outputCol=f"{column_name}_index", 
+        stringOrderType="alphabetAsc", 
+        handleInvalid="skip"
+    )
+    
+    # Fit the indexer to the DataFrame
+    fitted_indexer = indexer.fit(df)
+    
+    return fitted_indexer
 
 def fit_weather_city_index(df_to_fit: Optional[DataFrame] = None):
     # read in weather features if df is not passed
     if df_to_fit is None:
         df_to_fit = spark.table("ml.surrogate_model.weather_features_hourly").drop("weather_file_city_index")
     # Create the StringIndexer
-    indexer = StringIndexer(
-        inputCol="weather_file_city",
-        outputCol="weather_file_city_index",
-        stringOrderType="alphabetAsc",
-        handleInvalid="skip",
-    )
-    return indexer.fit(df_to_fit)
+    return create_string_indexer(df_to_fit, "weather_file_city")
 
 
 def transform_weather_city_index(weather_file_city_indexer: StringIndexer, df_to_transform: DataFrame):

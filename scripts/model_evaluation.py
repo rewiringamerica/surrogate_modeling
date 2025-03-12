@@ -8,24 +8,14 @@
 
 # COMMAND ----------
 
-from src import versioning
-
-# get current poetry version of surrogate model repo to tag tables with
-CURRENT_VERSION = versioning.get_poetry_version_no()
-
-# COMMAND ----------
-
 # DBTITLE 1,Widget setup
 dbutils.widgets.dropdown("mode", "test", ["test", "production"])
-dbutils.widgets.text("model_name", CURRENT_VERSION)
 dbutils.widgets.text("run_id", "")
 dbutils.widgets.text("test_size", "10000")  # default in test mode
 
 # COMMAND ----------
 
 DEBUG = dbutils.widgets.get("mode") == "test"
-# name of the model
-MODEL_NAME = dbutils.widgets.get("model_name")
 # run ID of the model to test. If passed in by prior task in job, then overrride the input value
 input_run_id = dbutils.widgets.get("run_id")
 RUN_ID = dbutils.jobs.taskValues.get(
@@ -40,7 +30,6 @@ assert (
 # number of samples from test set to to run inference on (takes too long to run on all)
 TEST_SIZE = int(dbutils.widgets.get("test_size"))
 print(DEBUG)
-print(MODEL_NAME)
 print(RUN_ID)
 print(TEST_SIZE)
 
@@ -58,23 +47,14 @@ print(TEST_SIZE)
 # MAGIC import pandas as pd
 # MAGIC import pyspark.sql.functions as F
 # MAGIC import seaborn as sns
-# MAGIC from cloudpathlib import CloudPath
-# MAGIC from pathlib import Path
 # MAGIC from pyspark.sql import DataFrame, Column
 # MAGIC from pyspark.sql.window import Window
 # MAGIC
 # MAGIC from dmlutils.gcs import save_fig_to_gcs
 # MAGIC
+# MAGIC from src.globals import CURRENT_VERSION_NUM, LOCAL_ARTIFACT_PATH
 # MAGIC from src.datagen import DataGenerator, load_data
 # MAGIC from src.surrogate_model import SurrogateModel
-
-# COMMAND ----------
-
-# DBTITLE 1,Globals
-MODEL_RUN_NAME = f"{MODEL_NAME}@{RUN_ID}"
-
-ARTIFACT_PATH = Path.cwd().parent / 'src' / 'artifacts' / CURRENT_VERSION
-ARTIFACT_PATH.mkdir(exist_ok=True, parents=True)
 
 # COMMAND ----------
 
@@ -88,7 +68,7 @@ ARTIFACT_PATH.mkdir(exist_ok=True, parents=True)
 
 # DBTITLE 1,Load model
 # init model
-sm = SurrogateModel(name=MODEL_NAME)
+sm = SurrogateModel()
 # mlflow.pyfunc.get_model_dependencies(model_uri=sm.get_model_uri(run_id=RUN_ID))
 # Load the unregistered model using run ID
 model_loaded = mlflow.pyfunc.load_model(model_uri=sm.get_model_uri(run_id=RUN_ID))
@@ -472,7 +452,7 @@ metrics_by_upgrade_type = metrics_by_upgrade_type_pd.sort_values(["Upgrade ID", 
 # DBTITLE 1,Write results to csv
 if not DEBUG:
     metrics_by_upgrade_type.to_csv(
-        ARTIFACT_PATH / "metrics_by_upgrade_type.csv",
+        LOCAL_ARTIFACT_PATH / CURRENT_VERSION_NUM / "metrics_by_upgrade_type.csv",
         index=False
     )
 

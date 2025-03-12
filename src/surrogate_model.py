@@ -13,10 +13,9 @@ from tensorflow import keras
 from tensorflow.keras import layers, models
 from tensorflow.io import gfile
 
-from src.versioning import get_poetry_version_no
+from src.globals import GCS_ARTIFACT_PATH
 from src.datagen import DataGenerator
-
-
+from src.versioning import get_poetry_version_no
 
 class SurrogateModel:
     """
@@ -288,21 +287,14 @@ class SurrogateModel:
         else:
             return f"runs:/{run_id}/{self.artifact_path}"
 
-    def save_keras_model(self, run_id, include_run_id_in_fname = True):
+    def save_keras_model(self, run_id):
         """
-        Saves the keras model for the given run ID to Google Cloud Storage.
+        Saves the keras model for the given run ID to Google Cloud Storage based on the name of the model.
 
         Parameters:
         - run_id (str): The unique identifier for the MLflow run associated with the model to be saved.
-        - include_run_id_in_fname (bool, False): Whether to include the run id in the path of the saved model. Defaults to True.
 
         """
-        if include_run_id_in_fname:
-            fname = f"sumo_{self.name}_{run_id}.keras"
-        else:
-            fname = f"sumo_{self.name}.keras"
-        gcp_model_dir = "gs://the-cube/export/surrogate_model/"
-
         # load mlflow model
         mlflow_model = mlflow.pyfunc.load_model(model_uri=self.get_model_uri(run_id=run_id))
         # extract keras model
@@ -310,14 +302,15 @@ class SurrogateModel:
 
         with tempfile.TemporaryDirectory() as temp_dir:
             # Save to temporary directory
-            local_path = os.path.join(temp_dir, fname)
+            local_path = os.path.join(temp_dir, 'model.keras')
             keras_model.save(local_path)
 
             # Copy to GCP
-            gcp_path = os.path.join(gcp_model_dir, fname)
+            gcs_path = GCS_ARTIFACT_PATH / self.name / 'model.keras'
+            gcs_path.mkdir(parents=True, exist_ok=True)
             with gfile.GFile(local_path, "rb") as f_local:
-                with gfile.GFile(gcp_path, "wb") as f_gcp:
-                    f_gcp.write(f_local.read())
+                with gfile.GFile(str(gcs_path), "wb") as f_gcs:
+                    f_gcs.write(f_local.read())
 
     def score_batch(
         self,

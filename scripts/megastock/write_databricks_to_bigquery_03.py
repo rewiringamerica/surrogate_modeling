@@ -28,63 +28,49 @@ dbutils.widgets.text("n_sample_tag", "10k")
 # COMMAND ----------
 
 from itertools import chain
+from pathlib import Path
 
 from google.cloud import bigquery
 import pyspark.sql.functions as F
 from pyspark.sql.functions import udf
 from pyspark.sql.types import IntegerType
 
-from src import versioning
+from src.globals import CURRENT_VERSION_NUM, GCS_ARTIFACT_PATH
+from src.utils.data_io import read_json
 
 # COMMAND ----------
 
 # get number of samples to use
 N_SAMPLE_TAG = dbutils.widgets.get("n_sample_tag")
-# get current poetry version of surrogate model repo to tag tables with
-CURRENT_VERSION = versioning.get_poetry_version_no()
-
-CLIMATE_ZONE_TO_INDEX = {
-    "1A": 1,
-    "2A": 2,
-    "2B": 3,
-    "3A": 4,
-    "3B": 5,
-    "3C": 6,
-    "4A": 7,
-    "4B": 8,
-    "4C": 9,
-    "5A": 10,
-    "5B": 11,
-    "6A": 12,
-    "6B": 13,
-    "7A": 14,
-    "7B": 15,
-}
 
 # COMMAND ----------
 
 # Initialize a BigQuery client
 client = bigquery.Client()
 
-# set up paths to write to 
+# set up paths to write to
 bq_project = "cube-machine-learning"
 bq_dataset = "ds_api_datasets"
-bq_megastock_table = f'megastock_combined_baseline_{N_SAMPLE_TAG}_{CURRENT_VERSION}'
+bq_megastock_table = f"megastock_combined_baseline_{N_SAMPLE_TAG}_{CURRENT_VERSION_NUM}"
 bq_write_path = f"{bq_project}.{bq_dataset}.{bq_megastock_table}"
 
 # COMMAND ----------
 
 # read in data
-building_metadata = spark.table(f'ml.megastock.building_metadata_{N_SAMPLE_TAG}_{CURRENT_VERSION}')
-building_features = spark.table(f'ml.megastock.building_features_{N_SAMPLE_TAG}_{CURRENT_VERSION}')
+building_metadata = spark.table(f"ml.megastock.building_metadata_{N_SAMPLE_TAG}_{CURRENT_VERSION_NUM}")
+building_features = spark.table(f"ml.megastock.building_features_{N_SAMPLE_TAG}_{CURRENT_VERSION_NUM}")
+# read in climate zone to int mapping from artifacts in gcp
+climate_zone_to_index = read_json(GCS_ARTIFACT_PATH / CURRENT_VERSION_NUM / "mappings.json")["climate_zone_to_index"]
 
 # COMMAND ----------
 
 # Define UDF
-cz_mapping_expr = F.create_map([F.lit(x) for x in chain(*CLIMATE_ZONE_TO_INDEX.items())])
+cz_mapping_expr = F.create_map([F.lit(x) for x in chain(*climate_zone_to_index.items())])
 
 # Apply UDF to create new column
-building_metadata_with_int_cz = building_metadata.withColumn("climate_zone_int", cz_mapping_expr[F.col('ashrae_iecc_climate_zone_2004')])
+building_metadata_with_int_cz = building_metadata.withColumn(
+    "climate_zone_int", cz_mapping_expr[F.col("ashrae_iecc_climate_zone_2004")]
+)
 
 # COMMAND ----------
 
@@ -97,17 +83,16 @@ building_metadata_renamed = building_metadata_with_int_cz.select(
 
 # Subset features to baseline only and join the tables on building_id
 combined_df_baseline = building_metadata_renamed.join(
-    building_features.where(F.col('upgrade_id') == 0).drop('upgrade_id'),
-    on="building_id", how="inner")
+    building_features.where(F.col("upgrade_id") == 0).drop("upgrade_id"), on="building_id", how="inner"
+)
 
 # COMMAND ----------
 
 # write out table to big query
-(combined_df_baseline
-    .write
-    .format("bigquery")
+(
+    combined_df_baseline.write.format("bigquery")
     .mode("overwrite")
-    .option("table",bq_write_path)
+    .option("table", bq_write_path)
     .option("temporaryGcsBucket", "the-cube")
     .save()
 )
@@ -117,7 +102,7 @@ combined_df_baseline = building_metadata_renamed.join(
 # optimize the table by partitioning and clustering
 query = f"""
 CREATE TABLE `{bq_write_path}_optimized`
-PARTITION BY RANGE_BUCKET(climate_zone_int__m, GENERATE_ARRAY(1, {len(CLIMATE_ZONE_TO_INDEX)+1}, 1))
+PARTITION BY RANGE_BUCKET(climate_zone_int__m, GENERATE_ARRAY(1, {len(climate_zone_to_index)+1}, 1))
 CLUSTER BY  heating_fuel__m, geometry_building_type_acs__m, geometry_floor_area__m, vintage__m AS
 SELECT *,
 FROM `{bq_write_path}`
@@ -159,7 +144,3 @@ for row in rows:
 QUERY = f"""select climate_zone_int__m from `{bq_write_path}` WHERE building_id=1"""
 query_job = client.query(QUERY)  # API request
 rows = query_job.result()  # Waits for query to finish
-
-# COMMAND ----------
-
-

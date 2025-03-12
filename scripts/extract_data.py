@@ -42,14 +42,9 @@ from cloudpathlib import CloudPath
 from pyspark.sql import DataFrame
 import pyspark.sql.functions as F
 
+from src.globals import CURRENT_VERSION_NUM
 from src.utils import bsb, data_cleaning
-from src import feature_utils, versioning
-
-# COMMAND ----------
-
-# get current poetry version of surrogate model repo to tag tables with
-CURRENT_VERSION = versioning.get_poetry_version_no()
-CURRENT_VERSION
+from src import feature_utils
 
 # COMMAND ----------
 
@@ -263,14 +258,14 @@ hourly_weather_data = extract_hourly_weather_data()
 # COMMAND ----------
 
 # DBTITLE 1,Write out building metadata
-table_name = f"ml.surrogate_model.building_metadata_{CURRENT_VERSION}"
+table_name = f"ml.surrogate_model.building_metadata_{CURRENT_VERSION_NUM}"
 building_metadata.write.saveAsTable(table_name, mode="overwrite", overwriteSchema=True)
 spark.sql(f"OPTIMIZE {table_name}")
 
 # COMMAND ----------
 
 # DBTITLE 1,Write out annual outputs
-table_name = f"ml.surrogate_model.building_simulation_outputs_annual_{CURRENT_VERSION}"
+table_name = f"ml.surrogate_model.building_simulation_outputs_annual_{CURRENT_VERSION_NUM}"
 annual_outputs.write.saveAsTable(
     table_name, mode="overwrite", overwriteSchema=True, partitionBy=["upgrade_id"]
 )
@@ -279,7 +274,7 @@ spark.sql(f"OPTIMIZE {table_name}")
 # COMMAND ----------
 
 # DBTITLE 1,Write out hourly weather data
-table_name = f"ml.surrogate_model.weather_data_hourly_{CURRENT_VERSION}"
+table_name = f"ml.surrogate_model.weather_data_hourly_{CURRENT_VERSION_NUM}"
 hourly_weather_data.write.saveAsTable(
     table_name,
     mode="overwrite",

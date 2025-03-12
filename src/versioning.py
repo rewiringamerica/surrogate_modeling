@@ -17,7 +17,6 @@ def get_poetry_version_no():
     
     return formatted_version_no
 
-
 def get_most_recent_table_version(full_table_name, max_version=None, return_version_number_only=False):
     """
     Get the most recent version of a table defined as the table with the highest zero-padded, underscore-delimited 

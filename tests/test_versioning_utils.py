@@ -1,3 +1,4 @@
+"""Tests versioning functions."""
 import os
 import sys
 import unittest
@@ -7,8 +8,8 @@ import toml
 
 if os.environ.get("DATABRICKS_RUNTIME_VERSION", None):
     sys.path.append("src")
-    from src.versioning import get_poetry_version_no
 
+from src.versioning import get_poetry_version_no
 
 class TestGetPoetryVersionNo(unittest.TestCase):
     

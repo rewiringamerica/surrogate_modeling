@@ -19,7 +19,13 @@
 # MAGIC - `ml.surrogate_model.building_upgrade_simulation_outputs_annual`: Annual building model simulation outputs indexed by (building_id, upgrade_id)
 # MAGIC
 # MAGIC ##### Outputs:
-# MAGIC None. The model is logged to the unity catalog with the run id and current version number, but as of now is not registered due to issue with signature enforcement slowing down inference. If run in non-test mode, keras model is output to gcs at `gs://the-cube/export/surrogate_model/sumo_{CURRENT_VERSION_NUM}.keras`
+# MAGIC If in test mode (DEBUG = True):
+# MAGIC
+# MAGIC The trained model is just logged to the unity catalog with the run id and current version number, but as of now is not registered due to issue with signature enforcement slowing down inference.
+# MAGIC
+# MAGIC If in production mode mode (DEBUG = False):
+# MAGIC - `gs://the-cube/export/surrogate_model/model_artifacts/{CURRENT_VERSION_NUM}/model.keras`: the trained keras model
+# MAGIC - `gs://the-cube/export/surrogate_model/model_artifacts/{CURRENT_VERSION_NUM}/features_targets_upgrades.json`: some parameters of trained model
 # MAGIC
 # MAGIC ### TODOs:
 # MAGIC
@@ -70,6 +76,7 @@ os.environ["TF_FORCE_GPU_ALLOW_GROWTH"] = "true"
 # MAGIC import mlflow
 # MAGIC import numpy as np
 # MAGIC import pandas as pd
+# MAGIC from pathlib import Path
 # MAGIC import pyspark.sql.functions as F
 # MAGIC import tensorflow as tf
 # MAGIC import shutil
@@ -79,7 +86,8 @@ os.environ["TF_FORCE_GPU_ALLOW_GROWTH"] = "true"
 # MAGIC from tensorflow import keras
 # MAGIC from typing import Tuple, Dict
 # MAGIC
-# MAGIC from src import versioning
+# MAGIC from src.globals import GCS_ARTIFACT_PATH
+# MAGIC from src.utils.data_io import write_json
 # MAGIC from src.datagen import DataGenerator, load_data
 # MAGIC from src.surrogate_model import SurrogateModel
 # MAGIC
@@ -89,16 +97,9 @@ os.environ["TF_FORCE_GPU_ALLOW_GROWTH"] = "true"
 # COMMAND ----------
 
 # DBTITLE 1,Set experiment location
-# get current poetry version of surrogate model repo to tag tables with
-CURRENT_VERSION = versioning.get_poetry_version_no()
-
-MOST_RECENT_FEATURE_VERSION = versioning.get_most_recent_table_version('ml.surrogate_model.building_features', return_version_number_only=True)
 # location to store the experiment runs if in production mode:
 # specifying this allows for models trained in notebook or job to be written to same place
 EXPERIMENT_LOCATION = "/Shared/surrogate_model/"
-
-if CURRENT_VERSION != MOST_RECENT_FEATURE_VERSION:
-    print("Most recent feature version does not match current version")
 
 # COMMAND ----------
 
@@ -107,13 +108,14 @@ if CURRENT_VERSION != MOST_RECENT_FEATURE_VERSION:
 # COMMAND ----------
 
 # DBTITLE 1,Load data
-train_data, val_data, test_data = load_data(n_train=1000 if DEBUG else None, version_number = MOST_RECENT_FEATURE_VERSION)
+# load data using most recent versions of tables, and the data params in current version config
+train_data, val_data, test_data = load_data(n_train=1000 if DEBUG else None)
 
 # COMMAND ----------
 
 # DBTITLE 1,Initialize train/val data generators
-train_gen = DataGenerator(train_data=train_data, version_number = MOST_RECENT_FEATURE_VERSION)
-val_gen = DataGenerator(train_data=val_data, version_number = MOST_RECENT_FEATURE_VERSION)
+train_gen = DataGenerator(train_data=train_data)
+val_gen = DataGenerator(train_data=val_data)
 
 # COMMAND ----------
 
@@ -168,9 +170,7 @@ class SurrogateModelingWrapper(mlflow.pyfunc.PythonModel):
         """
         return self.convert_feature_dataframe_to_dict(model_input)
 
-    def postprocess_result(
-        self, results: Dict[str, np.ndarray], feature_df: pd.DataFrame
-    ) -> np.ndarray:
+    def postprocess_result(self, results: Dict[str, np.ndarray], feature_df: pd.DataFrame) -> np.ndarray:
         """
         Postprocesses the model results for N samples over M targets by clipping at 0
         and setting targets to 0 if the home does not have an applaince using that fuel.
@@ -211,9 +211,7 @@ class SurrogateModelingWrapper(mlflow.pyfunc.PythonModel):
         predictions_df = self.model.predict(processed_df)
         return self.postprocess_result(predictions_df, model_input)
 
-    def convert_feature_dataframe_to_dict(
-        self, feature_df: pd.DataFrame
-    ) -> Dict[str, np.ndarray]:
+    def convert_feature_dataframe_to_dict(self, feature_df: pd.DataFrame) -> Dict[str, np.ndarray]:
         """
         Converts the feature data from a pandas dataframe to a dictionary.
 
@@ -224,16 +222,15 @@ class SurrogateModelingWrapper(mlflow.pyfunc.PythonModel):
         Returns:
         - The preprocessed feature data in format {feature_name (str) : np.array of shape [N]
         """
-        return {
-            col: np.array(feature_df[col])
-            for col in self.building_features + ["weather_file_city_index"]
-        }
+        return {col: np.array(feature_df[col]) for col in self.building_features + ["weather_file_city_index"]}
 
 # COMMAND ----------
 
 # DBTITLE 1,Initialize model
-sm = SurrogateModel()
-sm.name
+if DEBUG:
+    sm = SurrogateModel(name="test")
+else:  # named based on current version
+    sm = SurrogateModel()
 
 # COMMAND ----------
 
@@ -248,15 +245,11 @@ layer_params = {
     "dtype": train_gen.dtype,
     "kernel_initializer": "he_normal",
 }
-
-
 # skip logging signatures for now...
 # signature_df = train_gen.training_set.load_df().select(train_gen.building_features + train_gen.targets + train_gen.weather_features).limit(1).toPandas()
 # signature=mlflow.models.infer_signature(model_input = signature_df[train_gen.building_features + train_gen.weather_features], model_output = signature_df[train_gen.targets])
 
-mlflow.tensorflow.autolog(
-    log_every_epoch=True, log_models=False, log_datasets=False, checkpoint=False
-)
+mlflow.tensorflow.autolog(log_every_epoch=True, log_models=False, log_datasets=False, checkpoint=False)
 
 # if production, log to shared experiment space, otherwise just log at notebook level by default
 if not DEBUG:
@@ -299,7 +292,9 @@ with mlflow.start_run() as run:
 
 if not DEBUG:
     # serialize the keras model and save to GCP
-    sm.save_keras_model(run_id = run_id, include_run_id_in_fname=False)
+    sm.save_keras_model(run_id=run_id)
+    # save the features, targets, and upgrades for this training run to GCP for use by dohyo
+    write_json(fpath=GCS_ARTIFACT_PATH / sm.name / "features_targets_upgrades.json", data=DataGenerator.data_params)
 
 # COMMAND ----------
 
@@ -335,7 +330,3 @@ print(model_loaded.predict(input_data))
 # DBTITLE 1,Pass Run ID to next notebook if running in job
 if not DEBUG:
     dbutils.jobs.taskValues.set(key="run_id", value=run_id)
-
-# COMMAND ----------
-
-
