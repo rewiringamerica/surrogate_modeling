@@ -7,9 +7,9 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 
 if os.environ.get("DATABRICKS_RUNTIME_VERSION", None):
-    sys.path.append("src")
+    sys.path.append("../src")
 
-from src.utils.data_io import write_json, read_json
+from utils.data_io import write_json, read_json
 
 
 class TestJsonFunctions(unittest.TestCase):
