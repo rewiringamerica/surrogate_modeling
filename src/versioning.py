@@ -6,6 +6,7 @@ import toml
 if os.environ.get("DATABRICKS_RUNTIME_VERSION"):
     from databricks.sdk.runtime import *
 
+
 def get_poetry_version_no():
     """Get current version of this repo with zero-padded version numbers."""
     repo_dir = Path(__file__).parent.parent
@@ -14,20 +15,21 @@ def get_poetry_version_no():
 
     # Zero-pad each component of the version
     formatted_version_no = "_".join(f"{int(part):02}" for part in poetry_version_no.split("."))
-    
+
     return formatted_version_no
+
 
 def get_most_recent_table_version(full_table_name, max_version=None, return_version_number_only=False):
     """
-    Get the most recent version of a table defined as the table with the highest zero-padded, underscore-delimited 
+    Get the most recent version of a table defined as the table with the highest zero-padded, underscore-delimited
     semantic version suffix.
-    
+
     If max_version is passed, then find the most recent version that is no higher than this.
 
     Parameters:
         full_table_name (str): Table name in the format `{catalog}.{database}.{table}`
         max_version (str, optional): Max version to cap the table versions at (e.g., '02_05_10'). Defaults to None.
-        return_version_number_only (bool, optional): Whether to return just the version number string. Defaults to False. 
+        return_version_number_only (bool, optional): Whether to return just the version number string. Defaults to False.
 
     Returns:
         str or None: Either the full table name or just the version number (if `return_version_number_only=True`).
@@ -41,10 +43,7 @@ def get_most_recent_table_version(full_table_name, max_version=None, return_vers
     tables_df = spark.sql(f"SHOW TABLES IN {catalog}.{database}")
 
     # Filter tables that match the table name with a semantic version pattern
-    filtered_tables = (
-        tables_df
-        .filter(F.col("tableName").rlike(fr"^{table}_\d+_\d+_\d+$"))
-    )
+    filtered_tables = tables_df.filter(F.col("tableName").rlike(rf"^{table}_\d+_\d+_\d+$"))
 
     # If max_version is provided, filter tables to be less than or equal to max_version
     if max_version:
@@ -53,10 +52,8 @@ def get_most_recent_table_version(full_table_name, max_version=None, return_vers
 
     # Order the filtered tables by version in descending order (most recent first)
     table_names = (
-        filtered_tables
-        .orderBy(F.desc(F.col("tableName")))
-        .select("tableName")
-    ).rdd.flatMap(lambda x: x).collect()
+        (filtered_tables.orderBy(F.desc(F.col("tableName"))).select("tableName")).rdd.flatMap(lambda x: x).collect()
+    )
 
     # If no matching tables are found, return None
     if not table_names:

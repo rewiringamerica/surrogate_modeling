@@ -11,12 +11,16 @@ if os.environ.get("DATABRICKS_RUNTIME_VERSION", None):
 
 from src.versioning import get_poetry_version_no
 
+
 class TestGetPoetryVersionNo(unittest.TestCase):
-    
-    @patch("builtins.open", new_callable=mock_open, read_data='''\
+    @patch(
+        "builtins.open",
+        new_callable=mock_open,
+        read_data="""\
         [tool.poetry]
         version = "1.2.3"
-        ''')
+        """,
+    )
     @patch("toml.load")
     def test_get_poetry_version_no(self, mock_toml_load, mock_file):
         """Test zero-padding of poetry version number."""
@@ -26,6 +30,7 @@ class TestGetPoetryVersionNo(unittest.TestCase):
             result = get_poetry_version_no()
 
         self.assertEqual(result, "01_02_03")  # Expected zero-padded format
+
 
 if os.environ.get("DATABRICKS_RUNTIME_VERSION", None):
     # If we are developing on databricks we have to manually

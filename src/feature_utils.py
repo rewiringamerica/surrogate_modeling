@@ -1037,26 +1037,24 @@ def drop_non_upgraded_samples(building_features: DataFrame, check_applicability_
 def create_string_indexer(df: DataFrame, column_name: str) -> StringIndexer:
     """
     Create and fit a StringIndexer for the distinct values in a given column.
-    
+
     Args:
         df (spark.DataFrame): The DataFrame containing the column.
         column_name (str): The name of the column for which to create the index mapping.
-    
+
     Returns:
         The fitted StringIndexer.
     """
     # Create a StringIndexer for the given column
     indexer = StringIndexer(
-        inputCol=column_name, 
-        outputCol=f"{column_name}_index", 
-        stringOrderType="alphabetAsc", 
-        handleInvalid="skip"
+        inputCol=column_name, outputCol=f"{column_name}_index", stringOrderType="alphabetAsc", handleInvalid="skip"
     )
-    
+
     # Fit the indexer to the DataFrame
     fitted_indexer = indexer.fit(df)
-    
+
     return fitted_indexer
+
 
 def fit_weather_city_index(df_to_fit: Optional[DataFrame] = None):
     # read in weather features if df is not passed

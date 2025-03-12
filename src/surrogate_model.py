@@ -17,13 +17,14 @@ from src.globals import GCS_ARTIFACT_PATH
 from src.datagen import DataGenerator
 from src.versioning import get_poetry_version_no
 
+
 class SurrogateModel:
     """
     A Deep Learning model for surrogate modeling energy consumption prediction.
 
     Attributes
     ----------
-    - name (str): the name of the model. Defaults to the current version number. 
+    - name (str): the name of the model. Defaults to the current version number.
     - batch_size (int): the batch size for training. Defaults to 64.
     - dtype (np.dtype), the data type for the numeric features in the model. Defaults to np.float32.
     - artifact_path (str): name under which mlflow model artifact is saved. Defaults to 'model'.
@@ -302,11 +303,11 @@ class SurrogateModel:
 
         with tempfile.TemporaryDirectory() as temp_dir:
             # Save to temporary directory
-            local_path = os.path.join(temp_dir, 'model.keras')
+            local_path = os.path.join(temp_dir, "model.keras")
             keras_model.save(local_path)
 
             # Copy to GCP
-            gcs_path = GCS_ARTIFACT_PATH / self.name / 'model.keras'
+            gcs_path = GCS_ARTIFACT_PATH / self.name / "model.keras"
             gcs_path.mkdir(parents=True, exist_ok=True)
             with gfile.GFile(local_path, "rb") as f_local:
                 with gfile.GFile(str(gcs_path), "wb") as f_gcs:

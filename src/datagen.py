@@ -15,6 +15,7 @@ from src.globals import LOCAL_ARTIFACT_PATH, CURRENT_VERSION_NUM
 from src.utils.data_io import read_json
 from src.versioning import get_most_recent_table_version
 
+
 class DataGenerator(tf.keras.utils.Sequence):
     """
     A data generator for generating training data to feed to a keras model. Since the weather features are large and duplicative across many buildings,
@@ -74,11 +75,11 @@ class DataGenerator(tf.keras.utils.Sequence):
         """
         # Read from config file if not passed
         if building_features is None:
-            building_features=DataGenerator.data_params['building_features']
+            building_features = DataGenerator.data_params["building_features"]
         if weather_features is None:
-            weather_features=DataGenerator.data_params['weather_features']
+            weather_features = DataGenerator.data_params["weather_features"]
         if targets is None:
-            targets=list(DataGenerator.data_params['consumption_group_dict'].keys())
+            targets = list(DataGenerator.data_params["consumption_group_dict"].keys())
 
         self.building_features = building_features
         self.weather_features = weather_features
@@ -295,7 +296,7 @@ class DataGenerator(tf.keras.utils.Sequence):
 
 
 def load_data(
-    consumption_group_dict = None,
+    consumption_group_dict=None,
     upgrade_ids: List[float] = None,
     p_val=0.2,
     p_test=0.1,
@@ -333,9 +334,9 @@ def load_data(
     if n_train and n_test:
         raise ValueError("Cannot specify both n_train and n_test")
     if consumption_group_dict is None:
-        consumption_group_dict=DataGenerator.data_params['consumption_group_dict']
+        consumption_group_dict = DataGenerator.data_params["consumption_group_dict"]
     if upgrade_ids is None:
-        upgrade_ids=DataGenerator.data_params['upgrade_ids']
+        upgrade_ids = DataGenerator.data_params["upgrade_ids"]
     # Read outputs table and sum over consumption columns within each consumption group
     # join to the bm table to get required keys to join on and filter the building models based on charactaristics
     sum_str = ", ".join([f"{'+'.join(v)} AS {k}" for k, v in consumption_group_dict.items()])
