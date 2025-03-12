@@ -14,7 +14,7 @@ from dmlutils.surrogate_model.apply_upgrades import read_test_baseline_inputs, r
 if os.environ.get("DATABRICKS_RUNTIME_VERSION", None):
     sys.path.append("../src")
 
-from src.feature_utils import apply_upgrades, create_string_indexer
+from feature_utils import apply_upgrades, create_string_indexer
 
 class TestCreateStringIndexer(unittest.TestCase):
     @unittest.skipIf(
