@@ -50,7 +50,9 @@ print(TEST_SIZE)
 # MAGIC from pyspark.sql import DataFrame, Column
 # MAGIC from pyspark.sql.window import Window
 # MAGIC
-# MAGIC from dmlutils.gcs import save_fig_to_gcs
+# MAGIC # NOTE: for now this cannot depend on dmlutils because training/testing requires a GPU cluster
+# MAGIC # and we do not yet have a requirements file that is compatible for both dmlutils and the GPU cluster
+# MAGIC # from dmlutils.gcs import save_fig_to_gcs
 # MAGIC
 # MAGIC from src.globals import CURRENT_VERSION_NUM, LOCAL_ARTIFACT_PATH
 # MAGIC from src.datagen import DataGenerator, load_data
