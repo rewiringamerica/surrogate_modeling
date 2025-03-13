@@ -54,7 +54,7 @@ print(TEST_SIZE)
 # MAGIC # and we do not yet have a requirements file that is compatible for both dmlutils and the GPU cluster
 # MAGIC # from dmlutils.gcs import save_fig_to_gcs
 # MAGIC
-# MAGIC from src.globals import CURRENT_VERSION_NUM, LOCAL_ARTIFACT_PATH
+# MAGIC from src.globals import CURRENT_VERSION_NUM, GCS_ARTIFACT_PATH
 # MAGIC from src.datagen import DataGenerator, load_data
 # MAGIC from src.surrogate_model import SurrogateModel
 

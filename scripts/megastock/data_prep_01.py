@@ -15,15 +15,14 @@ import pyspark.sql.functions as F
 from pyspark.sql.types import StringType
 
 sys.path.append("../../src")
-from src import feature_utils, versioning
+from src.globals import CURRENT_VERSION_NUM
+from src import feature_utils
+
 
 # COMMAND ----------
 
 # get number of samples to use
 N_SAMPLE_TAG = dbutils.widgets.get("n_sample_tag")
-# get current poetry version of surrogate model repo to tag tables with
-CURRENT_VERSION = versioning.get_poetry_version_no()
-CURRENT_VERSION
 
 # COMMAND ----------
 
@@ -219,6 +218,6 @@ building_metadata = feature_utils.clean_building_metadata(metadata_2022_format)
 # COMMAND ----------
 
 # DBTITLE 1,write out sampled building metadata
-table_name = f"ml.megastock.building_metadata_{N_SAMPLE_TAG}_{CURRENT_VERSION}"
+table_name = f"ml.megastock.building_metadata_{N_SAMPLE_TAG}_{CURRENT_VERSION_NUM}"
 building_metadata.write.saveAsTable(table_name, mode="overwrite", overwriteSchema=True)
 spark.sql(f"OPTIMIZE {table_name}")
