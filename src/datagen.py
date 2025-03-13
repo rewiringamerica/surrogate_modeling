@@ -54,8 +54,6 @@ class DataGenerator(tf.keras.utils.Sequence):
     # load the default features, targets, and upgrades to use for this training run based on params stored in current version's config
     data_params = read_json(LOCAL_ARTIFACT_PATH / CURRENT_VERSION_NUM / "features_targets_upgrades.json")
 
-    print(f"Datagen Using:\n{building_feature_table_name},\n{weather_feature_table_name},\n{target_table_name}")
-
     def __init__(
         self,
         train_data: DataFrame,
