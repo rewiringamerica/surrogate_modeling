@@ -8,6 +8,7 @@ import sys
 from databricks.feature_engineering import FeatureEngineeringClient
 import pyspark.sql.functions as F
 
+from src.globals import CURRENT_VERSION_NUM
 from src.utils import qa_utils
 from src import feature_utils, versioning
 
@@ -15,9 +16,6 @@ from src import feature_utils, versioning
 
 # get number of samples to use
 N_SAMPLE_TAG = dbutils.widgets.get("n_sample_tag")
-# get current poetry version of surrogate model repo to tag tables with
-CURRENT_VERSION = versioning.get_poetry_version_no()
-CURRENT_VERSION
 
 # COMMAND ----------
 
@@ -39,7 +37,7 @@ baseline_building_metadata_transformed = feature_utils.transform_building_featur
 
 # Check for differences between the possible values of categorical features in MegaStock and in ResStock training features
 comparison_dict = qa_utils.compare_dataframes_string_values(
-    spark.table(f'ml.surrogate_model.building_features_{CURRENT_VERSION}').where(F.col('upgrade_id')==0),
+    spark.table(f'ml.surrogate_model.building_features_{CURRENT_VERSION_NUM}').where(F.col('upgrade_id')==0),
     baseline_building_metadata_transformed)
 
 # NOTE: if there are differences, these should be fixed upstream in the creation of 'ml.megastock.building_metadata_*'
@@ -85,7 +83,7 @@ fe = FeatureEngineeringClient()
 # COMMAND ----------
 
 # DBTITLE 1,Write out building metadata feature store
-table_name = f"ml.megastock.building_features_{N_SAMPLE_TAG}_{CURRENT_VERSION}"
+table_name = f"ml.megastock.building_features_{N_SAMPLE_TAG}_{CURRENT_VERSION_NUM}"
 fe.create_table(
     name=table_name,
     primary_keys=["building_id", "upgrade_id", "weather_file_city"],
@@ -93,7 +91,3 @@ fe.create_table(
     schema=building_metadata_upgrades.schema,
     description="megastock building metadata features",
 )
-
-# COMMAND ----------
-
-

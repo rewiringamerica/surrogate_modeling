@@ -205,21 +205,8 @@ metadata_2022_format = process_raw_to_match_2022format(RESSTOCK_SAMPLED_DATA_PAT
 
 # COMMAND ----------
 
-# DBTITLE 1,Write out files if desired
-# resulting file should be renamed & saved as gs://the-cube/data/processed/sampling_resstock/resstock_v3.3.0/sampled_building_metadata_2022format_*/building_metadata_*.snappy.parquet
-# metadata_2022_format.repartition(1).write.option("compression", "snappy").mode("overwrite").parquet(RESSTOCK_SAMPLED_2022FORMATTED_PATH)
-
-# COMMAND ----------
-
 # MAGIC %md
 # MAGIC #### Extracting building metadata
-# MAGIC As in [this link](https://github.com/rewiringamerica/surrogate_modeling/blob/916364b47a81b775f88b0aaa3ccdacc9d3a46eac/scripts/extract_data.py#L225). Relying on functions defined in src/dmutilslocal (for now)
-
-# COMMAND ----------
-
-# if reading from file:
-# BUILDING_METADATA_PARQUET_PATH = f"gs://the-cube/data/processed/sampling_resstock/resstock_v3.3.0/sampled_building_metadata_2022format_{N_SAMPLE_TAG}/building_metadata_1M.snappy.parquet"
-#  metadata_2022_format = spark.read.parquet(BUILDING_METADATA_PARQUET_PATH)
 
 # COMMAND ----------
 
