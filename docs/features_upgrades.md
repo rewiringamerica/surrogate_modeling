@@ -8,13 +8,17 @@ The following list describes mapping from Simulation Features to Surrogate Model
 
 **Surrogate Model Features**: Simulation inputs transformed for the surrogate model. The [options_lookup.tsv](https://github.com/NREL/resstock/blob/run/euss/resources/options_lookup.tsv) defines the mapping from select ResStock characteristics to EnergyPlus arguments. In many cases this provides a mapping from a categorical feature to a set of numerical features, and so we will likely want to leverage this mapping. In future work, we will directly use this .tsv file to apply the mapping, but for the MVP we decided to just define these manually and non-comprehensively.
 
+We consider the set of Simulation Features, the details for which can be viewed in this sheet when applying the “Simulation Features” filtered view. Note that this sheet was derived from ResStock 2024 features, which deviates slightly from the ResStock 2022 EUSS features, and this was accounted for and noted in the following list. 
+
+### Simulation Features → Surrogate Model Features
+
 The mapping takes the following format:
 
 > Simulation Feature:
 >
 > `surrogate_model_feature` (dtype) : description of feature and transformation
 
-### Simulation Features → Surrogate Model Features
+**Feature List**:
 
 ASHRAE IECC Climate Zone 2004:
 
@@ -30,17 +34,17 @@ Bedrooms:
 
 Ceiling Fan:
 
-`has_ceiling_fan` (bool): Indicator for whether a ceiling fan is the unit. This simulation feature only takes on two values, one of which is `None` , so we decided to code it as an indicator.
+`has_ceiling_fan` (bool): Indicator for whether a ceiling fan is in the unit. This simulation feature only takes on two values, one of which is `None`, so we decided to code it as an indicator.
 
-Clothes Dryer: _Note in ResStock 2024, the usage portion of this feature is split into a new variable._
+Clothes Dryer: *Note in ResStock 2024, the usage portion of this feature is split into a new variable.*
 
 `clothes_dryer_fuel` (str): Fuel type of the clothes dryer. This simulation feature contains presence, fuel and usage percentage, but we just extract fuel and presence since usage percentage for appliances is completely determined by “Usage Level”.
 
-Clothes Washer: _Note in ResStock 2024, the usage portion of this feature is split into a new variable._
+Clothes Washer: *Note in ResStock 2024, the usage portion of this feature is split into a new variable.*
 
 `clothes_washer_efficiency` (str): Fuel type of the clothes washer. This simulation feature includes presence, efficiency, and usage percentage, but we just extract the efficiency and presence to create a 3 level category, since usage percentage for appliances is completely determined by “Usage Level”.
 
-Cooking Range: _Note in ResStock 2024, the usage portion of this feature is split into a new variable._
+Cooking Range: *Note in ResStock 2024, the usage portion of this feature is split into a new variable.*
 
 `cooking_range_fuel` (str): Fuel type of the cooking range. This simulation feature includes both fuel and usage percentage, but we just extract fuel since usage percentage for appliances is completely determined by “Usage Level”.
 
@@ -62,7 +66,7 @@ Duct Leakage and Insulation:
 
 `duct_leakage_percentage` (double) : Duct leakage percentage, set to 0 if ducts are not present. Percentage is divided by 100.
 
-HVAC Has Ducts: _Note that in ResStock 2024 this is expanded to the more descriptive “Duct Location” feature._
+HVAC Has Ducts: *Note that in ResStock 2024 this is expanded to the more descriptive “Duct Location” feature.*
 
 `has_ducts` (bool): Indicator for whether the unit has ducts.
 
@@ -70,21 +74,27 @@ Geometry Attic Type:
 
 `attic_type` (str): Type of attic (e.g., “None”, “Vented Attic”)
 
-Geometry Building Horizontal Location SFA
+Geometry Building Horizontal Location SFA / Geometry Building Horizontal Location MF
 
 `is_middle_unit` (bool): Indicator for whether the unit is a middle unit in the building. In the simulation feature, there are 3 options for attached homes: left, right and middle. Since middle unit seems like the only thing that would affect energy consumption, this is coded as a binary indicator for whether or not it is a middle unit, which is always false for detached home.
 
-Geometry Building Number Units SFA
+Geometry Building Level MF
 
-`n_building_units` (int): Number of units in the building, set to 1 for all detached homes.
+`unit_level_in_building` : The level of the unit within the building: `Top`, `Middle`, `Bottom` , for Multi-Family, otherwise `None`.
+
+Geometry Building Number Units SFA / Geometry Building Number Units MF
+
+`n_building_units` (int): Number of units in the building, set to 1 for all detached homes and mobile homes.
 
 Geometry Building Type ACS:
 
-`is_attached` (bool): Indicator for whether the single family home is attached.
+`is_attached` (bool): Indicator for whether the home is attached (includes single family attached and multi-family).
 
-Geometry Floor Area: _We actually will use the sqft simulation feature which is created in EnergyPlus pre-processing_
+`is_mobile_home` (bool): Indicator for whether the home is a mobile home.
 
-`sqft` (double): Finished floor area of the housing unit in ft^2. This is actually derived directly from the `sqft` variable which is the midpoint of the Geometry Floor Area variable. This variable is produced by a preprocessing step in EnergyPlus and output, but it isn’t technically sampled metadata feature, which is why it isn’t in this list.
+Geometry Floor Area: *We actually will use the sqft simulation feature which is created in EnergyPlus pre-processing*
+
+`sqft` (double): Finished floor area of the housing unit in ft^2. We actually directly use the `sqft`, which is derived from the Geometry Floor Area variable, which is the average conditioned floor area of AHS surveyed homes within the given housing type and Geometry Floor Area Bin. This variable is produced by a preprocessing step in EnergyPlus and output, but it isn’t technically sampled metadata feature, which is why it isn’t in this list.
 
 Geometry Foundation Type
 
@@ -120,7 +130,7 @@ HVAC Cooling Efficiency:
 
 `ac_type` (str): Type of cooling system (e.g., “AC”, “Room AC”).
 
-`cooling_efficiency_eer` (double): Energy efficiency ratio (EER) of the cooling system, set to 999 (infinite efficiency) if not present. Note that when the ac type is a heat pump, this is instead derived from the “HVAC Heating Efficiency” feature. If the unit has a heat pump for cooling and has “Shared Heating”, then there is no way to get the efficiency, so we just use the efficiency for Shared Cooling provided in the options.tsv.
+`cooling_efficiency_eer` (double): Energy efficiency ratio (EER) of the cooling system, set to 999 (infinite efficiency) if not present. Note that when the ac type is a heat pump, this is instead derived from the “HVAC Heating Efficiency” feature.
 
 HVAC Cooling Partial Space Conditioning:
 
@@ -134,7 +144,7 @@ HVAC Heating Efficiency:
 
 HVAC Heating Type:
 
-`has_ductless_heating` (bool): Indicator for whether the heating is ductless. This simulation feature contains information on whether or not the heating system is a heat pump, but this is already captured by `heating_appliance_type` . Importantly, this variable is not fully captured by `has_ducts` since there are units have have ducts but still have a ductless heating system.
+`has_ductless_heating` (bool):  Indicator for whether the heating is ductless. This simulation feature contains information on whether or not the heating system is a heat pump, but this is already captured by `heating_appliance_type` . Importantly, this variable is not fully captured by `has_ducts` since there are units have have ducts but still have a ductless heating system.
 
 Infiltration:
 
@@ -178,15 +188,15 @@ Misc Freezer:
 
 Misc Gas Fireplace:
 
-`has_gas_fireplace` (bool): Indicator for whether the unit has a gas fireplace. This is coded as an indicator because the simulation feature has only non-None possible value.
+`has_gas_fireplace` (bool): Indicator for whether the unit has a gas fireplace. This is coded as an indicator because the simulation feature has only one non-None possible value.
 
 Misc Gas Grill:
 
-`has_gas_grill` (bool): Indicator for whether the unit has a gas grill. This is coded as an indicator because the simulation feature has only non-None possible value.
+`has_gas_grill` (bool): Indicator for whether the unit has a gas grill. This is coded as an indicator because the simulation feature has only one non-None possible value.
 
 Misc Gas Lighting:
 
-`has_gas_lighting` (bool): Indicator for whether the unit has gas lighting. This is coded as an indicator because the simulation feature has only non-None possible value.
+`has_gas_lighting` (bool): Indicator for whether the unit has gas lighting. This is coded as an indicator because the simulation feature has only one non-None possible value.
 
 Misc Hot Tub Spa:
 
@@ -210,7 +220,7 @@ Occupants:
 
 Orientation:
 
-`orientation_degrees` (int): Compass orientation of the unit translated to degrees, with North represented as 0, Northeast as 45, etc.
+`orientation_degrees` (int): Compass orientation of the unit translated to degrees, with N represented as 0.
 
 Plug Loads:
 
@@ -234,7 +244,7 @@ Vintage:
 
 Water Heater Efficiency:
 
-Water Heater Efficiency is a single string containing the fuel, type, and in some cases, tank volume and efficiency. This is mapped to various specs using based on the options.tsv.
+Water Heater Efficiency is a single string containing the fuel, type, and in some cases, tank volume and efficiency. This is mapped to various specs using based on the `options.tsv`.
 
 `water_heater_fuel` (str): Fuel type of the water heater.
 
@@ -242,11 +252,11 @@ Water Heater Efficiency is a single string containing the fuel, type, and in som
 
 `water_heater_tank_volume` (int): Capacity of the water heater tank in gallons, which is set to 0 for instantaneous (i.e., tankless water heaters). If not specified (only specified for HPWHs), it is calculated based on the number of bedrooms, bathrooms and whether the water heater is electric (see [Building America docs p12](https://www.nrel.gov/docs/fy10osti/47246.pdf)). According to the ResStock docs, this heuristic aligns with EnergyPlus preprocessing.
 
-`water_heater_efficiency_ef` (double): Efficiency factor (EF) of the of the water heater, which is the ratio of the useful energy output to the total amount of energy delivered to the water heater. If UEF is is provided (only ever used for HPWHs), it is converted to EF using the equation EF = 1.2101 \* UEF - 0.6052 (see [RESSNET conversion tool](https://www.resnet.us/wp-content/uploads/RESNET-EF-Calculator-2017.xlsx)).
+`water_heater_efficiency_ef` (double): Efficiency factor (EF) of the  of the water heater, which is the ratio of the useful energy output to the total amount of energy delivered to the water heater. If UEF is is provided (only ever used for HPWHs), it is converted to EF using the equation EF = 1.2101 * UEF - 0.6052 (see [RESSNET conversion tool](https://www.resnet.us/wp-content/uploads/RESNET-EF-Calculator-2017.xlsx)).
 
 `water_heater_recovery_efficiency_ef` (double): Recovery efficiency factor (EF) of the water heater, which is the efficiency of heat of transferring heat fro the energy source to the water. While the options.tsv sets this to 0 for all electric or tankless water heaters since this is essentially ignored by the simulation, we set it to 1 which is a more appropriate value.
 
-Water Heater In Unit: _In 2024 ResStock this is a deterministic function of Water Heater Location, but the latter is not a feature in 2022_
+Water Heater In Unit: *In 2024 ResStock this is a deterministic function of Water Heater Location, but the latter is not a feature in 2022*
 
 `has_water_heater_in_unit` (bool): Indicator for whether the water heater is in the unit.
 
@@ -259,6 +269,34 @@ Windows:
 `window_ufactor` (double): The U-factor of the windows, which measure how well the window insulates, with lower values indicating better insulation
 
 `window_shgc` (double): The Solar Heat Gain Coefficient (SHGC) in [0, 1] ,which measures how much of the sun’s heat comes through the window.
+
+### Excluded Features
+
+Bathroom Spot Vent Hour: Temporal variable seems unnecessary for predicting annual outputs.
+
+Clothes Washer Presence: Deterministic function of `clothes_washer_efficiency`. 
+
+Cooling Setpoint Has Offset: Deterministic function of `cooling_setpoint`.
+
+Cooling Setpoint Offset Period: Temporal variable seems unnecessary for predicting annual outputs.
+
+County and PUMA: while technically this is an input to the EnergyPlus, this is not actually used in the simulation— it is just for record-keeping/filtering/filenaming. 
+
+Ground Thermal Conductivity: ****Not in 2022 dataset
+
+Has PV: only has effect on pv outputs which we are not using
+
+Heating Setpoint Has Offset: Deterministic function of `heating_setpoint`.
+
+Heating Setpoint Offset Period: Temporal variable seems unnecessary for predicting annual outputs.
+
+Misc Pool: Completely determined by `pool_heater_fuel`
+
+PV Orientation: only relevant for PV outputs which are not being used
+
+PV System Size: only relevant for PV outputs which are not being used
+
+Range Spot Vent Hour: Temporal variable seems unnecessary for predicting annual outputs.
 
 ### Additional Features
 
@@ -276,8 +314,13 @@ Heat Pump tech upgrade indicator columns: while these columns are not used for a
 
 `has_induction_range`
 
+Additional Heat Pump Detail Columns: The heat pump sizing method is specified in the options.tsv rather than in the samples, so since we are altering this methodology in some of the RAStock HP upgrades, we need a column to reflect this. 
+
+`heat_pump_sizing_methodology` (str): The methodology used for sizing the heat pump, which is either `ACCA` (default) `HERS` (for upgrade 11.05) or `None` (if no heat pump).
+
 ## Upgrades
 
+### Implementation
 The upgrades are implemented by modifying the baseline surrogate model features to match the upgrade specification. This upgrade logic is determined by consulting the [EUSS Round 1 Technical Documentation and Measure Applicability Logic](https://oedi-data-lake.s3.amazonaws.com/nrel-pds-building-stock/end-use-load-profiles-for-us-building-stock/2022/EUSS_ResRound1_Technical_Documentation.pdf), as well as the [upgrade yaml file](https://github.com/NREL/resstock/blob/run/euss/EUSS-project-file_2018_550k.yml) that is used to define the upgrades is ResStock precisely by defining this kind of feature update logic. Note most cases, the YAML is much more specific, and covers many edge cases not described in the technical documentation.
 
 - Example of how to parse the YAML
@@ -308,19 +351,36 @@ The upgrades are implemented by modifying the baseline surrogate model features 
     	"Insulation Ceiling" = "R-30"
     ```
     
+### Upgrade List
+We have implemented the logic for the following upgrades:
 
-We have implemented the logic for upgrades:
+**ResStock EUSS 2022.1** (see [docs](https://oedi-data-lake.s3.amazonaws.com/nrel-pds-building-stock/end-use-load-profiles-for-us-building-stock/2022/EUSS_ResRound1_Technical_Documentation.pdf) for details):
 
-0. Baseline
+* 0: Baseline
 
-1. Basic Enclosure
+* 1: Basic Enclosure
 
-3. Heat Pumps, Min-Efficiency, Electric Backup 
+* 3: Min-Efficiency Heat Pumps with Electric Backup
 
-4. Heat Pumps, High-Efficiency, Electric Backup 
+* 4: High-Efficiency Heat Pumps with Electric Backup
 
-6. Heat Pump Water Heaters 
+* 6: Heat Pump Water Heaters
 
-9.  Whole-Home Electrification, High Efficiency + Basic Enclosure Package (1 + 4 + 6 + heat pump dryers + induction ranges)
+* 9: High Efficiency Whole-Home Electrification + Basic Enclosure Package (1 + 4 + 6 + heat pump dryers + induction ranges)
+
+**RAStock (Simulated by RA)**
+
+* 11.05: Medium-Efficiency Heat Pumps (SEER 18, 10 HSPF HERS Sizing) with Electric Backup, No Setpoint Setback
+    
+    * Details: HVAC Heating Efficiency = ‘ASHP, SEER 18, 10 HSPF' if HVAC Has Ducts, otherwise 'ASHP, SEER 18, 10.5 HSPF’. This then gets transformed as described [here](https://www.notion.so/Features-Upgrades-c8239f52a100427fbf445878663d7135?pvs=21). 
+    
+        `heat_pump_sizing_methodology`=HERS
+        
+        `cooling_setpoint_offset_magnitude_degrees_f` = 0
+        
+        `heating_setpoint_offset_magnitude_degrees_f` = 0
+        
+
+* 13.01: Medium-Efficiency Heat Pumps (SEER 18, 10 HSPF HERS Sizing) with Electric Backup, No Setpoint Setback + Basic Enclosure Package (1 + 11.05)
 
 Note that while we have implemented the logic for heat pump dryers and induction ranges as standalone upgrades, we have chosen to not use these in training due to terrible performance on predicting these tiny savings values, particularly compared to the good performance of the benchmark on these low variance end uses.
