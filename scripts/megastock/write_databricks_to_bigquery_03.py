@@ -23,11 +23,6 @@
 
 # COMMAND ----------
 
-# get number of samples to use
-N_SAMPLE_TAG = dbutils.widgets.get("n_sample_tag").lower()
-
-# COMMAND ----------
-
 from itertools import chain
 from pathlib import Path
 
@@ -42,7 +37,7 @@ from src.utils.data_io import read_json
 # COMMAND ----------
 
 # get number of samples to use
-N_SAMPLE_TAG = dbutils.widgets.get("n_sample_tag")
+N_SAMPLE_TAG = dbutils.widgets.get("n_sample_tag").lower()
 
 # COMMAND ----------
 
