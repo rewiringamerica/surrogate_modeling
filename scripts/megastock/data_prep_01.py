@@ -22,7 +22,7 @@ from src import feature_utils
 # COMMAND ----------
 
 # get number of samples to use
-N_SAMPLE_TAG = dbutils.widgets.get("n_sample_tag")
+N_SAMPLE_TAG = dbutils.widgets.get("n_sample_tag").lower()
 
 # COMMAND ----------
 
@@ -200,7 +200,7 @@ metadata_2022_format = process_raw_to_match_2022format(RESSTOCK_SAMPLED_DATA_PAT
 
 # COMMAND ----------
 
-# metadata_2022_format.count()  # just under expected number since buildngs in HI got dropped
+metadata_2022_format.count()  # just under expected number since buildngs in HI got dropped
 
 # COMMAND ----------
 
@@ -219,5 +219,6 @@ building_metadata = feature_utils.clean_building_metadata(metadata_2022_format)
 
 # DBTITLE 1,write out sampled building metadata
 table_name = f"ml.megastock.building_metadata_{N_SAMPLE_TAG}_{CURRENT_VERSION_NUM}"
+print(table_name)
 building_metadata.write.saveAsTable(table_name, mode="overwrite", overwriteSchema=True)
 spark.sql(f"OPTIMIZE {table_name}")

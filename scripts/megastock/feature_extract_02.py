@@ -15,7 +15,7 @@ from src import feature_utils, versioning
 # COMMAND ----------
 
 # get number of samples to use
-N_SAMPLE_TAG = dbutils.widgets.get("n_sample_tag")
+N_SAMPLE_TAG = dbutils.widgets.get("n_sample_tag").lower()
 
 # COMMAND ----------
 
@@ -84,6 +84,7 @@ fe = FeatureEngineeringClient()
 
 # DBTITLE 1,Write out building metadata feature store
 table_name = f"ml.megastock.building_features_{N_SAMPLE_TAG}_{CURRENT_VERSION_NUM}"
+print(table_name)
 fe.create_table(
     name=table_name,
     primary_keys=["building_id", "upgrade_id", "weather_file_city"],

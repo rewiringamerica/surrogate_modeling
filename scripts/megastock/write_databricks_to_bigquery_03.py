@@ -23,7 +23,8 @@
 
 # COMMAND ----------
 
-dbutils.widgets.text("n_sample_tag", "10k")
+# get number of samples to use
+N_SAMPLE_TAG = dbutils.widgets.get("n_sample_tag").lower()
 
 # COMMAND ----------
 
