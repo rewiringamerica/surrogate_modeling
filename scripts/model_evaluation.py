@@ -453,8 +453,9 @@ metrics_by_upgrade_type = metrics_by_upgrade_type_pd.sort_values(["Upgrade ID", 
 
 # DBTITLE 1,Write results to csv
 if not DEBUG:
+    # write to gcs-- can't write locally in a job so can copy it to the repo later if desired
     metrics_by_upgrade_type.to_csv(
-        LOCAL_ARTIFACT_PATH / CURRENT_VERSION_NUM / "metrics_by_upgrade_type.csv",
+        str(GCS_ARTIFACT_PATH / CURRENT_VERSION_NUM / "metrics_by_upgrade_type.csv"),
         index=False
     )
 
