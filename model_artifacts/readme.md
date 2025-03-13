@@ -16,7 +16,7 @@ model_artifacts/
 ```
 
 ## Versioning
-- Each subdirectory corresponds to a specific model version (e.g., `01_00_00`).
+- Each subdirectory corresponds to a specific model version (e.g., `01_00_00`), which correspond to the poetry version of this repo package, as in `pyproject.toml`.
 - The versioning follows `major_minor_patch` format.
 - Artifacts are stored in Databricks and synchronized here for tracking.
 
