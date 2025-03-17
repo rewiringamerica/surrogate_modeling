@@ -6,7 +6,7 @@
 # MAGIC
 # MAGIC ### Process
 # MAGIC * Extract and lightly preprocess various ResStock data
-# MAGIC     1. building metadata: read in 2022.1 and 2024.2 baseline metadata, lightly process, align schemas and union
+# MAGIC     1. building metadata: read in 2022.1 and 2024.2 baseline metadata, lightly process, align schemas to 2024.2 and union
 # MAGIC     2. annual outputs: read in lightly processed ResStock and RAStock independently and them combine 
 # MAGIC     3. hourly weather data
 # MAGIC * Write each to Delta Table
@@ -24,8 +24,8 @@
 # MAGIC
 # MAGIC ##### Outputs:
 # MAGIC Outputs are written based on the current version number of this repo in `pyproject.toml`.
-# MAGIC - `ml.surrogate_model.building_metadata_{CURRENT_VERSION_NUM}`: Building metadata indexed by (building_id)
-# MAGIC - `ml.surrogate_model.building_simulation_outputs_annual_{CURRENT_VERSION_NUM}`: Annual building model simulation outputs indexed by (building_id, upgrade_id)
+# MAGIC - `ml.surrogate_model.building_metadata_{CURRENT_VERSION_NUM}`: Combined 2024.2 and 2022.1 building metadata aligned to 2024.2 metadata and indexed by (building_id, building_set)
+# MAGIC - `ml.surrogate_model.building_simulation_outputs_annual_{CURRENT_VERSION_NUM}`: Annual building model simulation outputs for all upgrades (ReStock and RAStock) indexed by (building_id, upgrade_id, building_set)
 # MAGIC - `ml.surrogate_model.weather_data_hourly_{CURRENT_VERSION_NUM}`: Hourly weather data indexed by (weather_file_city, hour datetime)
 
 # COMMAND ----------
