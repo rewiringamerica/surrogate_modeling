@@ -6,8 +6,8 @@
 # MAGIC
 # MAGIC ### Process
 # MAGIC * Extract and lightly preprocess various ResStock data
-# MAGIC     1. building metadata
-# MAGIC     2. annual outputs: read in lightly processed ResStock and RAStock independently and them combine
+# MAGIC     1. building metadata: read in 2022.1 and 2024.2 baseline metadata, lightly process, align schemas and union
+# MAGIC     2. annual outputs: read in lightly processed ResStock and RAStock independently and them combine 
 # MAGIC     3. hourly weather data
 # MAGIC * Write each to Delta Table
 # MAGIC
@@ -15,8 +15,8 @@
 # MAGIC
 # MAGIC ##### Inputs:
 # MAGIC Let `RESSTOCK_PATH = gs://the-cube/data/raw/nrel/end_use_load_profiles/2022/resstock_tmy3_release_1`
-# MAGIC - `RESSTOCK_PATH/metadata_and_annual_results/national/parquet/baseline_metadata_only.parquet` : Parquet file of building metadata (pkey: building id)
-# MAGIC - 
+# MAGIC - `RESSTOCK_PATH/metadata_and_annual_results/national/parquet/baseline_metadata_only.parquet` : Parquet file of ResStock 2022.1 baseline building metadata (pkey: building id)
+# MAGIC - `gs://the-cube/data/raw/bsb_sims/nrel_2024_2_baseline/baseline.parquet"` : Parquet file of ResStock 2024.2 baseline building metadata (pkey: building id)
 # MAGIC - `building_model.resstock_outputs_annual` : Lightly processed tables of outputs for ResStock 2022.1 baseline and upgrades (pkey: building id, upgrade_id, building set) 
 # MAGIC - `building_model.resstock_ra_outputs_annual` : Lightly processed tables of outputs for RA Stock upgrades (pkey: building id, upgrade_id, building set) 
 # MAGIC - `RESSTOCK_PATH/weather/state=*/*_TMY3.csv`: 3107 weather csvs for each county (hour [8760] x weather variable).
