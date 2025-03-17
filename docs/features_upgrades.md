@@ -47,7 +47,9 @@ Clothes Washer:
 
 Cooking Range:
 
-`cooking_range_fuel` (str): Fuel type of the cooking range.
+`cooking_range_fuel` (str): Fuel type of the cooking range, where both "Electric Induction" and  "Electric Resistance" are mapped to "Electricity". 
+
+`has_induction_range` (bool) : Indicator for whether or not the range is induction.
 
 Cooling Setpoint:
 
@@ -137,6 +139,10 @@ HVAC Cooling Partial Space Conditioning:
 
 `cooled_space_percentage` (double): Percentage of living space that is air conditioned. Percentage is divided by 100.
 
+HVAC Cooling Type:
+
+`has_ducted_cooling` (bool):  Indicator for whether the cooling system is ducted, which would include 'Central AC' and 'Ducted Heat Pump'.
+
 HVAC Has Ducts:
 
 `has_ducts` (bool): Indicator for whether the unit has ducts. Note that technically this is a deterministic feature of Duct Location, but since Duct Location was not present in 2022.1, we keep this slightly redudant feature just in case. 
@@ -149,7 +155,7 @@ HVAC Heating Efficiency:
 
 HVAC Heating Type:
 
-`has_ductless_heating` (bool):  Indicator for whether the heating is ductless. This simulation feature contains information on whether or not the heating system is a heat pump, but this is already captured by `heating_appliance_type` . Importantly, this variable is not fully captured by `has_ducts` since there are units have have ducts but still have a ductless heating system.
+`has_ducted_heating` (bool):  Indicator for whether the heating system is ducted. This simulation feature contains information on whether or not the heating system is a heat pump, but this is already captured by `heating_appliance_type`. Importantly, this variable is not fully captured by `has_ducts` since there are units have have ducts but still have a ductless heating system.
 
 Infiltration:
 
