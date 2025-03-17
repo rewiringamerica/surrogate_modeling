@@ -21,6 +21,7 @@ from databricks.sdk.runtime import spark, udf
 from src.utils import data_cleaning
 
 from dmlutils import constants
+from dmlutils.building_upgrades.upgrades import Upgrade, upgrades_df, get_upgrade_id
 from dmlutils.surrogate_model.apply_upgrades import (
     extract_r_value,
     extract_cooling_efficiency,
@@ -31,9 +32,16 @@ from dmlutils.surrogate_model.apply_upgrades import (
 )
 
 #  -- constants -- #
-# TODO: put this in some kind of shared config that can be used across repos
-# TODO: pull from enums when they are ready
-SUPPORTED_UPGRADES = [0.0, 1.0, 3.0, 4.0, 6.0, 9.0, 11.05, 13.01]
+SUPPORTED_UPGRADES = [
+    Upgrade.BASELINE_2022_1.value,
+    Upgrade.BASIC_ENCLOSURE.value,
+    Upgrade.MIN_EFF_HP_ELEC_BACKUP.value,
+    Upgrade.HIGH_EFF_HP_ELEC_BACKUP.value,
+    Upgrade.HP_WATER_HEATER.value,
+    Upgrade.WHOLE_HOME_ELECTRIC_MAX_EFF_BASIC_ENCLOSURE.value,
+    Upgrade.MED_EFF_HP_HERS_SIZING_NO_SETBACK_2022_1.value,
+    Upgrade.MED_EFF_HP_HERS_SIZING_NO_SETBACK_BASIC_ENCLOSURE.value,
+]
 
 # mapping of window description to ufactor and shgc (solar heat gain coefficient) pulled from options.ts
 WINDOW_DESCRIPTION_TO_SPEC = spark.createDataFrame(
@@ -499,7 +507,6 @@ def transform_building_features(building_metadata_table_name) -> DataFrame:
             "heating_setpoint_offset_magnitude_degrees_f",
             extract_temp(F.col("heating_setpoint_offset_magnitude")),
         )
-        #TODO: add a had_ducted_cooling col
         .withColumn(  # note there are cases where hvac_has_ducts = True, but heating system is still ductless
             "has_ducted_heating",
             F.col("hvac_heating_type").isin("Ducted Heat Pump", "Ducted Heating"),
@@ -529,6 +536,10 @@ def transform_building_features(building_metadata_table_name) -> DataFrame:
             "cooling_setpoint_offset_magnitude_degrees_f",
             extract_temp(F.col("cooling_setpoint_offset_magnitude")),
         )
+        .withColumn(  # note there are cases where hvac_has_ducts = True, but cooling system is still ductless
+            "has_ducted_cooling",
+            F.col("hvac_cooling_type").isin(["Central AC", "Ducted Heat Pump"]),
+        )
         # -- water heating tranformations -- #
         .transform(add_water_heater_features)
         .withColumn(
@@ -549,8 +560,8 @@ def transform_building_features(building_metadata_table_name) -> DataFrame:
         .withColumn("has_water_heater_in_unit", yes_no_mapping[F.col("water_heater_in_unit")])
         # -- duct/infiltration tranformations -- #
         .withColumn("has_ducts", yes_no_mapping[F.col("hvac_has_ducts")])
-        .withColumn("duct_insulation_r_value", extract_r_valueUDF(F.col("ducts"), F.lit(True)))
-        .withColumn("duct_leakage_percentage", extract_percentage(F.col("ducts")))
+        .withColumn("duct_insulation_r_value", extract_r_valueUDF(F.col("duct_leakage_and_insulation"), F.lit(True)))
+        .withColumn("duct_leakage_percentage", extract_percentage(F.col("duct_leakage_and_insulation")))
         .withColumn("infiltration_ach50", F.split(F.col("infiltration"), " ")[0].cast("int"))
         # -- insulation tranformations -- #
         .withColumn("wall_material", F.split(F.col("insulation_wall"), ",")[0])
@@ -602,9 +613,13 @@ def transform_building_features(building_metadata_table_name) -> DataFrame:
         )
         # -- other appliances -- #
         .withColumn("has_ceiling_fan", F.col("ceiling_fan") != "None")
-        .withColumn("clothes_dryer_fuel", F.split(F.col("clothes_dryer"), ",")[0])
-        .withColumn("clothes_washer_efficiency", F.split(F.col("clothes_washer"), ",")[0])
-        .withColumn("cooking_range_fuel", F.split(F.col("cooking_range"), ",")[0])
+        .withColumn("clothes_dryer_fuel", F.col("clothes_dryer"))
+        .withColumn("has_induction_range", F.col("cooking_range") == "Electric Induction")
+        .withColumn(
+            "cooking_range_fuel",
+            F.regexp_replace("cooking_range", " Induction| Resistance", ""),
+        )
+
         .withColumn(
             "dishwasher_efficiency_kwh",
             F.coalesce(F.split(F.col("dishwasher"), " ")[0].cast("int"), F.lit(9999)),
@@ -641,11 +656,19 @@ def transform_building_features(building_metadata_table_name) -> DataFrame:
             F.when(F.col("occupants") == "10+", 11).otherwise(F.col("occupants").cast("int")),
         )
         .withColumn("vintage", extract_vintage(F.col("vintage")))
-        
+        # align names for electricity and natural gas across applainces
+        .replace(
+            {
+                "Gas": "Natural Gas",
+                "Electric": "Electricity",
+            },
+            subset=APPLIANCE_FUEL_COLS,
+        )
         # subset to all possible features of interest
         .select(
             # primary key
             "building_id",
+            "building_set",
             # foreign key
             "weather_file_city",
             # structure
@@ -675,22 +698,25 @@ def transform_building_features(building_metadata_table_name) -> DataFrame:
             "cooling_efficiency_eer",
             "cooling_setpoint_degrees_f",
             "cooling_setpoint_offset_magnitude_degrees_f",
+            "has_ducted_cooling",
             # water heater
-            "water_heater_efficiency",  # only used for applying upgrades, gets dropped later
+            "water_heater_efficiency",  # only used for applying upgrades
             "water_heater_fuel",
             "water_heater_type",
             "water_heater_tank_volume_gal",
             "water_heater_efficiency_ef",
             "water_heater_recovery_efficiency_ef",
             "has_water_heater_in_unit",
+            "water_heater_location",
             # ducts
-            "ducts",  # only used for applying upgrades, gets dropped later
+            "duct_leakage_and_insulation",  # only used for applying upgrades
             "has_ducts",
+            "duct_location",
             "duct_insulation_r_value",
             "duct_leakage_percentage",
             "infiltration_ach50",
             # insulalation
-            "insulation_wall",  # only used for applying upgrades, gets dropped later
+            "insulation_wall",  # only used for applying upgrades
             "wall_material",
             "insulation_wall_r_value",
             "insulation_foundation_wall_r_value",
@@ -708,8 +734,9 @@ def transform_building_features(building_metadata_table_name) -> DataFrame:
             # other appliances
             "has_ceiling_fan",
             "clothes_dryer_fuel",
-            "clothes_washer_efficiency",
+            F.col("clothes_washer").alias("clothes_washer_efficiency"),
             "cooking_range_fuel",
+            "has_induction_range",
             "dishwasher_efficiency_kwh",
             "lighting_efficiency",
             "refrigerator_extra_efficiency_ef",
@@ -771,6 +798,7 @@ def upgrade_to_hp(
             ),
         )
         .withColumn("has_ducted_heating", F.col("has_ducts"))
+        .withColumn("has_ducted_cooling", F.col("has_ducts"))
         .withColumn(
             "cooling_efficiency_eer",
             F.when(
@@ -798,15 +826,14 @@ def apply_upgrades(baseline_building_features: DataFrame, upgrade_id: int) -> Da
     Returns:
           DataFrame: building_features, augmented to reflect the upgrade.
     """
-    # TODO: update to use enums when they are ready
+    # TODO: update this function to use enum names instead of upgrade ids
     # Raise an error if an unsupported upgrade ID is provided
-    if upgrade_id not in SUPPORTED_UPGRADES:
+    if upgrade_id not in map(get_upgrade_id, SUPPORTED_UPGRADES):
         raise ValueError(f"Upgrade id={upgrade_id} is not yet supported")
 
     upgrade_building_features = (
         baseline_building_features.withColumn("upgrade_id", F.lit(upgrade_id).cast("double"))
         .withColumn("has_heat_pump_dryer", F.lit(False))
-        .withColumn("has_induction_range", F.lit(False))
     )
 
     if upgrade_id == 0:  # baseline: return as is
@@ -822,7 +849,7 @@ def apply_upgrades(baseline_building_features: DataFrame, upgrade_id: int) -> Da
             .withColumn(
                 "insulation_ceiling_r_value",
                 F.when(
-                    (F.col("attic_type") == "Vented Attic")
+                    (F.col("attic_type") == "Vented Attic") #TODO: check if new "Unvented Attic" also counts here
                     & (F.col("insulation_ceiling_r_value") <= F.col("existing_insulation_max_threshold")),
                     F.col("insulation_upgrade"),
                 ).otherwise(F.col("insulation_ceiling_r_value")),
@@ -842,7 +869,10 @@ def apply_upgrades(baseline_building_features: DataFrame, upgrade_id: int) -> Da
                 F.when(
                     (
                         (F.col("has_ducts"))
-                        & ~(F.col("ducts").isin(["0% Leakage, Uninsulated", "30% Leakage, Uninsulated"]))
+                        & ~(F.col("duct_leakage_and_insulation").isin([
+                            "0% Leakage to Outside, Uninsulated",
+                            "30% Leakage to Outside, Uninsulated"
+                            ]))
                     ),
                     F.least(F.col("duct_leakage_percentage"), F.lit(0.1)),
                 ).otherwise(F.col("duct_leakage_percentage")),
@@ -852,7 +882,10 @@ def apply_upgrades(baseline_building_features: DataFrame, upgrade_id: int) -> Da
                 F.when(
                     (
                         (F.col("has_ducts"))
-                        & ~(F.col("ducts").isin(["0% Leakage, Uninsulated", "30% Leakage, Uninsulated"]))
+                        & ~(F.col("duct_leakage_and_insulation").isin([
+                            "0% Leakage to Outside, Uninsulated",
+                            "30% Leakage to Outside, Uninsulated"
+                            ]))
                     ),
                     F.greatest(F.col("duct_insulation_r_value"), F.lit(8.0)),
                 ).otherwise(F.col("duct_insulation_r_value")),
@@ -927,13 +960,7 @@ def apply_upgrades(baseline_building_features: DataFrame, upgrade_id: int) -> Da
         )
         .withColumn("has_fuel_oil_appliance", F.array_contains("appliance_fuel_arr", "Fuel Oil"))
         .withColumn("has_propane_appliance", F.array_contains("appliance_fuel_arr", "Propane"))
-        .drop(  # drop columns that were only used for upgrade lookups
-            "insulation_wall",
-            "ducts",
-            "water_heater_efficiency",
-            "appliance_fuel_arr",
-            "gas_misc_appliance_indicator_arr",
-        )
+        .drop("appliance_fuel_arr","gas_misc_appliance_indicator_arr")
     )
 
     return upgrade_building_features
@@ -949,20 +976,29 @@ def build_upgrade_metadata_table(baseline_building_features: DataFrame) -> DataF
 
     Args:
         building_features_baseline (DataFrame): A Spark DataFrame containing baseline building metadata
-          for a set of building samples.
+          for a set of building samples, with the primary key (building_id, building_set) 
     Returns:
         DataFrame: A Spark DataFrame containing building metadata for each upgrade including baseline.
     """
-    return reduce(
-        DataFrame.unionByName,
-        [
-            apply_upgrades(
-                baseline_building_features=baseline_building_features,
-                upgrade_id=upgrade,
-            )
-            for upgrade in SUPPORTED_UPGRADES
-        ],
+    # Get names, upgrade ids and name of baseline building set for each upgrade
+    upgrade_rows = (
+        upgrades_df(spark)
+        .where(F.col('name').isin(SUPPORTED_UPGRADES))
+        .select('name', 'upgrade_id', 'building_set')
+        .collect()
     )
+
+    # Iterate through each and apply the upgrade logic and add the name of the upgrade
+    upgraded_dfs = []
+    for row in upgrade_rows:
+        upgrade_name, upgrade_id, building_set = row['name'], float(row['upgrade_id']), row['building_set']
+        df = apply_upgrades(
+                    baseline_building_features=baseline_building_features.where(F.col('building_set') == building_set),
+                    upgrade_id=upgrade_id,
+        ).withColumn('upgrade_name', F.lit(upgrade_name))
+        upgraded_dfs.append(df)
+    # Union into one tables
+    return reduce(DataFrame.unionByName,  upgraded_dfs)
 
 
 def drop_non_upgraded_samples(building_features: DataFrame, check_applicability_logic=False):
