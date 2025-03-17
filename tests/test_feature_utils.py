@@ -56,8 +56,10 @@ class ApplyUpgrades(unittest.TestCase):
     )
     def test_apply_upgrades(self):
         """Test feautre upgrade tranformations match expected output."""
-        baseline_features = read_test_baseline_inputs()
-        df_out_expected = read_test_upgraded_outputs()
+        # baseline_features = read_test_baseline_inputs()
+        # df_out_expected = read_test_upgraded_outputs()
+        baseline_features = pd.read_csv('test_baseline_features_input.csv')
+        df_out_expected = pd.read_csv('test_upgraded_features.csv')
 
         # apply upgrades to baseline features by upgrade group
         df_out = (

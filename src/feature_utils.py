@@ -700,7 +700,7 @@ def transform_building_features(building_metadata_table_name) -> DataFrame:
             "cooling_setpoint_offset_magnitude_degrees_f",
             "has_ducted_cooling",
             # water heater
-            "water_heater_efficiency",  # only used for applying upgrades
+            "water_heater_efficiency",  # only used for applying upgrades, gets dropped later
             "water_heater_fuel",
             "water_heater_type",
             "water_heater_tank_volume_gal",
@@ -709,14 +709,14 @@ def transform_building_features(building_metadata_table_name) -> DataFrame:
             "has_water_heater_in_unit",
             "water_heater_location",
             # ducts
-            "duct_leakage_and_insulation",  # only used for applying upgrades
+            "duct_leakage_and_insulation",  # only used for applying upgrades, gets dropped later
             "has_ducts",
             "duct_location",
             "duct_insulation_r_value",
             "duct_leakage_percentage",
             "infiltration_ach50",
             # insulalation
-            "insulation_wall",  # only used for applying upgrades
+            "insulation_wall",  # only used for applying upgrades, gets dropped later
             "wall_material",
             "insulation_wall_r_value",
             "insulation_foundation_wall_r_value",
@@ -960,7 +960,13 @@ def apply_upgrades(baseline_building_features: DataFrame, upgrade_id: int) -> Da
         )
         .withColumn("has_fuel_oil_appliance", F.array_contains("appliance_fuel_arr", "Fuel Oil"))
         .withColumn("has_propane_appliance", F.array_contains("appliance_fuel_arr", "Propane"))
-        .drop("appliance_fuel_arr","gas_misc_appliance_indicator_arr")
+        .drop(  # drop columns that were only used for upgrade lookups
+            "insulation_wall",
+            "ducts",
+            "water_heater_efficiency",
+            "appliance_fuel_arr",
+            "gas_misc_appliance_indicator_arr",
+        )
     )
 
     return upgrade_building_features
@@ -1001,7 +1007,7 @@ def build_upgrade_metadata_table(baseline_building_features: DataFrame) -> DataF
     return reduce(DataFrame.unionByName,  upgraded_dfs)
 
 
-def drop_non_upgraded_samples(building_features: DataFrame, check_applicability_logic=False):
+def drop_non_upgraded_samples(building_features: DataFrame, check_applicability_logic_against_version=None):
     """
     Drop upgrade records that had no changed features and therefore weren't upgraded.
 
@@ -1011,9 +1017,9 @@ def drop_non_upgraded_samples(building_features: DataFrame, check_applicability_
 
     Args:
         building_metadata_upgrades (DataFrame): The DataFrame containing building metadata upgrades.
-        check_applicability_logic (bool, optional): Flag indicating whether to check whether the applicabilitity logic
+        check_applicability_logic_against_version (str, optional): If passed, check whether the applicabilitity logic
                 matches between the metadata (i.e, non-unique set of metadata) the applicability flag output by the
-                simulation. Should only be passed if running on Resstock EUSS data. Defaults to False.
+                simulation for the given version number. Should only be passed if running on Resstock EUSS data. Defaults to None.
 
     Returns:
         DataFrame: The DataFrame with non-upgraded samples dropped.
@@ -1023,7 +1029,7 @@ def drop_non_upgraded_samples(building_features: DataFrame, check_applicability_
         does not match between the features and targets. Upgrade 13.01 is ignored.
 
     """
-    partition_cols = building_features.drop("upgrade_id").columns
+    partition_cols = building_features.drop("upgrade_id", "upgrade_name").columns
     w = Window.partitionBy(partition_cols).orderBy(F.asc("upgrade_id"))
 
     # partition by features-- if more them one row is in the partition,
@@ -1035,12 +1041,12 @@ def drop_non_upgraded_samples(building_features: DataFrame, check_applicability_
         .drop("rank")
     )
 
-    if check_applicability_logic:
+    if check_applicability_logic_against_version is not None:
         # test that the applicability logic matches between the features and targets
         # we ignore 13.01 since they are all flagged as True in the output table
         # even though many do not have the insulation upgrade applied and are therefore identical to 11.05
         applicability_compare = building_features_applicability_flag.alias("features").join(
-            spark.table("ml.surrogate_model.building_simulation_outputs_annual")
+            spark.table(f"ml.surrogate_model.building_simulation_outputs_annual_{check_applicability_logic_against_version}")
             .select("upgrade_id", "building_id", "applicability")
             .alias("targets"),
             on=["upgrade_id", "building_id"],
@@ -1053,8 +1059,8 @@ def drop_non_upgraded_samples(building_features: DataFrame, check_applicability_
         if mismatch_count > 0:
             (
                 applicability_compare.where(F.col("features.applicability") != F.col("targets.applicability"))
-                .withColumnRenamed("features.applicability", "features_applicability")
-                .withColumnRenamed("targets.applicability", "targets_applicability")
+                .withColumnRenamed("`features.applicability`", "features_applicability")
+                .withColumnRenamed("`targets.applicability`", "targets_applicability")
             ).display()
             raise ValueError(
                 f"{mismatch_count} cases where applicability based on metadata and simulation applicability flag\

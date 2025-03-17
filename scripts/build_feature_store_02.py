@@ -6,7 +6,7 @@
 # MAGIC
 # MAGIC ### Process
 # MAGIC * Transform building metadata into features and subset to features of interest
-# MAGIC * Apply upgrade logic to building metadata features
+# MAGIC * Apply upgrade logic to the relevant building metadata building set for each supported upgrade
 # MAGIC * Pivot weather data into wide vector format with pkey `weather_file_city` and a 8760-length timeseries vector for each weather feature column
 # MAGIC * Write building metadata features and weather features to feature store tables
 # MAGIC
@@ -84,8 +84,12 @@ building_metadata_upgrades = feature_utils.build_upgrade_metadata_table(baseline
 # COMMAND ----------
 
 # DBTITLE 1,Drop rows where upgrade was not applied
+# get most recent table version for annual outputs to compare against
+outputs_most_recent_version_num = versioning.get_most_recent_table_version(
+    "ml.surrogate_model.building_simulation_outputs_annual",
+    return_version_number_only=True)
 building_metadata_applicable_upgrades = feature_utils.drop_non_upgraded_samples(
-    building_metadata_upgrades, check_applicability_logic=True
+    building_metadata_upgrades, check_applicability_logic_against_version=outputs_most_recent_version_num
 )
 
 # COMMAND ----------
@@ -198,7 +202,7 @@ climate_zone_to_index = {label: i for i, label in enumerate(climate_zone_indexer
 data_io.write_json(
     GCS_ARTIFACT_PATH / CURRENT_VERSION_NUM / "mappings.json",
     data={"climate_zone_to_index": climate_zone_to_index, "weather_city_to_index": weather_city_to_index},
-    overwrite=False,
+    overwrite=True,
 )
 
 # COMMAND ----------
@@ -237,7 +241,7 @@ fe = FeatureEngineeringClient()
 
 # DBTITLE 1,Write out building metadata feature store
 table_name = f"ml.surrogate_model.building_features_{CURRENT_VERSION_NUM}"
-
+spark.sql(f"DROP TABLE {table_name}")
 fe.create_table(
     name=table_name,
     primary_keys=["building_id", "upgrade_id", "weather_file_city"],

@@ -74,7 +74,6 @@
         "n_occupants",
         "vintage",
         "has_heat_pump_dryer",
-        "has_induction_range",
         "has_natural_gas_appliance",
         "has_fuel_oil_appliance",
         "has_propane_appliance"
