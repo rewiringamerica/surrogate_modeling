@@ -59,7 +59,7 @@ from src import feature_utils, versioning
 
 # MAGIC %md #### Baseline
 # MAGIC
-# MAGIC Refer to [Notion Page](https://www.notion.so/rewiringamerica/Features-Upgrades-c8239f52a100427fbf445878663d7135?pvs=4#086a1d050b8c4094ad10e2275324668b) and [options.tsv](https://github.com/NREL/resstock/blob/run/euss/resources/options_lookup.tsv).
+# MAGIC Refer to `docs/features_upgrades.md` and [options.tsv](https://github.com/NREL/resstock/blob/run/euss/resources/options_lookup.tsv).
 # MAGIC
 
 # COMMAND ----------
@@ -74,7 +74,7 @@ baseline_building_metadata_transformed = feature_utils.transform_building_featur
 
 # MAGIC %md #### Upgrades
 # MAGIC
-# MAGIC Refer to [Notion Page](https://www.notion.so/rewiringamerica/Features-Upgrades-c8239f52a100427fbf445878663d7135?pvs=4#3141dfeeb07144da9fe983b2db13b6d3), [ResStock docs](https://oedi-data-lake.s3.amazonaws.com/nrel-pds-building-stock/end-use-load-profiles-for-us-building-stock/2022/EUSS_ResRound1_Technical_Documentation.pdf), and [upgrade.yml](https://github.com/NREL/resstock/blob/run/euss/EUSS-project-file_2018_10k.yml).
+# MAGIC Refer to `docs/features_upgrades.md`, [ResStock docs](https://oedi-data-lake.s3.amazonaws.com/nrel-pds-building-stock/end-use-load-profiles-for-us-building-stock/2022/EUSS_ResRound1_Technical_Documentation.pdf), and [upgrade.yml](https://github.com/NREL/resstock/blob/run/euss/EUSS-project-file_2018_10k.yml).
 
 # COMMAND ----------
 

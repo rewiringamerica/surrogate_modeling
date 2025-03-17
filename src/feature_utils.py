@@ -91,6 +91,9 @@ def clean_building_metadata(raw_resstock_metadata_df: DataFrame) -> DataFrame:
             "weight",
             "applicability",
             "upgrade",
+            "out__",
+            "utility_bill",
+            "metadata_index"
         ],
     )
 
@@ -496,6 +499,7 @@ def transform_building_features(building_metadata_table_name) -> DataFrame:
             "heating_setpoint_offset_magnitude_degrees_f",
             extract_temp(F.col("heating_setpoint_offset_magnitude")),
         )
+        #TODO: add a had_ducted_cooling col
         .withColumn(  # note there are cases where hvac_has_ducts = True, but heating system is still ductless
             "has_ducted_heating",
             F.col("hvac_heating_type").isin("Ducted Heat Pump", "Ducted Heating"),
@@ -637,15 +641,7 @@ def transform_building_features(building_metadata_table_name) -> DataFrame:
             F.when(F.col("occupants") == "10+", 11).otherwise(F.col("occupants").cast("int")),
         )
         .withColumn("vintage", extract_vintage(F.col("vintage")))
-        # align names for methane gas across applainces
-        .replace(
-            {
-                "Natural Gas": "Methane Gas",
-                "Gas": "Methane Gas",
-                "Electric": "Electricity",
-            },
-            subset=APPLIANCE_FUEL_COLS,
-        )
+        
         # subset to all possible features of interest
         .select(
             # primary key
@@ -923,9 +919,9 @@ def apply_upgrades(baseline_building_features: DataFrame, upgrade_id: int) -> Da
         upgrade_building_features.withColumn("appliance_fuel_arr", F.array(APPLIANCE_FUEL_COLS))
         .withColumn("gas_misc_appliance_indicator_arr", F.array(GAS_APPLIANCE_INDICATOR_COLS))
         .withColumn(
-            "has_methane_gas_appliance",
+            "has_natural_gas_appliance",
             (
-                F.array_contains("appliance_fuel_arr", "Methane Gas")
+                F.array_contains("appliance_fuel_arr", "Natural Gas")
                 | F.array_contains("gas_misc_appliance_indicator_arr", True)
             ),
         )

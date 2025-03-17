@@ -433,7 +433,7 @@ metrics_by_upgrade_type_pd["Type"] = pd.Categorical(
     categories=[
         "Electricity",
         "Electric Resistance",
-        "Methane Gas",
+        "Natural Gas",
         "Propane",
         "Fuel Oil",
         "No Heating",
@@ -517,7 +517,7 @@ with sns.axes_style("whitegrid"):
         order=[
             "Fuel Oil",
             "Propane",
-            "Methane Gas",
+            "Natural Gas",
             "Electricity",
             "None",
         ],
