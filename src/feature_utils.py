@@ -34,16 +34,19 @@ from dmlutils.surrogate_model.apply_upgrades import (
 #  -- constants -- #
 SUPPORTED_UPGRADES = [
     Upgrade.BASELINE_2022_1.value,
+    Upgrade.BASELINE_2024_2_NO_SETBACK.value,
     Upgrade.BASIC_ENCLOSURE.value,
     Upgrade.MIN_EFF_HP_ELEC_BACKUP.value,
     Upgrade.HIGH_EFF_HP_ELEC_BACKUP.value,
     Upgrade.HP_WATER_HEATER.value,
     Upgrade.WHOLE_HOME_ELECTRIC_MAX_EFF_BASIC_ENCLOSURE.value,
     Upgrade.MED_EFF_HP_HERS_SIZING_NO_SETBACK_2022_1.value,
+    Upgrade.MED_EFF_HP_HERS_SIZING_NO_SETBACK_2024_2.value,
     Upgrade.MED_EFF_HP_HERS_SIZING_NO_SETBACK_BASIC_ENCLOSURE.value,
+    Upgrade.MED_EFF_HP_HERS_SIZING_NO_SETBACK_LIGHT_TOUCH_AIR_SEALING.value
 ]
 
-# mapping of window description to ufactor and shgc (solar heat gain coefficient) pulled from options.ts
+# mapping of window description to ufactor and shgc (solar heat gain coefficient) pulled from options.tsv
 WINDOW_DESCRIPTION_TO_SPEC = spark.createDataFrame(
     [
         ("Double, Clear, Thermal-Break, Air", 0.63, 0.62),
@@ -839,6 +842,13 @@ def apply_upgrades(baseline_building_features: DataFrame, upgrade_id: int) -> Da
     if upgrade_id == 0:  # baseline: return as is
         pass
 
+    if upgrade_id == 0.01:  # baseline with no setbacks
+        upgrade_building_features = (
+            upgrade_building_features
+                .withColumn("cooling_setpoint_offset_magnitude_degrees_f", F.lit(0.0))
+                .withColumn("heating_setpoint_offset_magnitude_degrees_f", F.lit(0.0))
+        )
+
     if upgrade_id in [1, 9, 13.01]:  # basic enclosure
         upgrade_building_features = (
             upgrade_building_features
@@ -899,6 +909,18 @@ def apply_upgrades(baseline_building_features: DataFrame, upgrade_id: int) -> Da
                 ).otherwise(F.col("insulation_wall_r_value")),
             )
         )
+    
+    if upgrade_id == 13.02:  # light touch air sealing
+        upgrade_building_features = (
+            upgrade_building_features
+            # Air leakage reduction if high levels of infiltration
+            .withColumn(
+                "infiltration_ach50",
+                F.when(F.col("infiltration_ach50") >= 10, F.col("infiltration_ach50") * 0.4)
+                .when(F.col("infiltration_ach50") >= 5, F.col("infiltration_ach50") * 0.25)
+                .otherwise(F.col("infiltration_ach50"))
+            )
+        )
 
     if upgrade_id == 3:  # heat pump: min efficiency, electric backup
         upgrade_building_features = upgrade_building_features.transform(
@@ -911,7 +933,7 @@ def apply_upgrades(baseline_building_features: DataFrame, upgrade_id: int) -> Da
             "Heat Pump, SEER 24, 13 HSPF",
             "Heat Pump, SEER 29.3, 14 HSPF",
         )
-    if upgrade_id in [11.05, 13.01]:
+    if upgrade_id in [11.05, 11.07, 13.01, 13.02]:
         upgrade_building_features = (
             upgrade_building_features.transform(
                 upgrade_to_hp,
@@ -1053,7 +1075,7 @@ def drop_non_upgraded_samples(building_features: DataFrame, check_applicability_
         )
         mismatch_count = (
             applicability_compare.where(F.col("features.applicability") != F.col("targets.applicability"))
-            .where(F.col("upgrade_id") != 13.01)
+            .where(~F.col("upgrade_id").isin([13.01, 11.02]))
             .count()
         )
         if mismatch_count > 0:

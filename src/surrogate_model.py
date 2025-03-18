@@ -13,9 +13,8 @@ from tensorflow import keras
 from tensorflow.keras import layers, models
 from tensorflow.io import gfile
 
-from src.globals import GCS_ARTIFACT_PATH
+from src.globals import GCS_ARTIFACT_PATH, CURRENT_VERSION_NUM
 from src.datagen import DataGenerator
-from src.versioning import get_poetry_version_no
 
 
 class SurrogateModel:
@@ -55,7 +54,7 @@ class SurrogateModel:
         See class attributes for details on params.
         """
         if name is None:
-            name = get_poetry_version_no()
+            name = CURRENT_VERSION_NUM
         self.name = name
         self.batch_size = batch_size
         self.dtype = dtype
