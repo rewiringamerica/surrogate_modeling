@@ -15,6 +15,7 @@ from tensorflow.io import gfile
 
 from src.globals import GCS_ARTIFACT_PATH, CURRENT_VERSION_NUM
 from src.datagen import DataGenerator
+from src.versioning import get_poetry_version_no
 
 
 class SurrogateModel:

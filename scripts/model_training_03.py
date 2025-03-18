@@ -294,7 +294,7 @@ if not DEBUG:
     # serialize the keras model and save to GCP
     sm.save_keras_model(run_id=run_id)
     # save the features, targets, and upgrades for this training run to GCP for use by dohyo
-    write_json(fpath=GCS_ARTIFACT_PATH / sm.name / "features_targets_upgrades.json", data=DataGenerator.data_params, overwrite=True)
+    write_json(fpath=GCS_ARTIFACT_PATH / sm.name / "features_targets_upgrades.json", data=DataGenerator.data_params)
 
 # COMMAND ----------
 
