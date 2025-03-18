@@ -65,7 +65,8 @@ from src import feature_utils, versioning
 # COMMAND ----------
 
 # DBTITLE 1,Transform building metadata
-# get most recent table version for baseline metadata -- we don't enforce the current version because the code change
+# get most recent table version for baseline metadata -- we don't enforce the current version because the code change in this version
+# may not affect the upstream table
 building_metadata_table_name = versioning.get_most_recent_table_version("ml.surrogate_model.building_metadata")
 print(building_metadata_table_name)
 baseline_building_metadata_transformed = feature_utils.transform_building_features(building_metadata_table_name)
