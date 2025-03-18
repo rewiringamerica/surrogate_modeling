@@ -200,7 +200,7 @@ metadata_2022_format = process_raw_to_match_2022format(RESSTOCK_SAMPLED_DATA_PAT
 
 # COMMAND ----------
 
-metadata_2022_format.count()  # just under expected number since buildngs in HI got dropped
+metadata_2022_format.count()  # just under expected number since buildings in HI got dropped
 
 # COMMAND ----------
 
