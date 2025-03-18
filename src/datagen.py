@@ -51,8 +51,8 @@ class DataGenerator(tf.keras.utils.Sequence):
     building_feature_table_name = get_most_recent_table_version("ml.surrogate_model.building_features")
     weather_feature_table_name = get_most_recent_table_version("ml.surrogate_model.weather_features_hourly")
     target_table_name = get_most_recent_table_version("ml.surrogate_model.building_simulation_outputs_annual")
-    # load the default features, targets, and upgrades to use for this training run based on params stored in current version's config
-    data_params = read_json(LOCAL_ARTIFACT_PATH / CURRENT_VERSION_NUM / "features_targets_upgrades.json")
+    # load the default features, targets, and upgrades to use for this training run based on params stored in current version's config in GCS
+    data_params = read_json(GCS_ARTIFACT_PATH / CURRENT_VERSION_NUM / "features_targets_upgrades.json")
 
     def __init__(
         self,
