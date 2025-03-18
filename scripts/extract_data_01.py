@@ -43,7 +43,7 @@ from pyspark.sql import DataFrame
 import pyspark.sql.functions as F
 
 from src.globals import CURRENT_VERSION_NUM
-from src.utils import bsb, data_cleaning, qa_utils
+from src.utils import data_cleaning, qa_utils
 from src import feature_utils
 
 from dmlutils.building_upgrades.upgrades import BuildingSet
