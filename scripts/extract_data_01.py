@@ -14,7 +14,7 @@
 # MAGIC ### I/Os
 # MAGIC
 # MAGIC ##### Inputs:
-# MAGIC Let `RESSTOCK_PATH = gs://the-cube/data/raw/nrel/end_use_load_profiles/2022/`
+# MAGIC Let `RESSTOCK_PATH = gs://the-cube/data/raw/nrel/end_use_load_profiles/2022/resstock_tmy3_release_1`
 # MAGIC - `RESSTOCK_PATH/metadata_and_annual_results/national/parquet/baseline_metadata_only.parquet` : Parquet file of building metadata (building id [550K] x building metadata variable)
 # MAGIC - `RESSTOCK_PATH/metadata_and_annual_results/national/parquet/*_metadata_and_annual_results.parquet`: Parquet file of annual building model simulation outputs (building id [~550K], upgrade_id [11] x output variable)
 # MAGIC - `RESSTOCK_PATH/weather/state=*/*_TMY3.csv`: 3107 weather csvs for each county (hour [8760] x weather variable).
@@ -22,9 +22,10 @@
 # MAGIC - `gs://the-cube/data/raw/bsb_sims`: Many parquets within this folder holding all the RAStock simulations
 # MAGIC
 # MAGIC ##### Outputs:
-# MAGIC - `ml.surrogate_model.building_metadata`: Building metadata indexed by (building_id)
-# MAGIC - `ml.surrogate_model.building_simulation_outputs_annual`: Annual building model simulation outputs indexed by (building_id, upgrade_id)
-# MAGIC - `ml.surrogate_model.weather_data_hourly`: Hourly weather data indexed by (weather_file_city, hour datetime)
+# MAGIC Outputs are written based on the current version number of this repo in `pyproject.toml`.
+# MAGIC - `ml.surrogate_model.building_metadata_{CURRENT_VERSION_NUM}`: Building metadata indexed by (building_id)
+# MAGIC - `ml.surrogate_model.building_simulation_outputs_annual_{CURRENT_VERSION_NUM}`: Annual building model simulation outputs indexed by (building_id, upgrade_id)
+# MAGIC - `ml.surrogate_model.weather_data_hourly_{CURRENT_VERSION_NUM}`: Hourly weather data indexed by (weather_file_city, hour datetime)
 
 # COMMAND ----------
 
@@ -41,7 +42,8 @@ from cloudpathlib import CloudPath
 from pyspark.sql import DataFrame
 import pyspark.sql.functions as F
 
-from src.dmutils import bsb, data_cleaning
+from src.globals import CURRENT_VERSION_NUM
+from src.utils import bsb, data_cleaning
 from src import feature_utils
 
 # COMMAND ----------
@@ -256,14 +258,14 @@ hourly_weather_data = extract_hourly_weather_data()
 # COMMAND ----------
 
 # DBTITLE 1,Write out building metadata
-table_name = "ml.surrogate_model.building_metadata"
+table_name = f"ml.surrogate_model.building_metadata_{CURRENT_VERSION_NUM}"
 building_metadata.write.saveAsTable(table_name, mode="overwrite", overwriteSchema=True)
 spark.sql(f"OPTIMIZE {table_name}")
 
 # COMMAND ----------
 
 # DBTITLE 1,Write out annual outputs
-table_name = "ml.surrogate_model.building_simulation_outputs_annual"
+table_name = f"ml.surrogate_model.building_simulation_outputs_annual_{CURRENT_VERSION_NUM}"
 annual_outputs.write.saveAsTable(
     table_name, mode="overwrite", overwriteSchema=True, partitionBy=["upgrade_id"]
 )
@@ -272,7 +274,7 @@ spark.sql(f"OPTIMIZE {table_name}")
 # COMMAND ----------
 
 # DBTITLE 1,Write out hourly weather data
-table_name = "ml.surrogate_model.weather_data_hourly"
+table_name = f"ml.surrogate_model.weather_data_hourly_{CURRENT_VERSION_NUM}"
 hourly_weather_data.write.saveAsTable(
     table_name,
     mode="overwrite",

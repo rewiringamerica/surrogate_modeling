@@ -1,4 +1,4 @@
-"""Tests feature upgrade function."""
+"""Tests feature transformation utility functions."""
 
 from functools import reduce
 import os
@@ -12,12 +12,43 @@ from pyspark.sql import DataFrame
 from dmlutils.surrogate_model.apply_upgrades import read_test_baseline_inputs, read_test_upgraded_outputs
 
 if os.environ.get("DATABRICKS_RUNTIME_VERSION", None):
-    sys.path.append("src")
-    from src.feature_utils import apply_upgrades
+    sys.path.append("../src")
+    from feature_utils import apply_upgrades, create_string_indexer
+
+
+class TestCreateStringIndexer(unittest.TestCase):
+    @unittest.skipIf(
+        os.environ.get("DATABRICKS_RUNTIME_VERSION", None) is None,
+        reason="Only runs on databricks cluster.",
+    )
+    def test_string_indexer(self):
+        """Test string indexer function."""
+        # Create a sample DataFrame
+        data = [("apple",), ("banana",), ("cherry",), ("apple",)]
+        columns = ["fruit"]
+        df = spark.createDataFrame(data, columns)
+
+        # Call the function
+        indexer = create_string_indexer(df, "fruit")
+
+        # Transform the DataFrame
+        transformed_df = indexer.transform(df)
+
+        # Collect the results
+        result = transformed_df.select("fruit", "fruit_index").distinct().collect()
+
+        # Check that each unique fruit has a unique index
+        unique_indices = set(row["fruit_index"] for row in result)
+        self.assertEqual(len(unique_indices), 3)  # Should match the number of unique fruit names
+
+        # Ensure that indices are assigned in alphabetical order (due to stringOrderType="alphabetAsc")
+        expected_mapping = {"apple": 0.0, "banana": 1.0, "cherry": 2.0}
+        for row in result:
+            self.assertEqual(row["fruit_index"], expected_mapping[row["fruit"]])
 
 
 class ApplyUpgrades(unittest.TestCase):
-    """Test feautre upgrade tranformations."""
+    """Test feature upgrade tranformations."""
 
     @unittest.skipIf(
         os.environ.get("DATABRICKS_RUNTIME_VERSION", None) is None,

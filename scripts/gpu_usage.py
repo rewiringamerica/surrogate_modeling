@@ -14,7 +14,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 
 # TODO: Probably want to move this to dmlutils.
-import src.dmutils.gpuutils as gpuutils
+import src.utils.gpuutils as gpuutils
 
 # COMMAND ----------
 

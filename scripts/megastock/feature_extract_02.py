@@ -8,12 +8,14 @@ import sys
 from databricks.feature_engineering import FeatureEngineeringClient
 import pyspark.sql.functions as F
 
-from src.dmutils import qa_utils
-from src import feature_utils
+from src.globals import CURRENT_VERSION_NUM
+from src.utils import qa_utils
+from src import feature_utils, versioning
 
 # COMMAND ----------
 
-N_SAMPLE_TAG = dbutils.widgets.get("n_sample_tag")
+# get number of samples to use
+N_SAMPLE_TAG = dbutils.widgets.get("n_sample_tag").lower()
 
 # COMMAND ----------
 
@@ -22,13 +24,20 @@ N_SAMPLE_TAG = dbutils.widgets.get("n_sample_tag")
 
 # COMMAND ----------
 
-baseline_building_metadata_transformed = feature_utils.transform_building_features(f"ml.megastock.building_metadata_{N_SAMPLE_TAG}")
+# get most recent table version for baseline metadata -- we don't enforce the current version because the code change
+# in this poetry version may not require modifying the upstream table
+building_metadata_table_name = versioning.get_most_recent_table_version(f'ml.megastock.building_metadata_{N_SAMPLE_TAG}')
+building_metadata_table_name
+
+# COMMAND ----------
+
+baseline_building_metadata_transformed = feature_utils.transform_building_features(building_metadata_table_name)
 
 # COMMAND ----------
 
 # Check for differences between the possible values of categorical features in MegaStock and in ResStock training features
 comparison_dict = qa_utils.compare_dataframes_string_values(
-    spark.table('ml.surrogate_model.building_features').where(F.col('upgrade_id')==0),
+    spark.table(f'ml.surrogate_model.building_features_{CURRENT_VERSION_NUM}').where(F.col('upgrade_id')==0),
     baseline_building_metadata_transformed)
 
 # NOTE: if there are differences, these should be fixed upstream in the creation of 'ml.megastock.building_metadata_*'
@@ -64,31 +73,22 @@ assert non_null_df.count() == n_building_upgrade_samples, "Null values present, 
 
 # COMMAND ----------
 
-# DBTITLE 1,write out sampled building metadata with weather city index
-# table_name = f"ml.megastock.building_metadata_upgrades_{N_SAMPLE_TAG}"
-# building_metadata_upgrades.write.saveAsTable(table_name, mode='overwrite', overwriteSchema=True)
-# spark.sql(f'OPTIMIZE {table_name}')
-
-# COMMAND ----------
-
 # MAGIC %md
 # MAGIC ### Saving out building features
 
 # COMMAND ----------
-
 
 fe = FeatureEngineeringClient()
 
 # COMMAND ----------
 
 # DBTITLE 1,Write out building metadata feature store
-table_name = f"ml.megastock.building_features_{N_SAMPLE_TAG}"
-df = building_metadata_upgrades
-spark.sql(f"DROP TABLE IF EXISTS {table_name}")
+table_name = f"ml.megastock.building_features_{N_SAMPLE_TAG}_{CURRENT_VERSION_NUM}"
+print(table_name)
 fe.create_table(
     name=table_name,
     primary_keys=["building_id", "upgrade_id", "weather_file_city"],
-    df=df,
-    schema=df.schema,
+    df=building_metadata_upgrades,
+    schema=building_metadata_upgrades.schema,
     description="megastock building metadata features",
 )

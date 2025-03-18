@@ -14,7 +14,7 @@ from dmlutils import constants
 
 sys.path.append("../src")
 
-from dmutils import data_cleaning
+from utils import data_cleaning
 
 if os.environ.get("DATABRICKS_RUNTIME_VERSION"):
     from databricks.sdk.runtime import *

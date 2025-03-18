@@ -11,6 +11,10 @@ from databricks.sdk.runtime import spark
 
 from pyspark.sql import DataFrame
 
+from src.globals import LOCAL_ARTIFACT_PATH, CURRENT_VERSION_NUM
+from src.utils.data_io import read_json
+from src.versioning import get_most_recent_table_version
+
 
 class DataGenerator(tf.keras.utils.Sequence):
     """
@@ -22,16 +26,11 @@ class DataGenerator(tf.keras.utils.Sequence):
 
     Attributes
     ----------
-    - building_features (List[str]): names of the building features to use in training. Defaults to class attribute.
-    - weather_features (List[str]): names of the weather features to use in training. Defaults to class attribute.
-    - upgrade_ids (List[str]): ids of upgrades to include in training set. Defaults to class attribute.
-    - consumption_group_dict (Dict[str,str]): consumption group dictionary of format {target_name : list of Resstock output columns}.
-                                            Defaults to class attribute.
-    - building_feature_table_name (str), building feature table name. Defaults to class attribute.
-    - weather_feature_table_name (str): weather feature table name. Defaults to class attribute.
+    - building_features (List[str]): names of the building features to use in training. Defaults to DataGenerator.data_params['building_features'].
+    - weather_features (List[str]): names of the weather features to use in training. Defaults to DataGenerator.data_params['weather_features'].
+    - targets (List[str]): names of targets to predict in training.  Defaults to list(DataGenerator.data_params['consumption_group_dict'].keys()).
     - batch_size (int): Defaults to 64.
     - dtype (numpy.dtype): the data type to be used for numeric features. Defaults to np.float32.
-    - targets (List[str]): targets to predict, which are the keys of self.consumption_group_dict.
     - training_set (TrainingSet): Databricks TrainingSet object contaning targets, building feautres and weather features.
     - training_df (pd.DataFrame): Dataframe of building features and targets of shape [N, P_b + M]. Does not include weather features.
     - weather_features_df (pd.DataFrame): Dataframe of building features of shape [N, P_w] where each column contains a 8760-length vector.
@@ -46,128 +45,21 @@ class DataGenerator(tf.keras.utils.Sequence):
     # init FeatureEngineering client
     fe = FeatureEngineeringClient()
 
-    # table names to pull from
-    building_feature_table_name = "ml.surrogate_model.building_features"
-    weather_feature_table_name = "ml.surrogate_model.weather_features_hourly"
-
-    # TODO: put this in some kind of shared config that can be used across srcipts/repos
-    # init all of the class attribute defaults
-    building_features = [
-        # structure
-        "n_bedrooms",
-        "n_bathrooms",
-        "attic_type",
-        "sqft",
-        "foundation_type",
-        "garage_size_n_car",
-        "n_stories",
-        "orientation_degrees",
-        "roof_material",
-        "window_wall_ratio",
-        "window_ufactor",
-        "window_shgc",
-        # heating
-        "heating_fuel",
-        "heating_appliance_type",
-        "heat_pump_sizing_methodology",
-        "has_ducted_heating",
-        "heating_efficiency_nominal_percentage",
-        "heating_setpoint_degrees_f",
-        "heating_setpoint_offset_magnitude_degrees_f",
-        # cooling
-        "ac_type",
-        "cooled_space_percentage",
-        "cooling_efficiency_eer",
-        "cooling_setpoint_degrees_f",
-        "cooling_setpoint_offset_magnitude_degrees_f",
-        # water heater
-        "water_heater_fuel",
-        "water_heater_type",
-        "water_heater_tank_volume_gal",
-        "water_heater_efficiency_ef",
-        "water_heater_recovery_efficiency_ef",
-        "has_water_heater_in_unit",
-        # ducts
-        "has_ducts",
-        "duct_insulation_r_value",
-        "duct_leakage_percentage",
-        "infiltration_ach50",
-        # insulalation
-        "wall_material",
-        "insulation_wall_r_value",
-        "insulation_foundation_wall_r_value",
-        "insulation_slab_r_value",
-        "insulation_rim_joist_r_value",
-        "insulation_floor_r_value",
-        "insulation_ceiling_r_value",
-        "insulation_roof_r_value",
-        # building type
-        "is_attached",
-        "is_mobile_home",
-        "n_building_units",
-        "is_middle_unit",
-        "unit_level_in_building",
-        # other appliances
-        "has_ceiling_fan",
-        "clothes_dryer_fuel",
-        "clothes_washer_efficiency",
-        "cooking_range_fuel",
-        "dishwasher_efficiency_kwh",
-        "lighting_efficiency",
-        "refrigerator_extra_efficiency_ef",
-        "has_standalone_freezer",
-        "has_gas_fireplace",
-        "has_gas_grill",
-        "has_gas_lighting",
-        "has_well_pump",
-        "hot_tub_spa_fuel",
-        "pool_heater_fuel",
-        "refrigerator_efficiency_ef",
-        "plug_load_percentage",
-        "usage_level_appliances",
-        # misc
-        "climate_zone_temp",
-        "climate_zone_moisture",
-        "neighbor_distance_ft",
-        "n_occupants",
-        "vintage",
-        "has_heat_pump_dryer",
-        "has_induction_range",
-        # fuel indicators -- these must be present for post-processing to work!!
-        "has_methane_gas_appliance",
-        "has_fuel_oil_appliance",
-        "has_propane_appliance",
-    ]
-
-    weather_features = [
-        "temp_air",
-        # "relative_humidity",
-        "wind_speed",
-        # "wind_direction",
-        "ghi",
-        # "dni",
-        # "diffuse_horizontal_illum",
-        "weekend",
-    ]
-
-    consumption_group_dict = {
-        "electricity": ["electricity__total"],
-        "methane_gas": ["methane_gas__total"],
-        "fuel_oil": ["fuel_oil__total"],
-        "propane": ["propane__total"],
-    }
-
-    # TODO: pull from enums when they are ready
-    supported_upgrade_ids = [0.0, 1.0, 3.0, 4.0, 6.0, 9.0, 13.01, 11.05]
+    # This could be adjusted manually if wanted to use different version numbers
+    # TODO: This is a little janky, and running spark commands hereis not ideadl
+    # but we'll move over to a more robust process later and this works for now
+    building_feature_table_name = get_most_recent_table_version("ml.surrogate_model.building_features")
+    weather_feature_table_name = get_most_recent_table_version("ml.surrogate_model.weather_features_hourly")
+    target_table_name = get_most_recent_table_version("ml.surrogate_model.building_simulation_outputs_annual")
+    # load the default features, targets, and upgrades to use for this training run based on params stored in current version's config
+    data_params = read_json(LOCAL_ARTIFACT_PATH / CURRENT_VERSION_NUM / "features_targets_upgrades.json")
 
     def __init__(
         self,
         train_data: DataFrame,
         building_features: List[str] = None,
         weather_features: List[str] = None,
-        consumption_group_dict: Dict[str, str] = None,
-        building_feature_table_name: str = None,
-        weather_feature_table_name: str = None,
+        targets: List[str] = None,
         batch_size: int = 256,
         dtype: np.dtype = np.float32,
     ):
@@ -179,11 +71,17 @@ class DataGenerator(tf.keras.utils.Sequence):
         - train_data (DataFrame): the training data containing the targets and keys to join to the feature tables.
         See class docstring for all other parameters.
         """
-        self.building_features = building_features or self.building_features
-        self.weather_features = weather_features or self.weather_features
+        # Read from config file if not passed
+        if building_features is None:
+            building_features = DataGenerator.data_params["building_features"]
+        if weather_features is None:
+            weather_features = DataGenerator.data_params["weather_features"]
+        if targets is None:
+            targets = list(DataGenerator.data_params["consumption_group_dict"].keys())
 
-        self.consumption_group_dict = consumption_group_dict or self.consumption_group_dict
-        self.targets = list(self.consumption_group_dict.keys())
+        self.building_features = building_features
+        self.weather_features = weather_features
+        self.targets = targets
 
         self.batch_size = batch_size
         self.dtype = dtype
@@ -396,8 +294,7 @@ class DataGenerator(tf.keras.utils.Sequence):
 
 
 def load_data(
-    consumption_group_dict=DataGenerator.consumption_group_dict,
-    building_feature_table_name=DataGenerator.building_feature_table_name,
+    consumption_group_dict=None,
     upgrade_ids: List[float] = None,
     p_val=0.2,
     p_test=0.1,
@@ -412,11 +309,9 @@ def load_data(
 
     Parameters
     ----------
-        consumption_group_dict (dict): Dictionary mapping consumption categories (e.g., 'heating') to columns.
-            Default is DataGenerator.consumption_by_fuel_dict (too long to write out)
-        building_feature_table_name (str): Name of the building feature table.
-            Default is "ml.surrogate_model.building_features"
-        upgrade_ids (list): List of upgrade ids to use. If none (default) all supported upgrades are used.
+        consumption_group_dict (dict): Dictionary mapping consumption categories (e.g., 'heating') to resstock output columns to sum over.
+            Defaults to DataGenerator.data_params['consumption_group_dict'].
+        upgrade_ids (list): List of upgrade ids to use. Defaults to DataGenerator.data_params['upgrade_ids']
         p_val (float): Proportion of data to use for validation. Default is 0.2.
         p_test (float): Proportion of data to use for testing. Default is 0.1.
         n_train (int): Number of training records to select, where the size of the val and tests sets will be adjusted accordingly to
@@ -433,21 +328,24 @@ def load_data(
 
     Note that both splitting and subsetting are done approximately, so returned dataframes may not be exactly the requested size/ratio.
     """
+
     if n_train and n_test:
         raise ValueError("Cannot specify both n_train and n_test")
+    if consumption_group_dict is None:
+        consumption_group_dict = DataGenerator.data_params["consumption_group_dict"]
+    if upgrade_ids is None:
+        upgrade_ids = DataGenerator.data_params["upgrade_ids"]
     # Read outputs table and sum over consumption columns within each consumption group
     # join to the bm table to get required keys to join on and filter the building models based on charactaristics
     sum_str = ", ".join([f"{'+'.join(v)} AS {k}" for k, v in consumption_group_dict.items()])
     data = spark.sql(
         f"""
         SELECT B.building_id, B.upgrade_id, B.weather_file_city, {sum_str}
-        FROM ml.surrogate_model.building_simulation_outputs_annual_tmp O
-        INNER JOIN {building_feature_table_name} B 
+        FROM {DataGenerator.target_table_name} O
+        INNER JOIN {DataGenerator.building_feature_table_name} B 
             ON B.upgrade_id = O.upgrade_id AND B.building_id == O.building_id
         """
     )
-    if upgrade_ids is None:
-        upgrade_ids = DataGenerator.supported_upgrade_ids
     data = data.where(F.col("upgrade_id").isin(upgrade_ids))
 
     # get list of unique building ids, which will be the basis for the dataset split
