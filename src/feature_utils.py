@@ -43,7 +43,7 @@ SUPPORTED_UPGRADES = [
     Upgrade.MED_EFF_HP_HERS_SIZING_NO_SETBACK_2022_1.value,
     Upgrade.MED_EFF_HP_HERS_SIZING_NO_SETBACK_2024_2.value,
     Upgrade.MED_EFF_HP_HERS_SIZING_NO_SETBACK_BASIC_ENCLOSURE.value,
-    Upgrade.MED_EFF_HP_HERS_SIZING_NO_SETBACK_LIGHT_TOUCH_AIR_SEALING.value
+    Upgrade.MED_EFF_HP_HERS_SIZING_NO_SETBACK_LIGHT_TOUCH_AIR_SEALING.value,
 ]
 
 # mapping of window description to ufactor and shgc (solar heat gain coefficient) pulled from options.tsv
@@ -104,7 +104,7 @@ def clean_building_metadata(raw_resstock_metadata_df: DataFrame) -> DataFrame:
             "upgrade",
             "out__",
             "utility_bill",
-            "metadata_index"
+            "metadata_index",
         ],
     )
 
@@ -622,7 +622,6 @@ def transform_building_features(building_metadata_table_name) -> DataFrame:
             "cooking_range_fuel",
             F.regexp_replace("cooking_range", " Induction| Resistance", ""),
         )
-
         .withColumn(
             "dishwasher_efficiency_kwh",
             F.coalesce(F.split(F.col("dishwasher"), " ")[0].cast("int"), F.lit(9999)),
@@ -834,20 +833,17 @@ def apply_upgrades(baseline_building_features: DataFrame, upgrade_id: int) -> Da
     if upgrade_id not in map(get_upgrade_id, SUPPORTED_UPGRADES):
         raise ValueError(f"Upgrade id={upgrade_id} is not yet supported")
 
-    upgrade_building_features = (
-        baseline_building_features.withColumn("upgrade_id", F.lit(upgrade_id).cast("double"))
-        .withColumn("has_heat_pump_dryer", F.lit(False))
-    )
+    upgrade_building_features = baseline_building_features.withColumn(
+        "upgrade_id", F.lit(upgrade_id).cast("double")
+    ).withColumn("has_heat_pump_dryer", F.lit(False))
 
     if upgrade_id == 0:  # baseline: return as is
         pass
 
     if upgrade_id == 0.01:  # baseline with no setbacks
-        upgrade_building_features = (
-            upgrade_building_features
-                .withColumn("cooling_setpoint_offset_magnitude_degrees_f", F.lit(0.0))
-                .withColumn("heating_setpoint_offset_magnitude_degrees_f", F.lit(0.0))
-        )
+        upgrade_building_features = upgrade_building_features.withColumn(
+            "cooling_setpoint_offset_magnitude_degrees_f", F.lit(0.0)
+        ).withColumn("heating_setpoint_offset_magnitude_degrees_f", F.lit(0.0))
 
     if upgrade_id in [1, 9, 13.01]:  # basic enclosure
         upgrade_building_features = (
@@ -859,7 +855,7 @@ def apply_upgrades(baseline_building_features: DataFrame, upgrade_id: int) -> Da
             .withColumn(
                 "insulation_ceiling_r_value",
                 F.when(
-                    (F.col("attic_type") == "Vented Attic") #TODO: check if new "Unvented Attic" also counts here
+                    (F.col("attic_type") == "Vented Attic")  # TODO: check if new "Unvented Attic" also counts here
                     & (F.col("insulation_ceiling_r_value") <= F.col("existing_insulation_max_threshold")),
                     F.col("insulation_upgrade"),
                 ).otherwise(F.col("insulation_ceiling_r_value")),
@@ -879,10 +875,11 @@ def apply_upgrades(baseline_building_features: DataFrame, upgrade_id: int) -> Da
                 F.when(
                     (
                         (F.col("has_ducts"))
-                        & ~(F.col("duct_leakage_and_insulation").isin([
-                            "0% Leakage to Outside, Uninsulated",
-                            "30% Leakage to Outside, Uninsulated"
-                            ]))
+                        & ~(
+                            F.col("duct_leakage_and_insulation").isin(
+                                ["0% Leakage to Outside, Uninsulated", "30% Leakage to Outside, Uninsulated"]
+                            )
+                        )
                     ),
                     F.least(F.col("duct_leakage_percentage"), F.lit(0.1)),
                 ).otherwise(F.col("duct_leakage_percentage")),
@@ -892,10 +889,11 @@ def apply_upgrades(baseline_building_features: DataFrame, upgrade_id: int) -> Da
                 F.when(
                     (
                         (F.col("has_ducts"))
-                        & ~(F.col("duct_leakage_and_insulation").isin([
-                            "0% Leakage to Outside, Uninsulated",
-                            "30% Leakage to Outside, Uninsulated"
-                            ]))
+                        & ~(
+                            F.col("duct_leakage_and_insulation").isin(
+                                ["0% Leakage to Outside, Uninsulated", "30% Leakage to Outside, Uninsulated"]
+                            )
+                        )
                     ),
                     F.greatest(F.col("duct_insulation_r_value"), F.lit(8.0)),
                 ).otherwise(F.col("duct_insulation_r_value")),
@@ -909,7 +907,7 @@ def apply_upgrades(baseline_building_features: DataFrame, upgrade_id: int) -> Da
                 ).otherwise(F.col("insulation_wall_r_value")),
             )
         )
-    
+
     if upgrade_id == 13.02:  # light touch air sealing
         upgrade_building_features = (
             upgrade_building_features
@@ -918,7 +916,7 @@ def apply_upgrades(baseline_building_features: DataFrame, upgrade_id: int) -> Da
                 "infiltration_ach50",
                 F.when(F.col("infiltration_ach50") >= 10, F.col("infiltration_ach50") * 0.4)
                 .when(F.col("infiltration_ach50") >= 5, F.col("infiltration_ach50") * 0.25)
-                .otherwise(F.col("infiltration_ach50"))
+                .otherwise(F.col("infiltration_ach50")),
             )
         )
 
@@ -1004,29 +1002,29 @@ def build_upgrade_metadata_table(baseline_building_features: DataFrame) -> DataF
 
     Args:
         building_features_baseline (DataFrame): A Spark DataFrame containing baseline building metadata
-          for a set of building samples, with the primary key (building_id, building_set) 
+          for a set of building samples, with the primary key (building_id, building_set)
     Returns:
         DataFrame: A Spark DataFrame containing building metadata for each upgrade including baseline.
     """
     # Get names, upgrade ids and name of baseline building set for each upgrade
     upgrade_rows = (
         upgrades_df(spark)
-        .where(F.col('name').isin(SUPPORTED_UPGRADES))
-        .select('name', 'upgrade_id', 'building_set')
+        .where(F.col("name").isin(SUPPORTED_UPGRADES))
+        .select("name", "upgrade_id", "building_set")
         .collect()
     )
 
     # Iterate through each and apply the upgrade logic and add the name of the upgrade
     upgraded_dfs = []
     for row in upgrade_rows:
-        upgrade_name, upgrade_id, building_set = row['name'], float(row['upgrade_id']), row['building_set']
+        upgrade_name, upgrade_id, building_set = row["name"], float(row["upgrade_id"]), row["building_set"]
         df = apply_upgrades(
-                    baseline_building_features=baseline_building_features.where(F.col('building_set') == building_set),
-                    upgrade_id=upgrade_id,
-        ).withColumn('upgrade_name', F.lit(upgrade_name))
+            baseline_building_features=baseline_building_features.where(F.col("building_set") == building_set),
+            upgrade_id=upgrade_id,
+        ).withColumn("upgrade_name", F.lit(upgrade_name))
         upgraded_dfs.append(df)
     # Union into one tables
-    return reduce(DataFrame.unionByName,  upgraded_dfs)
+    return reduce(DataFrame.unionByName, upgraded_dfs)
 
 
 def drop_non_upgraded_samples(building_features: DataFrame, check_applicability_logic_against_version=None):
@@ -1068,7 +1066,9 @@ def drop_non_upgraded_samples(building_features: DataFrame, check_applicability_
         # we ignore 13.01 since they are all flagged as True in the output table
         # even though many do not have the insulation upgrade applied and are therefore identical to 11.05
         applicability_compare = building_features_applicability_flag.alias("features").join(
-            spark.table(f"ml.surrogate_model.building_simulation_outputs_annual_{check_applicability_logic_against_version}")
+            spark.table(
+                f"ml.surrogate_model.building_simulation_outputs_annual_{check_applicability_logic_against_version}"
+            )
             .select("upgrade_id", "building_id", "applicability")
             .alias("targets"),
             on=["upgrade_id", "building_id"],

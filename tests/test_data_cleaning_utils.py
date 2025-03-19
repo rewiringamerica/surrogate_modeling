@@ -50,6 +50,7 @@ class ResStockDataTestCase(unittest.TestCase):
         test_output_no_change = data_cleaning.edit_columns(df=test_input, replace_period_character=".")
         self.assertCountEqual(test_output_no_change.columns, test_input.columns)
 
+
 if os.environ.get("DATABRICKS_RUNTIME_VERSION", None):
     # If we are developing on databricks we have to manually
     # instatiate a test suite and load all the tests from this module.
