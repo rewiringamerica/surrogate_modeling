@@ -87,8 +87,8 @@ building_metadata_upgrades = feature_utils.build_upgrade_metadata_table(baseline
 # DBTITLE 1,Drop rows where upgrade was not applied
 # get most recent table version for annual outputs to compare against
 outputs_most_recent_version_num = versioning.get_most_recent_table_version(
-    "ml.surrogate_model.building_simulation_outputs_annual",
-    return_version_number_only=True)
+    "ml.surrogate_model.building_simulation_outputs_annual", return_version_number_only=True
+)
 building_metadata_applicable_upgrades = feature_utils.drop_non_upgraded_samples(
     building_metadata_upgrades, check_applicability_logic_against_version=outputs_most_recent_version_num
 )
