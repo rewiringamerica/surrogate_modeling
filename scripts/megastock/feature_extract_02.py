@@ -69,8 +69,12 @@ table_name = f"ml.megastock.building_features_{N_SAMPLE_TAG}_{CURRENT_VERSION_NU
 print(table_name)
 fe.create_table(
     name=table_name,
-    primary_keys=["building_id", "upgrade_id", "weather_file_city"],
+    primary_keys=["building_id", "weather_file_city"],
     df=baseline_building_metadata_transformed,
     schema=baseline_building_metadata_transformed.schema,
     description="megastock building metadata features",
 )
+
+# COMMAND ----------
+
+
