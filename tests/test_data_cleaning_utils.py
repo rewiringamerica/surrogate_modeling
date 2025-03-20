@@ -14,9 +14,6 @@ if os.environ.get("DATABRICKS_RUNTIME_VERSION", None):
 
 from utils import data_cleaning
 
-# TODO: Remove skips for unit test once we have spark testing working on git:
-# https://www.notion.so/rewiringamerica/Local-Spark-Testing-4aef885e20034c18b1a2fba6c355e82c?pvs=4
-
 
 class ResStockDataTestCase(unittest.TestCase):
     """Test functionality of ResStock processing functions."""

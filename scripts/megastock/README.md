@@ -13,11 +13,11 @@ A. Generate resstock building samples using the resstock repo.
 B. Run the [MegaStock Job](https://4617764665359845.5.gcp.databricks.com/jobs/724743198057405?o=4617764665359845) with the job parameter `n_sample_tag` set to the sample size suffix of the CSV from step 1. (e.g, '5m'). Note that all tables will be tagged with the current version number of the repo and the sample tag. This will perform the following: 
 
 1. . Run `data_prep_01` notebook, referencing appropriate file names based on the job parameter. There are functions applied which:
-     - process the resstock v3.3.0 data to match 2022.1 format
+     - process the resstock v3.3.0 data to match the EnergyPlus file format and the aligned 2024.2/2022.1 schema as described in `docs/features_upgrades.md`.
      - generate cleaned building metadata tables
 2. Run `feature_extract_02`, referencing appropriate file names based on the job parameter. There are functions/code which:
-     - transform building features and add upgrades and weather city
-     - write out building metadata and upgrades to the feature store
+     - transform building features and add weather city
+     - write out building metadata to the feature store
 3. Run `write_databricks_to_bigquery_03`, , referencing appropriate file names based on the job parameter. There code will write the following table to BQ:
       - `cube-machine-learning.ds_api_datasets.megastock_combined_baseline_{n_sample_tag}_{version_num}`
 

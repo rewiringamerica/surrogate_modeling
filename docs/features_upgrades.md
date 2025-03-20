@@ -71,7 +71,7 @@ Duct Leakage and Insulation:
 
 Duct Location:
 
-`duct_location` (bool): Indicator for whether the unit has ducts. TODO: add this features
+`duct_location` (bool): Indicator for whether the unit has ducts.
 
 Geometry Attic Type:
 
@@ -270,7 +270,7 @@ Water Heater Efficiency is a single string containing the fuel, type, and in som
 
 Water Heater Location: 
 
-`water_heater_location` (str): Description of where in the unit the water heater is located, with 'Outside' if the water heater is not in the unit. TODO: add feature
+`water_heater_location` (str): Description of where in the unit the water heater is located, with 'Outside' if the water heater is not in the unit.
 
 Water Heater In Unit:
 
@@ -352,6 +352,9 @@ Additional Heat Pump Detail Columns: The heat pump sizing method is specified in
 | `county`, `county_and_puma` | Slightly different set of counties | Slightly different set of counties    | No action taken-- this is not transformed into a feature so misalignment here is fine |
 
 Note that there are other demographic features (not used in the surrogate model) that are included in 2024 but not 2022 that we retain and these will just be null. Further there are a few deterministic features where the schemas are misaligned and these are not described here either since deterministic simulation features do not get convered into surrogate model features. 
+
+
+See [script](../scripts/extract_data_01.py) where this alignment is done.
 
 ## Upgrades
 

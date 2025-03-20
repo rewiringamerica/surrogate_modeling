@@ -1063,7 +1063,7 @@ def drop_non_upgraded_samples(building_features: DataFrame, check_applicability_
 
     if check_applicability_logic_against_version is not None:
         # test that the applicability logic matches between the features and targets
-        # we ignore 13.01 since they are all flagged as True in the output table
+        # we ignore 13.01 and 11.02 since they are all flagged as True in the output table
         # even though many do not have the insulation upgrade applied and are therefore identical to 11.05
         applicability_compare = building_features_applicability_flag.alias("features").join(
             spark.table(

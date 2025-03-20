@@ -148,7 +148,7 @@ def align_baseline_metadata(
         F.when(F.col("misc_pool_heater") == "Electric", "Electricity")
         .when(F.col("misc_pool_heater") == "Gas", "Natural Gas")
         .when(F.col("misc_pool_heater") == "Solar", "Other Fuel")
-        .otherwise(F.col("misc_pool_heater")),  # should just be
+        .otherwise(F.col("misc_pool_heater")),  # should just be None
     )
 
     # In 2024 they added induction as abaseline range type so they changed Electric to Electric Resistance
@@ -211,6 +211,12 @@ building_metadata_2024 = feature_utils.clean_building_metadata(
 # COMMAND ----------
 
 # DBTITLE 1,Align schemas and union
+# This aligns the schemas, joins them and then prints out a summary of any schema differences in terms of column names
+# and distinct values for string features. The only columns that should appear here are:
+# * columns that are not used in computing downstream features
+# * columns that will get converted into numerical features
+# * columns that were specifically handled in the align_baseline_metadata() function
+# * non-ducted heat pumps
 building_metadata = align_baseline_metadata(building_metadata_2022, building_metadata_2024, verbose=True)
 
 # COMMAND ----------
