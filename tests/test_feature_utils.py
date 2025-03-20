@@ -56,10 +56,8 @@ class ApplyUpgrades(unittest.TestCase):
     )
     def test_apply_upgrades(self):
         """Test feautre upgrade tranformations match expected output."""
-        # baseline_features = read_test_baseline_inputs()
-        # df_out_expected = read_test_upgraded_outputs()
-        baseline_features = pd.read_csv('test_baseline_features_input.csv')
-        df_out_expected = pd.read_csv('test_upgraded_features.csv')
+        baseline_features = pd.read_csv("test_baseline_features_input.csv", keep_default_na=False, na_values=[""])
+        df_out_expected = pd.read_csv("test_upgraded_features.csv", keep_default_na=False, na_values=[""])
 
         # apply upgrades to baseline features by upgrade group
         df_out = (
@@ -84,7 +82,6 @@ class ApplyUpgrades(unittest.TestCase):
         df_out_expected[has_cols] = df_out_expected[has_cols].fillna(False).astype(bool)
 
         # check whether logic produced expected output on the same set of columns
-        print(df_out_expected.columns)
         assert_frame_equal(df_out, df_out_expected[df_out.columns])
 
 

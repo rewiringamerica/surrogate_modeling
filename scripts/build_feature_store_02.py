@@ -40,6 +40,7 @@
 # DBTITLE 1,Imports
 import re
 from functools import reduce
+import pandas as pd
 from pathlib import Path
 
 import pyspark.sql.functions as F
@@ -79,6 +80,18 @@ baseline_building_metadata_transformed = feature_utils.transform_building_featur
 
 # COMMAND ----------
 
+# write out working test case data to gcs for dohyo apply upgrade logic to check against
+# NOTE: first make sure unit tests in tests/test_feature_utils.py are working
+
+baseline_test_data_fname = "test_baseline_features_input.csv"
+upgraded_test_data_fname = "test_upgraded_features.csv"
+baseline_test_features = pd.read_csv(f"../tests/{baseline_test_data_fname}")
+upgraded_test_features = pd.read_csv(f"../tests/{upgraded_test_data_fname}")
+baseline_test_features.to_csv(str(GCS_ARTIFACT_PATH / CURRENT_VERSION_NUM / baseline_test_data_fname), index=False)
+upgraded_test_features.to_csv(str(GCS_ARTIFACT_PATH / CURRENT_VERSION_NUM / upgraded_test_data_fname), index=False)
+
+# COMMAND ----------
+
 # DBTITLE 1,Build metadata table for all samples and upgrades
 building_metadata_upgrades = feature_utils.build_upgrade_metadata_table(baseline_building_metadata_transformed)
 
@@ -87,8 +100,8 @@ building_metadata_upgrades = feature_utils.build_upgrade_metadata_table(baseline
 # DBTITLE 1,Drop rows where upgrade was not applied
 # get most recent table version for annual outputs to compare against
 outputs_most_recent_version_num = versioning.get_most_recent_table_version(
-    "ml.surrogate_model.building_simulation_outputs_annual",
-    return_version_number_only=True)
+    "ml.surrogate_model.building_simulation_outputs_annual", return_version_number_only=True
+)
 building_metadata_applicable_upgrades = feature_utils.drop_non_upgraded_samples(
     building_metadata_upgrades, check_applicability_logic_against_version=outputs_most_recent_version_num
 )

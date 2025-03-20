@@ -23,6 +23,10 @@
 
 # COMMAND ----------
 
+dbutils.widgets.text("n_sample_tag", "10k")
+
+# COMMAND ----------
+
 from itertools import chain
 from pathlib import Path
 
@@ -77,10 +81,8 @@ building_metadata_renamed = building_metadata_with_int_cz.select(
 
 # COMMAND ----------
 
-# Subset features to baseline only and join the tables on building_id
-combined_df_baseline = building_metadata_renamed.join(
-    building_features.where(F.col("upgrade_id") == 0).drop("upgrade_id"), on="building_id", how="inner"
-)
+# Join the tables on building_id
+combined_df_baseline = building_metadata_renamed.join(building_features, on="building_id", how="inner")
 
 # COMMAND ----------
 
