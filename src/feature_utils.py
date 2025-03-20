@@ -1115,7 +1115,7 @@ def create_string_indexer(df: DataFrame, column_name: str) -> StringIndexer:
     return fitted_indexer
 
 
-def fit_weather_city_index(df_to_fit: Optional[DataFrame] = None):
+def fit_weather_city_index(df_to_fit: DataFrame):
     # Create the StringIndexer
     return create_string_indexer(df_to_fit.drop("weather_file_city_index"), "weather_file_city")
 
