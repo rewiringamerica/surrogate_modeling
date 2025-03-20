@@ -108,14 +108,14 @@ def align_baseline_metadata(
     # Appliance Features:
     # In 2024.2, the usage portion of appliance features are split into a new column and the column with
     # the appliance name contains only the appliance fuel/type. Further, the usage percentage for appliances is completely determined by “Usage Level”, so there is no need to store each applaince usage levels as additional features.
-    applaince_combined_type_usage_columns = [
+    appliance_combined_type_usage_columns = [
         "clothes_dryer",
         "clothes_washer",
         "cooking_range",
         "dishwasher",
         "refrigerator",
     ]
-    for c in applaince_combined_type_usage_columns:
+    for c in appliance_combined_type_usage_columns:
         building_metadata_2022 = building_metadata_2022.withColumn(c, F.split(F.col(c), ",")[0])
         building_metadata_2024 = building_metadata_2024.drop(f"{c}_usage_level")
 
@@ -171,7 +171,7 @@ def align_baseline_metadata(
             .otherwise(F.col("hvac_cooling_efficiency")),
         )
     )
-    # However, in 2022, the names for 'hvac_heating_type' did specify ducted vs ductelss, and now in 2024 is does for 'hvac_cooling_type' too
+    # However, in 2022, the names for 'hvac_heating_type' did specify ducted vs ductless, and now in 2024 it does for 'hvac_cooling_type' too
     # So lets just align with 2024 for this so that heating and cooling naming is consistent
     building_metadata_2022 = building_metadata_2022.withColumn(
         "hvac_cooling_type",
