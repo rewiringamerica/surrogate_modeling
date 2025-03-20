@@ -54,7 +54,6 @@ class ApplyUpgrades(unittest.TestCase):
         os.environ.get("DATABRICKS_RUNTIME_VERSION", None) is None,
         reason="Only runs on databricks cluster.",
     )
-
     def test_apply_upgrades(self):
         """Test feautre upgrade tranformations match expected output."""
         baseline_features = pd.read_csv("test_baseline_features_input.csv", keep_default_na=False, na_values=[""])
