@@ -1028,7 +1028,6 @@ def build_upgrade_metadata_table(baseline_building_features: DataFrame) -> DataF
     return reduce(DataFrame.unionByName, upgraded_dfs)
 
 
-
 def drop_non_upgraded_samples(building_features: DataFrame, check_applicability_logic_against_version=None):
     """
     Drop upgrade records that had no changed features and therefore weren't upgraded.
