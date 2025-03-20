@@ -8,7 +8,7 @@ import sys
 from databricks.feature_engineering import FeatureEngineeringClient
 import pyspark.sql.functions as F
 
-from src.globals import CURRENT_VERSION_NUM
+import src.globals as g
 from src.utils import qa_utils
 from src import feature_utils, versioning
 
@@ -26,7 +26,7 @@ N_SAMPLE_TAG = dbutils.widgets.get("n_sample_tag").lower()
 
 # get most recent table version for baseline metadata -- we don't enforce the current version because the code change
 # in this poetry version may not require modifying the upstream table
-building_metadata_table_name = versioning.get_most_recent_table_version(f'ml.megastock.building_metadata_{N_SAMPLE_TAG}')
+building_metadata_table_name = versioning.get_most_recent_table_version(f'{g.MEGASTOCK_BUILDING_METADATA_TABLE}_{N_SAMPLE_TAG}')
 building_metadata_table_name
 
 # COMMAND ----------
@@ -37,7 +37,7 @@ baseline_building_features = feature_utils.transform_building_features(building_
 
 # Check for differences between the possible values of categorical features in MegaStock and in ResStock training features
 comparison_dict = qa_utils.compare_dataframes_string_values(
-    spark.table(f'ml.surrogate_model.building_features_{CURRENT_VERSION_NUM}').where(F.col('upgrade_id').isin([0.01])).drop('building_set'),
+    spark.table(versioning.get_most_recent_table_version(g.BUILDING_FEATURE_TABLE)).where(F.col('upgrade_id').isin([0.01])).drop('building_set'),
     baseline_building_features.drop('building_set'))
 
 # NOTE: if there are differences, these should be fixed upstream in the creation of 'ml.megastock.building_metadata_*'
@@ -56,7 +56,9 @@ assert non_null_df.count() == n_building_upgrade_samples, "Null values present, 
 # COMMAND ----------
 
 # add weather city index
-baseline_building_features_with_weather_index = feature_utils.add_weather_city_index(baseline_building_features)
+baseline_building_features_with_weather_index = feature_utils.transform_weather_city_index(
+    weather_file_city_indexer= feature_utils.fit_weather_city_index(spark.table(g.WEATHER_FEATURE_TABLE)),
+    df_to_transform = baseline_building_features)
 
 # COMMAND ----------
 
@@ -70,7 +72,7 @@ fe = FeatureEngineeringClient()
 # COMMAND ----------
 
 # DBTITLE 1,Write out building metadata feature store
-table_name = f"ml.megastock.building_features_{N_SAMPLE_TAG}_{CURRENT_VERSION_NUM}"
+table_name = f"{g.MEGASTOCK_BUILDING_FEATURE_TABLE}_{N_SAMPLE_TAG}_{g.CURRENT_VERSION_NUM}"
 print(table_name)
 fe.create_table(
     name=table_name,

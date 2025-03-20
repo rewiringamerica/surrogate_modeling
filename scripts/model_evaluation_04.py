@@ -54,7 +54,7 @@ print(TEST_SIZE)
 # MAGIC # and we do not yet have a requirements file that is compatible for both dmlutils and the GPU cluster
 # MAGIC # from dmlutils.gcs import save_fig_to_gcs
 # MAGIC
-# MAGIC from src.globals import CURRENT_VERSION_NUM, GCS_ARTIFACT_PATH
+# MAGIC from src.globals import GCS_CURRENT_VERSION_ARTIFACT_PATH
 # MAGIC from src.datagen import DataGenerator, load_data
 # MAGIC from src.surrogate_model import SurrogateModel
 
@@ -455,7 +455,7 @@ metrics_by_upgrade_type = metrics_by_upgrade_type_pd.sort_values(["Upgrade ID", 
 if not DEBUG:
     # write to gcs-- can't write locally in a job so can copy it to the repo later if desired
     metrics_by_upgrade_type.to_csv(
-        str(GCS_ARTIFACT_PATH / CURRENT_VERSION_NUM / "metrics_by_upgrade_type.csv"),
+        str(GCS_CURRENT_VERSION_ARTIFACT_PATH / "metrics_by_upgrade_type.csv"),
         index=False
     )
 

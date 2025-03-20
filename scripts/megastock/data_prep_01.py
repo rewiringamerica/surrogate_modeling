@@ -13,7 +13,7 @@ import pyspark.sql.functions as F
 from pyspark.sql import DataFrame
 from pyspark.sql.types import StringType
 
-from src.globals import CURRENT_VERSION_NUM
+from src.globals import CURRENT_VERSION_NUM, MEGASTOCK_BUILDING_METADATA_TABLE
 from src import feature_utils
 
 # COMMAND ----------
@@ -143,7 +143,7 @@ megastock_metadata = feature_utils.clean_building_metadata(metadata_formatted).w
 # COMMAND ----------
 
 # DBTITLE 1,write out sampled building metadata
-table_name = f"ml.megastock.building_metadata_{N_SAMPLE_TAG}_{CURRENT_VERSION_NUM}"
+table_name = f"{MEGASTOCK_BUILDING_METADATA_TABLE}_{N_SAMPLE_TAG}_{CURRENT_VERSION_NUM}"
 print(table_name)
 megastock_metadata.write.saveAsTable(table_name, mode="overwrite", overwriteSchema=True)
 spark.sql(f"OPTIMIZE {table_name}")

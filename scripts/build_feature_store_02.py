@@ -48,7 +48,7 @@ from databricks.feature_engineering import FeatureEngineeringClient
 from pyspark.sql import DataFrame
 from pyspark.sql.types import StringType
 
-from src.globals import CURRENT_VERSION_NUM, GCS_ARTIFACT_PATH
+import src.globals as g
 from src.utils import qa_utils, data_io
 from src import feature_utils, versioning
 
@@ -68,7 +68,7 @@ from src import feature_utils, versioning
 # DBTITLE 1,Transform building metadata
 # get most recent table version for baseline metadata -- we don't enforce the current version because the code change in this version
 # may not affect the upstream table
-building_metadata_table_name = versioning.get_most_recent_table_version("ml.surrogate_model.building_metadata")
+building_metadata_table_name = versioning.get_most_recent_table_version(g.BUILDING_METADATA_TABLE)
 print(building_metadata_table_name)
 baseline_building_metadata_transformed = feature_utils.transform_building_features(building_metadata_table_name)
 
@@ -87,8 +87,8 @@ baseline_test_data_fname = "test_baseline_features_input.csv"
 upgraded_test_data_fname = "test_upgraded_features.csv"
 baseline_test_features = pd.read_csv(f"../tests/{baseline_test_data_fname}")
 upgraded_test_features = pd.read_csv(f"../tests/{upgraded_test_data_fname}")
-baseline_test_features.to_csv(str(GCS_ARTIFACT_PATH / CURRENT_VERSION_NUM / baseline_test_data_fname), index=False)
-upgraded_test_features.to_csv(str(GCS_ARTIFACT_PATH / CURRENT_VERSION_NUM / upgraded_test_data_fname), index=False)
+baseline_test_features.to_csv(str(g.GCS_CURRENT_VERSION_ARTIFACT_PATH / baseline_test_data_fname), index=False)
+upgraded_test_features.to_csv(str(g.GCS_CURRENT_VERSION_ARTIFACT_PATH / upgraded_test_data_fname), index=False)
 
 # COMMAND ----------
 
@@ -99,9 +99,7 @@ building_metadata_upgrades = feature_utils.build_upgrade_metadata_table(baseline
 
 # DBTITLE 1,Drop rows where upgrade was not applied
 # get most recent table version for annual outputs to compare against
-outputs_most_recent_version_num = versioning.get_most_recent_table_version(
-    "ml.surrogate_model.building_simulation_outputs_annual", return_version_number_only=True
-)
+outputs_most_recent_version_num = versioning.get_most_recent_table_version(g.ANNUAL_OUTPUTS_TABLE, return_version_number_only=True)
 building_metadata_applicable_upgrades = feature_utils.drop_non_upgraded_samples(
     building_metadata_upgrades, check_applicability_logic_against_version=outputs_most_recent_version_num
 )
@@ -172,7 +170,7 @@ def transform_weather_features(table_name) -> DataFrame:
 # COMMAND ----------
 
 # DBTITLE 1,Transform weather features
-weather_table_name = versioning.get_most_recent_table_version("ml.surrogate_model.weather_data_hourly")
+weather_table_name = versioning.get_most_recent_table_version(g.WEATHER_DATA_TABLE)
 print(weather_table_name)
 weather_features = transform_weather_features(weather_table_name)
 
@@ -214,7 +212,7 @@ climate_zone_to_index = {label: i for i, label in enumerate(climate_zone_indexer
 
 # write to artifacts
 data_io.write_json(
-    GCS_ARTIFACT_PATH / CURRENT_VERSION_NUM / "mappings.json",
+    g.GCS_CURRENT_VERSION_ARTIFACT_PATH / "mappings.json",
     data={"climate_zone_to_index": climate_zone_to_index, "weather_city_to_index": weather_city_to_index},
     overwrite=True,
 )
@@ -254,7 +252,8 @@ fe = FeatureEngineeringClient()
 # COMMAND ----------
 
 # DBTITLE 1,Write out building metadata feature store
-table_name = f"ml.surrogate_model.building_features_{CURRENT_VERSION_NUM}"
+table_name = f"{g.BUILDING_FEATURE_TABLE}_{g.CURRENT_VERSION_NUM}"
+print(table_name)
 fe.create_table(
     name=table_name,
     primary_keys=["building_id", "upgrade_id", "weather_file_city"],
@@ -266,8 +265,8 @@ fe.create_table(
 # COMMAND ----------
 
 # DBTITLE 1,Write out weather data feature store
-table_name = f"ml.surrogate_model.weather_features_hourly_{CURRENT_VERSION_NUM}"
-
+table_name = f"{g.WEATHER_FEATURE_TABLE}_{g.CURRENT_VERSION_NUM}"
+print(table_name)
 fe.create_table(
     name=table_name,
     primary_keys=["weather_file_city"],

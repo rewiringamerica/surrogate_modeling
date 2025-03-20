@@ -3,8 +3,6 @@ from pathlib import Path
 import pyspark.sql.functions as F
 import toml
 
-from glob
-
 if os.environ.get("DATABRICKS_RUNTIME_VERSION"):
     from databricks.sdk.runtime import *
 

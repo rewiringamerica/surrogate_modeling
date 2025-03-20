@@ -35,8 +35,9 @@ import pyspark.sql.functions as F
 from pyspark.sql.functions import udf
 from pyspark.sql.types import IntegerType
 
-from src.globals import CURRENT_VERSION_NUM, GCS_ARTIFACT_PATH
+import src.globals as g
 from src.utils.data_io import read_json
+from src.versioning import get_most_recent_table_version
 
 # COMMAND ----------
 
@@ -51,16 +52,16 @@ client = bigquery.Client()
 # set up paths to write to
 bq_project = "cube-machine-learning"
 bq_dataset = "ds_api_datasets"
-bq_megastock_table = f"megastock_combined_baseline_{N_SAMPLE_TAG}_{CURRENT_VERSION_NUM}"
+bq_megastock_table = f"megastock_combined_baseline_{N_SAMPLE_TAG}_{g.CURRENT_VERSION_NUM}"
 bq_write_path = f"{bq_project}.{bq_dataset}.{bq_megastock_table}"
 
 # COMMAND ----------
 
 # read in data
-building_metadata = spark.table(f"ml.megastock.building_metadata_{N_SAMPLE_TAG}_{CURRENT_VERSION_NUM}")
-building_features = spark.table(f"ml.megastock.building_features_{N_SAMPLE_TAG}_{CURRENT_VERSION_NUM}")
+building_metadata = spark.table(get_most_recent_table_version(f"{g.MEGASTOCK_BUILDING_METADATA_TABLE}_{N_SAMPLE_TAG}"))
+building_features = spark.table(get_most_recent_table_version(f"{g.MEGASTOCK_BUILDING_FEATURE_TABLE}_{N_SAMPLE_TAG}"))
 # read in climate zone to int mapping from artifacts in gcp
-climate_zone_to_index = read_json(GCS_ARTIFACT_PATH / CURRENT_VERSION_NUM / "mappings.json")["climate_zone_to_index"]
+climate_zone_to_index = read_json(g.GCS_CURRENT_VERSION_ARTIFACT_PATH / "mappings.json")["climate_zone_to_index"]
 
 # COMMAND ----------
 
