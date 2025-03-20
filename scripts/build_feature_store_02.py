@@ -40,6 +40,7 @@
 # DBTITLE 1,Imports
 import re
 from functools import reduce
+import pandas as pd
 from pathlib import Path
 
 import pyspark.sql.functions as F
@@ -76,6 +77,18 @@ baseline_building_metadata_transformed = feature_utils.transform_building_featur
 # MAGIC %md #### Upgrades
 # MAGIC
 # MAGIC Refer to `docs/features_upgrades.md`, [ResStock docs](https://oedi-data-lake.s3.amazonaws.com/nrel-pds-building-stock/end-use-load-profiles-for-us-building-stock/2022/EUSS_ResRound1_Technical_Documentation.pdf), and [upgrade.yml](https://github.com/NREL/resstock/blob/run/euss/EUSS-project-file_2018_10k.yml).
+
+# COMMAND ----------
+
+# write out working test case data to gcs for dohyo apply upgrade logic to check against
+# NOTE: first make sure unit tests in tests/test_feature_utils.py are working
+
+baseline_test_data_fname = "test_baseline_features_input.csv"
+upgraded_test_data_fname = "test_upgraded_features.csv"
+baseline_test_features = pd.read_csv(f"../tests/{baseline_test_data_fname}")
+upgraded_test_features = pd.read_csv(f"../tests/{upgraded_test_data_fname}")
+baseline_test_features.to_csv(str(GCS_ARTIFACT_PATH / CURRENT_VERSION_NUM / baseline_test_data_fname), index=False)
+upgraded_test_features.to_csv(str(GCS_ARTIFACT_PATH / CURRENT_VERSION_NUM / upgraded_test_data_fname), index=False)
 
 # COMMAND ----------
 

@@ -13,6 +13,8 @@ model_artifacts/
 │   ├── mappings.json              # Only in GCS
 │   ├── features_targets_upgrades.json 
 │   ├── metrics_by_upgrade_type.csv
+│   ├── test_baseline_features_input.csv # Only in GCS
+│   ├── test_upgraded_features.csv # Only in GCS
 ```
 
 ## Versioning
@@ -25,3 +27,5 @@ model_artifacts/
 - `mappings.json` – Data dictionaries used by surrogate model and dohyo downstream (only in GCS).
 - `features_targets_upgrades.json` – Documents input features, target variables, and upgrades that model version was trained on. This file must be manually created locally when training a new model version. 
 - `metrics_by_upgrade_type.csv` – Contains evaluation results on a test set.
+- `test_baseline_features_input.csv` - Test data for feature_utils.apply_upgrades() to make sure that apply logic stays in sync between sumo and dohyo (ipnut data)
+- `test_upgraded_features.csv` - Test data for feature_utils.apply_upgrades() to make sure that apply logic stays in sync between sumo and dohyo (expected output data)
