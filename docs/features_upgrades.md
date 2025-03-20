@@ -8,7 +8,8 @@ The following list describes mapping from Simulation Features to Surrogate Model
 
 **Surrogate Model Features**: Simulation inputs transformed for the surrogate model. The [options_lookup.tsv](https://github.com/NREL/resstock/blob/run/euss/resources/options_lookup.tsv) defines the mapping from select ResStock characteristics to EnergyPlus arguments. In many cases this provides a mapping from a categorical feature to a set of numerical features, and so we will likely want to leverage this mapping. In future work, we will directly use this .tsv file to apply the mapping, but for the MVP we decided to just define these manually and non-comprehensively.
 
-We consider the set of Simulation Features, the details for which can be viewed in this sheet when applying the “Simulation Features” filtered view. Note that this sheet was derived from ResStock 2024 features, which deviates slightly from the ResStock 2022 EUSS features, and this was accounted for and noted in the following list. 
+We consider the set of Simulation Features, the details for which can be viewed in this sheet when applying the “Simulation Features” filtered view. Note that this list of features is based on ResStock 2024.2 features that are relevant for the scope of buildings supported by the model: Occupied homes without shared HVAC or water heating systems or un-modeled fuels (e.g, wood or coal) and that fall into the following housing categories: single family homes (attached and detached), mobile homes, and multi-family homes with <5 units. Because we train the model on a mix samples from 2024.2 and 2022.1, we have to map 2022.1 features to 2024.2, [see details below](#aligning-2022-to-2024-metadata). 
+
 
 ### Simulation Features → Surrogate Model Features
 
@@ -36,17 +37,19 @@ Ceiling Fan:
 
 `has_ceiling_fan` (bool): Indicator for whether a ceiling fan is in the unit. This simulation feature only takes on two values, one of which is `None`, so we decided to code it as an indicator.
 
-Clothes Dryer: *Note in ResStock 2024, the usage portion of this feature is split into a new variable.*
+Clothes Dryer:
 
-`clothes_dryer_fuel` (str): Fuel type of the clothes dryer. This simulation feature contains presence, fuel and usage percentage, but we just extract fuel and presence since usage percentage for appliances is completely determined by “Usage Level”.
+`clothes_dryer_fuel` (str): Fuel type of the clothes dryer. 
 
-Clothes Washer: *Note in ResStock 2024, the usage portion of this feature is split into a new variable.*
+Clothes Washer: 
 
-`clothes_washer_efficiency` (str): Fuel type of the clothes washer. This simulation feature includes presence, efficiency, and usage percentage, but we just extract the efficiency and presence to create a 3 level category, since usage percentage for appliances is completely determined by “Usage Level”.
+`clothes_washer_efficiency` (str): Type of the clothes washer (i.e, 'EnergyStar', 'Standard', or 'None')
 
-Cooking Range: *Note in ResStock 2024, the usage portion of this feature is split into a new variable.*
+Cooking Range:
 
-`cooking_range_fuel` (str): Fuel type of the cooking range. This simulation feature includes both fuel and usage percentage, but we just extract fuel since usage percentage for appliances is completely determined by “Usage Level”.
+`cooking_range_fuel` (str): Fuel type of the cooking range, where both "Electric Induction" and  "Electric Resistance" are mapped to "Electricity". 
+
+`has_induction_range` (bool) : Indicator for whether or not the range is induction.
 
 Cooling Setpoint:
 
@@ -66,9 +69,9 @@ Duct Leakage and Insulation:
 
 `duct_leakage_percentage` (double) : Duct leakage percentage, set to 0 if ducts are not present. Percentage is divided by 100.
 
-HVAC Has Ducts: *Note that in ResStock 2024 this is expanded to the more descriptive “Duct Location” feature.*
+Duct Location:
 
-`has_ducts` (bool): Indicator for whether the unit has ducts.
+`duct_location` (bool): Indicator for whether the unit has ducts.
 
 Geometry Attic Type:
 
@@ -136,6 +139,14 @@ HVAC Cooling Partial Space Conditioning:
 
 `cooled_space_percentage` (double): Percentage of living space that is air conditioned. Percentage is divided by 100.
 
+HVAC Cooling Type:
+
+`has_ducted_cooling` (bool):  Indicator for whether the cooling system is ducted, which would include 'Central AC' and 'Ducted Heat Pump'.
+
+HVAC Has Ducts:
+
+`has_ducts` (bool): Indicator for whether the unit has ducts. Note that technically this is a deterministic feature of Duct Location, but since Duct Location was not present in 2022.1, we keep this slightly redudant feature just in case. 
+
 HVAC Heating Efficiency:
 
 `heating_efficiency_nominal_percent` (double): Nominal efficiency percentage of the heating system (i.e. percentage of energy consumed by the system that is actually converted to useful heat), set to 900% (infinite efficiency) if not present (see [conversion formulas](https://www.energyguru.com/EnergyEfficiencyInformation.htm)). Percentage is divided by 100.
@@ -144,7 +155,7 @@ HVAC Heating Efficiency:
 
 HVAC Heating Type:
 
-`has_ductless_heating` (bool):  Indicator for whether the heating is ductless. This simulation feature contains information on whether or not the heating system is a heat pump, but this is already captured by `heating_appliance_type` . Importantly, this variable is not fully captured by `has_ducts` since there are units have have ducts but still have a ductless heating system.
+`has_ducted_heating` (bool):  Indicator for whether the heating system is ducted. This simulation feature contains information on whether or not the heating system is a heat pump, but this is already captured by `heating_appliance_type`. Importantly, this variable is not fully captured by `has_ducts` since there are units have have ducts but still have a ductless heating system.
 
 Infiltration:
 
@@ -256,9 +267,14 @@ Water Heater Efficiency is a single string containing the fuel, type, and in som
 
 `water_heater_recovery_efficiency_ef` (double): Recovery efficiency factor (EF) of the water heater, which is the efficiency of heat of transferring heat fro the energy source to the water. While the options.tsv sets this to 0 for all electric or tankless water heaters since this is essentially ignored by the simulation, we set it to 1 which is a more appropriate value.
 
-Water Heater In Unit: *In 2024 ResStock this is a deterministic function of Water Heater Location, but the latter is not a feature in 2022*
 
-`has_water_heater_in_unit` (bool): Indicator for whether the water heater is in the unit.
+Water Heater Location: 
+
+`water_heater_location` (str): Description of where in the unit the water heater is located, with 'Outside' if the water heater is not in the unit.
+
+Water Heater In Unit:
+
+`has_water_heater_in_unit` (bool): Indicator for whether the water heater is in the unit. Note that this is deterministic function of Water Heater Location, but since this was not a feature in 2022.1, we keep this redudant feature just in case. 
 
 Window Areas:
 
@@ -317,6 +333,28 @@ Heat Pump tech upgrade indicator columns: while these columns are not used for a
 Additional Heat Pump Detail Columns: The heat pump sizing method is specified in the options.tsv rather than in the samples, so since we are altering this methodology in some of the RAStock HP upgrades, we need a column to reflect this. 
 
 `heat_pump_sizing_methodology` (str): The methodology used for sizing the heat pump, which is either `ACCA` (default) `HERS` (for upgrade 11.05) or `None` (if no heat pump).
+
+### Aligning 2022 to 2024 metadata
+
+| **Simulation Feature**                     | **2024 Dataset**                                      | **2022 Dataset**                                      | **Notes** |
+|----------------------------------|------------------------------------------------------|------------------------------------------------------|----------|
+| Appliance Features: `clothes_dryer`, `clothes_washer`,`cooking_range`, `dishwasher`,`refrigerator` | Appliance type and usage split into separate columns, e.g., `clothes_dryer`, `clothes_dryer_usage` | Column contained both appliance type and usage details | Usage percentage are entirely determined by the `usage_level`, so in 2022 we simply remove this extra usage detail string and in 2024 we drop the specific appliance usage columns, since this is deterministic|
+| Ducted vs. ductless heat pump naming terminology in `hvac_heating_type_and_fuel`, `hvac_heating_efficiency`,  `hvac_cooling_efficiency`, `hvac_cooling_type`| The columns now specify `"MSHP"` (minisplit) vs `"ASHP"` for heating depending on `hvac_has_ducts` and `"Ducted Heat Pump"` vs `"Non-Ducted Heat Pump"` depending on `hvac_has_ducts`. | There were no ductless heat pumps modeled in baseline, so `"ASHP"` or `"Heat Pump"` was used for all these columns without specifying ducted. | Aligned mostly to 2022, since this distinction is entirely determined by `hvac_has_ducts`. However in the case of `hvac_cooling_type`, we do specify `"Ducted Heat Pump"` vs `"Non-Ducted Heat Pump"` because this aligns with the terminology for `hvac_heating_type` in both 2022 and 2024, which had the options: `"Ducted Heating"`,`"Non-Ducted Heating"`,  `"Ducted Heat Pump"`|
+| `geometry_attic_type` | Possible values include `"Unvented Attic"` | | Aligned to 2024 without taking action: this is just a new category value  |
+| `duct_leakage_and_insulation` | | Column called just `ducts` and strings do not contain specific detail of "Leakage to Outside", just says "Leakage"| Aligned to 2024 by simply adding the "Leakage to Outside" string |
+| `duct_location`           | Provided specific locations (Attic, Crawlspace, Garage, etc.) | This column did not exist   | Aligned mostly 2024 by mapping cases where `hvac_has_ducts="No"` to `"None"`and where `hvac_has_ducts="Yes"` to `"Unknown Location"`, which is a new token  |
+| `water_heater_location`       | Provides specific locations of water heater (Attic, Crawlspace, Garage, Heated Basement, etc.) | This column did not exist  | Aligned mostly to 2024 by mapping cases where `water_heater_in_unit="No"` to `"None"`and where `water_heater_in_unit="Yes"` to `"Inside Unit"`, which is a new token |
+| `misc_hot_tub_spa` | Possible Values: `"Electricity"`, `"Natural Gas"`, `"Other Fuel"`     | Possible Values: `"Electric"`, `"Gas"`                              | Aligned to 2024 by updating naming conventions |
+| `misc_pool_heater` |Possible Values:  `"Electricity"`, `"Natural Gas"`, `"Other Fuel"`, `"None"`     |Possible Values: `"Electric"`, `"Gas"`, `"Solar"`, `"None"`    | Aligned to 2024 by updating naming conventions and mapping `"Solar"` in 2022 to `"Other Fuel"` |
+| `cooking_range` | Possible Values include `"Electric Resistance"`, `"Electric Induction"`, `"Gas"` | Possible Values: `"Electric"`, `"Gas"`                              | Aligned to 2024 by renaming `"Electric"` to `"Electric Resistance"` |
+| `refrigerator` | Possible values include`"EF 21.9"` added                                   | | Aligned to 2024 without taking action: this is just a new numerical value  |
+| `water_heater_efficiency` | Only HPWH category is  `"Electric Heat Pump, 50 gal, 3.45 UEF"`            |  Only HPWH category is `"Electric Heat Pump, 80 gal"`                   | No action taken: the feature transformation will handle both and these get mapped to numerical features so both are fine |
+| `county`, `county_and_puma` | Slightly different set of counties | Slightly different set of counties    | No action taken-- this is not transformed into a feature so misalignment here is fine |
+
+Note that there are other demographic features (not used in the surrogate model) that are included in 2024 but not 2022 that we retain and these will just be null. Further there are a few deterministic features where the schemas are misaligned and these are not described here either since deterministic simulation features do not get convered into surrogate model features. 
+
+
+See [script](../scripts/extract_data_01.py) where this alignment is done.
 
 ## Upgrades
 

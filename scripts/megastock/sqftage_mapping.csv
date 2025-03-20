@@ -1,0 +1,46 @@
+geometry_floor_area,geometry_building_type_acs,sqft
+3000-3999,Mobile Home,3301
+1000-1499,3 or 4 Unit,1138
+3000-3999,2 Unit,3138
+1500-1999,Mobile Home,1690
+0-499,Mobile Home,328
+4000+,3 or 4 Unit,12291
+2500-2999,Single-Family Attached,2631
+500-749,2 Unit,617
+4000+,Single-Family Detached,8194
+3000-3999,Single-Family Detached,3301
+4000+,Mobile Home,8194
+0-499,2 Unit,333
+1500-1999,Single-Family Attached,1675
+3000-3999,Single-Family Attached,3241
+500-749,3 or 4 Unit,617
+1000-1499,2 Unit,1138
+750-999,3 or 4 Unit,853
+2000-2499,Mobile Home,2176
+2500-2999,2 Unit,2590
+750-999,Single-Family Detached,885
+1000-1499,Mobile Home,1220
+750-999,2 Unit,853
+1500-1999,3 or 4 Unit,1623
+2500-2999,Single-Family Detached,2663
+500-749,Single-Family Detached,633
+1500-1999,2 Unit,1623
+500-749,Single-Family Attached,617
+4000+,Single-Family Attached,13414
+3000-3999,3 or 4 Unit,3138
+0-499,Single-Family Detached,328
+1500-1999,Single-Family Detached,1690
+2000-2499,3 or 4 Unit,2115
+2000-2499,2 Unit,2115
+0-499,3 or 4 Unit,333
+2500-2999,3 or 4 Unit,2590
+750-999,Single-Family Attached,866
+0-499,Single-Family Attached,317
+2000-2499,Single-Family Detached,2176
+2500-2999,Mobile Home,2663
+1000-1499,Single-Family Detached,1220
+750-999,Mobile Home,885
+4000+,2 Unit,12291
+1000-1499,Single-Family Attached,1202
+2000-2499,Single-Family Attached,2152
+500-749,Mobile Home,633

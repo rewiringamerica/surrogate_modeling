@@ -1,6 +1,6 @@
 # Databricks notebook source
 # MAGIC %md
-# MAGIC # Process sampled resstock data (from v3.3.0) into same format as 2022.1 file
+# MAGIC # Process sampled resstock data (from v3.3.0)
 
 # COMMAND ----------
 
@@ -8,21 +8,21 @@ dbutils.widgets.text("n_sample_tag", "10k")
 
 # COMMAND ----------
 
-from itertools import chain
-import sys
-
+import pandas as pd
 import pyspark.sql.functions as F
+from pyspark.sql import DataFrame
 from pyspark.sql.types import StringType
 
-sys.path.append("../../src")
 from src.globals import CURRENT_VERSION_NUM
 from src import feature_utils
-
 
 # COMMAND ----------
 
 # get number of samples to use
 N_SAMPLE_TAG = dbutils.widgets.get("n_sample_tag").lower()
+
+# Raw samples filepath
+RESSTOCK_SAMPLED_DATA_PATH = f"gs://the-cube/data/processed/sampling_resstock/resstock_v3.3.0/buildstock_{N_SAMPLE_TAG}.csv"
 
 # COMMAND ----------
 
@@ -41,22 +41,10 @@ def county_gisjoin_to_geoid(gisjoin: str) -> str:
 
 # COMMAND ----------
 
-# on gcs: buildstock with 10k, 1M, 2M, & 5M rows
-
-# raw input
-RESSTOCK_SAMPLED_DATA_PATH = f"gs://the-cube/data/processed/sampling_resstock/resstock_v3.3.0/buildstock_{N_SAMPLE_TAG}.csv"
-
-
-# GCS bucket we'll write to
-RESSTOCK_SAMPLED_2022FORMATTED_PATH = (
-    f"gs://the-cube/data/processed/sampling_resstock/resstock_v3.3.0/building_metadata_2022format_{N_SAMPLE_TAG}.snappy.parquet"
-)
-
-# COMMAND ----------
-
-def process_raw_to_match_2022format(input_path):
+def process_raw_to_match_energy_plus_format(input_path: str) -> DataFrame:
     """
-    Function to process resstock building metadata from 2024.2 format (resstock v 3.3.0) to 2022.1 format. Surrogate model was developed on 2022.1 data.
+    Function to process resstock building metadata from 2024.2 format (resstock v3.3.0) to the the same
+    format as EnergyPlus outputs. 
 
     Parameters
     ----------
@@ -65,7 +53,7 @@ def process_raw_to_match_2022format(input_path):
 
     Returns
     -------
-        spark dataframe
+        
     """
     # read into spark df for typing (keeping everything object)
     df = spark.read.option("header", True).csv(input_path)
@@ -79,21 +67,21 @@ def process_raw_to_match_2022format(input_path):
     if "upgrade" not in df.columns:
         sdf = df.withColumn("upgrade", F.lit(0))
 
-    # corrections to specific columns
+    # naming corrections to specific columns
     df = df.withColumnsRenamed(
         {
             "building": "bldg_id",
             "income_recs2015": "income_recs_2015",
             "income_recs2020": "income_recs_2020",
             "ashrae_iecc_climate_zone_2004_-_2a_split": "ashrae_iecc_climate_zone_2004_2_a_split",
-            "duct_leakage_and_insulation": "ducts",
         }
     )
 
-    ## replace values to match 2022 format
+    # Align 'other fuel' "heating_fuel": "Wood" was mapped to "Other Fuel" in the sampler so we need to map it to "Other Fuel"
+    # so that it gets filtered out when we remove homes with "heating_fuel"="Other Fuel" downstream
+    df = df.withColumn("heating_fuel", F.when(F.col("heating_fuel") == "Wood", "Other Fuel").otherwise(F.col("heating_fuel")))
 
-    # called just "Leakage" in 2022
-    df = df.withColumn("ducts", F.regexp_replace("ducts", "Leakage to Outside", "Leakage"))
+    # match 2022 format in this case since this is a simpler representation
     # heat pump category names are the same for ducted and ductless (minisplit) 2022
     df = (
         df.withColumn("hvac_heating_type_and_fuel", F.regexp_replace("hvac_heating_type_and_fuel", "MSHP", "ASHP"))
@@ -105,73 +93,10 @@ def process_raw_to_match_2022format(input_path):
             .otherwise(F.col("hvac_cooling_efficiency")),
         )
     )
-    # Align 'other fuel' from 2024 to match 2024
-    # 1: "heating_fuel": "Wood" is considered an other fuel in 2022 and this will get filtered out downstream anyway
-    # 2: "misc_pool_heater", "Solar" exists only in 2022 and "Other Fuel" exists only in 2024, so just convert Other to Solar :shrug:
-    # 3: "misc_hot_tub_spa": Other Fuel" exists only in 2024, so just convert it to Electricity since
-    #     since all homes have already have electricity as a valid guel (as opposed to methane gas)
-    df = (
-        df.withColumn(
-            "heating_fuel", F.when(F.col("heating_fuel") == "Wood", "Other Fuel").otherwise(F.col("heating_fuel"))  # 1
-        )
-        .withColumn(
-            "misc_pool_heater",  # 2
-            F.when(F.col("misc_pool_heater") == "Other Fuel", "Solar").otherwise(F.col("misc_pool_heater")),
-        )
-        .withColumn(
-            "misc_hot_tub_spa",  # 3
-            F.when(F.col("misc_hot_tub_spa") == "Other Fuel", "Electricity").otherwise(F.col("misc_hot_tub_spa")),
-        )
-    )
 
-    # In 2024 electric ranges are split into induction and resistance
-    df = df.withColumn(
-        "cooking_range",
-        F.when(F.col("cooking_range").contains("Electric"), "Electricity").otherwise(F.col("cooking_range")),
-    )
-
-    # there are no unvented attics in 2022-- the insulation offered by an unvented attic is most
-    # similar to a Finished Attic/Cathedral Ceiling, but this is only possible for homes with >1 story
-    def fix_unvented_attic(attic_type, stories):
-        return (
-            F.when((attic_type == "Unvented Attic") & (stories == 1), "Vented Attic")
-            .when((attic_type == "Unvented Attic") & (stories > 1), "Finished Attic or Cathedral Ceilings")
-            .otherwise(attic_type)
-        )
-
-    df = df.withColumn(
-        "geometry_attic_type", fix_unvented_attic(F.col("geometry_attic_type"), F.col("geometry_stories_low_rise"))
-    )
-
-    # combine columns that are split in 2024 release & drop older
-    combine_cols = [
-        ("clothes_dryer", "clothes_dryer_usage_level"),
-        ("clothes_washer", "clothes_washer_usage_level"),
-        ("cooking_range", "cooking_range_usage_level"),
-        ("dishwasher", "dishwasher_usage_level"),
-        ("refrigerator", "refrigerator_usage_level"),
-    ]
-    for (utility, usage_level) in combine_cols:
-        df = df.withColumn(utility, F.concat_ws(", ", F.col(utility), F.col(usage_level))).drop(usage_level)
-
-    # add a "sqft" field that is the midpoint
-    # TODO: fix this to be not the midpoint
-    # Define the mapping
-    sqft_midpoint_mapping = {
-        "0-499": 250,
-        "500-749": 625,
-        "750-999": 875,
-        "1000-1499": 1250,
-        "1500-1999": 1750,
-        "2000-2499": 2250,
-        "2500-2999": 2750,
-        "3000-3999": 3500,
-        "4000+": 8000,
-    }
-    # Create a mapping expression
-    mapping_expr = F.create_map([F.lit(x) for x in chain(*sqft_midpoint_mapping.items())])
-    # map the values
-    df = df.withColumn("sqft", mapping_expr[F.col("geometry_floor_area")])
+    # add a "sqft" field that is the midpoint for each bin and housing data based on AHS
+    sqftage_mapping = spark.createDataFrame(pd.read_csv("sqftage_mapping.csv"))
+    df = df.join(sqftage_mapping, on=["geometry_floor_area", "geometry_building_type_acs"], how="left")
 
     ## Set weather city
     # county -> weather city lookup table
@@ -183,7 +108,7 @@ def process_raw_to_match_2022format(input_path):
     )
 
     # extract county gisjoin from county_and_puma and inner join on county_geoid
-    # NOTE: buildings in counties not in RessStock 2022.1 (e.g., HI) will be dropped
+    # NOTE: buildings in counties not in RessStock 2022.1 (e.g., AK, HI) will be dropped
     df = (
         df.withColumn("county", F.split(F.col("county_and_puma"), ",")[0])
         .withColumn("county_geoid", county_gisjoin_to_geoid(F.col("county")))
@@ -196,11 +121,11 @@ def process_raw_to_match_2022format(input_path):
 # COMMAND ----------
 
 # DBTITLE 1,Processing
-metadata_2022_format = process_raw_to_match_2022format(RESSTOCK_SAMPLED_DATA_PATH)
+metadata_formatted = process_raw_to_match_energy_plus_format(RESSTOCK_SAMPLED_DATA_PATH)
 
 # COMMAND ----------
 
-metadata_2022_format.count()  # just under expected number since buildings in HI got dropped
+metadata_formatted.count()  # just under expected number since buildings in AK and HI got dropped
 
 # COMMAND ----------
 
@@ -209,7 +134,7 @@ metadata_2022_format.count()  # just under expected number since buildings in HI
 
 # COMMAND ----------
 
-building_metadata = feature_utils.clean_building_metadata(metadata_2022_format)
+megastock_metadata = feature_utils.clean_building_metadata(metadata_formatted).withColumn("building_set", F.lit('MegaStock'))
 
 # COMMAND ----------
 
@@ -220,5 +145,5 @@ building_metadata = feature_utils.clean_building_metadata(metadata_2022_format)
 # DBTITLE 1,write out sampled building metadata
 table_name = f"ml.megastock.building_metadata_{N_SAMPLE_TAG}_{CURRENT_VERSION_NUM}"
 print(table_name)
-building_metadata.write.saveAsTable(table_name, mode="overwrite", overwriteSchema=True)
+megastock_metadata.write.saveAsTable(table_name, mode="overwrite", overwriteSchema=True)
 spark.sql(f"OPTIMIZE {table_name}")

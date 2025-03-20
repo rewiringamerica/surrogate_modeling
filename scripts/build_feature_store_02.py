@@ -6,7 +6,7 @@
 # MAGIC
 # MAGIC ### Process
 # MAGIC * Transform building metadata into features and subset to features of interest
-# MAGIC * Apply upgrade logic to building metadata features
+# MAGIC * Apply upgrade logic to the relevant building metadata building set for each supported upgrade
 # MAGIC * Pivot weather data into wide vector format with pkey `weather_file_city` and a 8760-length timeseries vector for each weather feature column
 # MAGIC * Write building metadata features and weather features to feature store tables
 # MAGIC
@@ -40,6 +40,7 @@
 # DBTITLE 1,Imports
 import re
 from functools import reduce
+import pandas as pd
 from pathlib import Path
 
 import pyspark.sql.functions as F
@@ -59,7 +60,7 @@ from src import feature_utils, versioning
 
 # MAGIC %md #### Baseline
 # MAGIC
-# MAGIC Refer to [Notion Page](https://www.notion.so/rewiringamerica/Features-Upgrades-c8239f52a100427fbf445878663d7135?pvs=4#086a1d050b8c4094ad10e2275324668b) and [options.tsv](https://github.com/NREL/resstock/blob/run/euss/resources/options_lookup.tsv).
+# MAGIC Refer to `docs/features_upgrades.md` and [options.tsv](https://github.com/NREL/resstock/blob/run/euss/resources/options_lookup.tsv).
 # MAGIC
 
 # COMMAND ----------
@@ -75,7 +76,19 @@ baseline_building_metadata_transformed = feature_utils.transform_building_featur
 
 # MAGIC %md #### Upgrades
 # MAGIC
-# MAGIC Refer to [Notion Page](https://www.notion.so/rewiringamerica/Features-Upgrades-c8239f52a100427fbf445878663d7135?pvs=4#3141dfeeb07144da9fe983b2db13b6d3), [ResStock docs](https://oedi-data-lake.s3.amazonaws.com/nrel-pds-building-stock/end-use-load-profiles-for-us-building-stock/2022/EUSS_ResRound1_Technical_Documentation.pdf), and [upgrade.yml](https://github.com/NREL/resstock/blob/run/euss/EUSS-project-file_2018_10k.yml).
+# MAGIC Refer to `docs/features_upgrades.md`, [ResStock docs](https://oedi-data-lake.s3.amazonaws.com/nrel-pds-building-stock/end-use-load-profiles-for-us-building-stock/2022/EUSS_ResRound1_Technical_Documentation.pdf), and [upgrade.yml](https://github.com/NREL/resstock/blob/run/euss/EUSS-project-file_2018_10k.yml).
+
+# COMMAND ----------
+
+# write out working test case data to gcs for dohyo apply upgrade logic to check against
+# NOTE: first make sure unit tests in tests/test_feature_utils.py are working
+
+baseline_test_data_fname = "test_baseline_features_input.csv"
+upgraded_test_data_fname = "test_upgraded_features.csv"
+baseline_test_features = pd.read_csv(f"../tests/{baseline_test_data_fname}")
+upgraded_test_features = pd.read_csv(f"../tests/{upgraded_test_data_fname}")
+baseline_test_features.to_csv(str(GCS_ARTIFACT_PATH / CURRENT_VERSION_NUM / baseline_test_data_fname), index=False)
+upgraded_test_features.to_csv(str(GCS_ARTIFACT_PATH / CURRENT_VERSION_NUM / upgraded_test_data_fname), index=False)
 
 # COMMAND ----------
 
@@ -85,8 +98,12 @@ building_metadata_upgrades = feature_utils.build_upgrade_metadata_table(baseline
 # COMMAND ----------
 
 # DBTITLE 1,Drop rows where upgrade was not applied
+# get most recent table version for annual outputs to compare against
+outputs_most_recent_version_num = versioning.get_most_recent_table_version(
+    "ml.surrogate_model.building_simulation_outputs_annual", return_version_number_only=True
+)
 building_metadata_applicable_upgrades = feature_utils.drop_non_upgraded_samples(
-    building_metadata_upgrades, check_applicability_logic=True
+    building_metadata_upgrades, check_applicability_logic_against_version=outputs_most_recent_version_num
 )
 
 # COMMAND ----------
@@ -199,7 +216,7 @@ climate_zone_to_index = {label: i for i, label in enumerate(climate_zone_indexer
 data_io.write_json(
     GCS_ARTIFACT_PATH / CURRENT_VERSION_NUM / "mappings.json",
     data={"climate_zone_to_index": climate_zone_to_index, "weather_city_to_index": weather_city_to_index},
-    overwrite=False,
+    overwrite=True,
 )
 
 # COMMAND ----------
@@ -238,7 +255,6 @@ fe = FeatureEngineeringClient()
 
 # DBTITLE 1,Write out building metadata feature store
 table_name = f"ml.surrogate_model.building_features_{CURRENT_VERSION_NUM}"
-
 fe.create_table(
     name=table_name,
     primary_keys=["building_id", "upgrade_id", "weather_file_city"],

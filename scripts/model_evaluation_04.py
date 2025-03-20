@@ -99,7 +99,7 @@ inference_data = test_set.toPandas()
 # run inference: output a N x M matrix of predictions
 # where N is the number of rows in the input data table
 # and M is the number of target columns
-# takes ~20s on 10,0000 and ~2m on 100,0000 samples
+# takes ~20s on 10,000 and ~2m on 100,0000 samples
 prediction_arr = model_loaded.predict(inference_data)
 
 # COMMAND ----------
@@ -433,7 +433,7 @@ metrics_by_upgrade_type_pd["Type"] = pd.Categorical(
     categories=[
         "Electricity",
         "Electric Resistance",
-        "Methane Gas",
+        "Natural Gas",
         "Propane",
         "Fuel Oil",
         "No Heating",
@@ -517,7 +517,7 @@ with sns.axes_style("whitegrid"):
         order=[
             "Fuel Oil",
             "Propane",
-            "Methane Gas",
+            "Natural Gas",
             "Electricity",
             "None",
         ],
