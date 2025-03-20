@@ -20,7 +20,7 @@ model_artifacts/
 ## Versioning
 - Each subdirectory corresponds to a specific model version (e.g., `01_00_00`), which correspond to the poetry version of this repo package, as in `pyproject.toml`.
 - The versioning follows `major_minor_patch` format.
-- The current version of the `features_targets_upgrades.json` and `metrics_by_upgrade_type.csv` are stored in the top level `model_artifacts/` folder in git in order to track paramter and result changes alongside code changes.
+- The current version of the `features_targets_upgrades.json` and `metrics_by_upgrade_type.csv` are stored in the top level `model_artifacts/` folder in git in order to track parameter and result changes alongside code changes.
 
 ## Files
 - `model.keras` – Trained keras surrogate model (only in GCS).
