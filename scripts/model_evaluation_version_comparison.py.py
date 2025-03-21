@@ -212,6 +212,7 @@ fig = plot_error_comparison_boxplot(
     data = predictions_combined_versions_savings_total,
     x = "Upgrade ID",
     title="Model Prediction Comparison by Upgrade: Total Annual Energy Savings")
+# add a dotted line between baseline and other upgrades since this is absolute error rather than savings error plotted
 plt.axvline(x=1.5, color='gray', linestyle='--', linewidth=1.5)
 
 fig.savefig(LOCAL_ARTIFACT_PATH / "model_prediction_comparison_boxplot_by_upgrade.png")
