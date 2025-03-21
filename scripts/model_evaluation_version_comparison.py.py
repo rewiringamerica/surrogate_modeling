@@ -9,53 +9,46 @@
 # COMMAND ----------
 
 # DBTITLE 1,Widget setup
-# dbutils.widgets.text("run_id", "")
-
-# COMMAND ----------
-
-
-version_num_1 = '01_01_00'
+dbutils.widgets.text("sumo_version_num_previous", "01_00_00")
+dbutils.widgets.text("sumo_version_num_new", "01_01_00")
 
 # COMMAND ----------
 
 # DBTITLE 1,Import
-# MAGIC %load_ext autoreload
-# MAGIC %autoreload 2
-# MAGIC
-# MAGIC import numpy as np
-# MAGIC import pandas as pd
-# MAGIC import seaborn as sns
-# MAGIC
-# MAGIC from dmlutils.gcs import save_fig_to_gcs
-# MAGIC
-# MAGIC from src.globals import GCS_ARTIFACT_PATH
-# MAGIC
-# MAGIC pd.set_option('display.max_rows', 100) 
-# MAGIC
-
-# COMMAND ----------
-
-# MAGIC %md ## Load Predictions
-
-# COMMAND ----------
-
-predictions_version_1 = pd.read_csv(str(GCS_ARTIFACT_PATH / version_num_1 / "prediction_metrics_test_set.csv"))
-
-# COMMAND ----------
-
-predictions_version_1
-
-# COMMAND ----------
-
-# DBTITLE 1,Write results to csv
-aggregated_metrics_v1 = pd.read_csv(str(GCS_ARTIFACT_PATH / version_num_1 / "metrics_by_upgrade_type.csv"))
-aggregated_metrics_v2 = pd.read_csv(str(GCS_ARTIFACT_PATH / '01_00_00' / "metrics_by_upgrade_type.csv"))
-
-# aggregated_metrics_by_upgrade_type = pd.read_csv(str(GCS_ARTIFACT_PATH / version_num_1 / "metrics_by_upgrade_type.csv"))
-
-# COMMAND ----------
-
 import pandas as pd
+import seaborn as sns
+import matplotlib.pyplot as plt
+
+from dmlutils.gcs import save_fig_to_gcs
+
+from src.globals import GCS_ARTIFACT_PATH, LOCAL_ARTIFACT_PATH
+
+pd.set_option('display.max_rows', 100) 
+
+# COMMAND ----------
+
+version_num_prev = dbutils.widgets.get("sumo_version_num_previous")
+version_num_new = dbutils.widgets.get("sumo_version_num_new")
+
+# COMMAND ----------
+
+# MAGIC %md ## Load test set error metrics and aggregated error metrics
+
+# COMMAND ----------
+
+predictions_version_prev = pd.read_csv(str(GCS_ARTIFACT_PATH / version_num_prev / "prediction_metrics_test_set.csv")).replace({"Methane Gas": "Natural Gas"})
+predictions_version_new = pd.read_csv(str(GCS_ARTIFACT_PATH / version_num_new / "prediction_metrics_test_set.csv"))
+
+# COMMAND ----------
+
+aggregated_metrics_prev = pd.read_csv(str(GCS_ARTIFACT_PATH / version_num_prev / "metrics_by_upgrade_type.csv")).replace({"Methane Gas": "Natural Gas"})
+aggregated_metrics_new = pd.read_csv(str(GCS_ARTIFACT_PATH / version_num_new  / "metrics_by_upgrade_type.csv"))
+
+# COMMAND ----------
+
+# MAGIC %md ## Compute table of aggregated diffs
+
+# COMMAND ----------
 
 def compute_diffs(df1, df2, index_cols):
     """Compute the differences between two DataFrames on non-key columns."""
@@ -68,18 +61,19 @@ def compute_diffs(df1, df2, index_cols):
         raise ValueError("DataFrames must have the same non-index columns")
 
     # Compute the difference
-    df_diff = df1 - df2
+    df_diff = df2 - df1
 
     # Reset index to return the original format
     return df_diff
 
-df_diffs = compute_diffs(aggregated_metrics_v1, aggregated_metrics_v2, index_cols=['Upgrade ID', 'Type'])
-
-
 # COMMAND ----------
 
-
-df_diffs
+#compute table of the differences in error for each (upgrade, type), where positive numbers indicate higher error for the new version
+df_diffs = compute_diffs(
+  aggregated_metrics_prev,
+  aggregated_metrics_new,
+  index_cols=['Upgrade ID', 'Type'])
+df_diffs.to_csv(str(LOCAL_ARTIFACT_PATH / "metrics_change_from_previous_version_by_upgrade_type.csv"))
 
 # COMMAND ----------
 
@@ -87,129 +81,95 @@ df_diffs
 
 # COMMAND ----------
 
-# DBTITLE 1,Preprocess building level metrics
-# subset to only total consumption predictions and
-# set the metric to abs error on savings on upgrade rows and abs error for baseline
-pred_df_savings_total = (
-    pred_df_savings.where(F.col("fuel") == "total")
-    .withColumn(
-        "absolute_error",
-        F.when(F.col("upgrade_id") == 0, F.col("absolute_error")).otherwise(
-            F.col("absolute_error_savings")
-        ),
-    )
-    .select(
-        "upgrade_id",
-        "baseline_appliance",
-        "absolute_error",
-    )
+# combine both versions into one dataframe
+predictions_combined_versions = pd.concat([
+  predictions_version_prev.assign(Version=version_num_prev),
+  predictions_version_new.assign(Version=version_num_new)], ignore_index=True)
+
+# COMMAND ----------
+
+# Process for plotting:
+# * subset to total over all fuels
+# set metrics of interest to savings for non-baseline upgrades and absolute for baseline upgrades
+# remove baseline types that have very high error that we don't support
+# rename to cleaner labels
+predictions_combined_versions_savings_total = (
+    predictions_combined_versions
+        .query("fuel == 'total'")
+        .assign(
+            absolute_error=lambda df: df["absolute_error"]
+            .where(df["upgrade_id"].isin([0, 0.01]), df["absolute_error_savings"])
+        )
+        .assign(
+            absolute_percentage_error=lambda df: df["absolute_percentage_error"]
+            .where(df["upgrade_id"].isin([0, 0.01]), df["absolute_percentage_error_savings"])
+        )
+        .loc[:, ["upgrade_id", "baseline_appliance", "Version", "absolute_error", "absolute_percentage_error"]]
+        .replace({"Electric Resistance": "Electricity"})
+        .query("baseline_appliance not in ['Heat Pump', 'No Heating']")
+        .rename(
+            columns={
+                "baseline_appliance": "Baseline Fuel",
+                "absolute_error": "Absolute Error (kWh)",
+                "upgrade_id": "Upgrade ID",
+            }
+        )
 )
 
 # COMMAND ----------
 
-predictions_version_1
+def plot_error_comparison_boxplot(data, x, y="Absolute Error (kWh)", row=None, order = None, title = None):
+
+    with sns.axes_style("whitegrid"):
+        g = sns.catplot(
+            data=data,
+            x=x,
+            y=y,
+            hue="Version",
+            order=order,
+            palette="viridis",
+            fill=False,
+            linewidth=1.25,
+            kind="box",
+            row=row,
+            sharey=False,
+            sharex=True,
+            height=2.5,
+            aspect=3.25,
+            showfliers=False,
+            showmeans=True,
+            meanprops={
+                "marker": "o",
+                "markerfacecolor": "white",
+                "markeredgecolor": "k",
+                "markersize": "4",
+            },
+        )
+    if title:
+        g.fig.subplots_adjust(top=0.95)
+        g.fig.suptitle(title)
+    return g.fig
 
 # COMMAND ----------
 
-# DBTITLE 1,Label cleanup
-# do some cleanup to make labels more presentable, including removing baseline hps and shared heating for the sake of space
-
-# Replace values and rename columns
-predictions_version_1_total = (
-    predictions_version_1.replace(
-        {"No Heating": "None", "Electric Resistance": "Electricity"},
-    )
-    .query("baseline_appliance != 'Heat Pump'")  # Equivalent to `where`
-    .rename(
-        columns={
-            "baseline_appliance": "Baseline Fuel",
-            "absolute_error": "Absolute Error (kWh)",
-            "upgrade_id": "Upgrade ID",
-        }
-    )
-)
-
-# do some cleanup to make labels more presentable, including removing baseline hps and shared heating for the sake of space
-
-# Replace values and rename columns
-predictions_version_2_total = (
-    predictions_version_1.replace(
-        {"No Heating": "None", "Electric Resistance": "Electricity"},
-    )
-    .query("baseline_appliance != 'Heat Pump'")  # Equivalent to `where`
-    .rename(
-        columns={
-            "baseline_appliance": "Baseline Fuel",
-            "absolute_error": "Absolute Error (kWh)",
-            "upgrade_id": "Upgrade ID",
-        }
-    )
-)
-
-
-predictions_total_combined_versions = pd.concat([predictions_version_1_total.assign(Version=1), predictions_version_1_total.assign(Version=2)], ignore_index=True)
+plot_error_comparison_boxplot(
+    data = predictions_combined_versions_savings_total,
+    x="Baseline Fuel",
+    order=[
+        "Fuel Oil",
+        "Propane",
+        "Natural Gas",
+        "Electricity"
+    ],
+    row="Upgrade ID",
+    title="Model Prediction Comparison by Upgrade and Baseline Fuel Type: Total Annual Energy Savings")
 
 # COMMAND ----------
 
-# DBTITLE 1,Draw boxplot of comparison
-# pred_df_savings_pd_clip = pred_df_savings_pd.copy()
 
-with sns.axes_style("whitegrid"):
-    g = sns.catplot(
-        data=predictions_total_combined_versions,
-        x="Baseline Fuel",
-        y="Absolute Error (kWh)",
-        order=[
-            "Fuel Oil",
-            "Propane",
-            "Natural Gas",
-            "Electricity",
-            "None",
-        ],
-        hue="Version",
-        palette="viridis",
-        fill=False,
-        linewidth=1.25,
-        kind="box",
-        row="Upgrade ID",
-        height=2.5,
-        aspect=3.25,
-        sharey=False,
-        sharex=True,
-        showfliers=False,
-        showmeans=True,
-        meanprops={
-            "marker": "o",
-            "markerfacecolor": "white",
-            "markeredgecolor": "k",
-            "markersize": "4",
-        },
-    )
-g.fig.subplots_adjust(top=0.93)
-g.fig.suptitle("Model Prediction Comparison: Total Annual Energy Savings")
+fig = plot_error_comparison_boxplot(
+    data = predictions_combined_versions_savings_total,
+    x = "Upgrade ID",
+    title="Model Prediction Comparison by Upgrade: Total Annual Energy Savings")
+plt.axvline(x=1.5, color='gray', linestyle='--', linewidth=1.5)
 
-# COMMAND ----------
-
-with sns.axes_style("whitegrid"):
-    g = sns.catplot(
-        data=predictions_total_combined_versions,
-        x="Upgrade ID",
-        y="Absolute Error (kWh)",
-        hue="Version",
-        palette="viridis",
-        fill=False,
-        linewidth=1.25,
-        kind="box",
-        height=2.5,
-        aspect=3.25,
-        showfliers=False,
-        showmeans=True,
-        meanprops={
-            "marker": "o",
-            "markerfacecolor": "white",
-            "markeredgecolor": "k",
-            "markersize": "4",
-        },
-    )
-g.fig.subplots_adjust(top=0.93)
-g.fig.suptitle("Model Prediction Comparison: Total Annual Energy Savings")
