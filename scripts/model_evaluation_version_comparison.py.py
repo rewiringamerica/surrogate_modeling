@@ -50,6 +50,10 @@ aggregated_metrics_new = pd.read_csv(str(GCS_ARTIFACT_PATH / version_num_new  / 
 
 # COMMAND ----------
 
+aggregated_metrics_new.to_csv(str(LOCAL_ARTIFACT_PATH  / "metrics_by_upgrade_type.csv"), index=False)
+
+# COMMAND ----------
+
 # MAGIC %md ## Compute table of aggregated diffs
 
 # COMMAND ----------
