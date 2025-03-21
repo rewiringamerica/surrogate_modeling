@@ -19,6 +19,7 @@ from pyspark.sql.window import Window
 from databricks.sdk.runtime import spark, udf
 
 from src.utils import data_cleaning
+from src.globals import ANNUAL_OUTPUTS_TABLE
 
 from dmlutils import constants
 from dmlutils.building_upgrades.upgrades import Upgrade, upgrades_df, get_upgrade_id
@@ -1066,9 +1067,7 @@ def drop_non_upgraded_samples(building_features: DataFrame, check_applicability_
         # we ignore 13.01 and 11.02 since they are all flagged as True in the output table
         # even though many do not have the insulation upgrade applied and are therefore identical to 11.05
         applicability_compare = building_features_applicability_flag.alias("features").join(
-            spark.table(
-                f"ml.surrogate_model.building_simulation_outputs_annual_{check_applicability_logic_against_version}"
-            )
+            spark.table(f"{ANNUAL_OUTPUTS_TABLE}_{check_applicability_logic_against_version}")
             .select("upgrade_id", "building_id", "applicability")
             .alias("targets"),
             on=["upgrade_id", "building_id"],
@@ -1116,23 +1115,12 @@ def create_string_indexer(df: DataFrame, column_name: str) -> StringIndexer:
     return fitted_indexer
 
 
-def fit_weather_city_index(df_to_fit: Optional[DataFrame] = None):
-    # read in weather features if df is not passed
-    if df_to_fit is None:
-        df_to_fit = spark.table("ml.surrogate_model.weather_features_hourly").drop("weather_file_city_index")
+def fit_weather_city_index(df_to_fit: DataFrame):
     # Create the StringIndexer
-    return create_string_indexer(df_to_fit, "weather_file_city")
+    return create_string_indexer(df_to_fit.drop("weather_file_city_index"), "weather_file_city")
 
 
 def transform_weather_city_index(weather_file_city_indexer: StringIndexer, df_to_transform: DataFrame):
     return weather_file_city_indexer.transform(df_to_transform).withColumn(
         "weather_file_city_index", F.col("weather_file_city_index").cast("int")
-    )
-
-
-def add_weather_city_index(df_to_transform: DataFrame):
-
-    return transform_weather_city_index(
-        weather_file_city_indexer=fit_weather_city_index(),
-        df_to_transform=df_to_transform,
     )

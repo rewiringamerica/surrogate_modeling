@@ -86,7 +86,6 @@ os.environ["TF_FORCE_GPU_ALLOW_GROWTH"] = "true"
 # MAGIC from tensorflow import keras
 # MAGIC from typing import Tuple, Dict
 # MAGIC
-# MAGIC from src.globals import GCS_ARTIFACT_PATH
 # MAGIC from src.utils.data_io import write_json
 # MAGIC from src.datagen import DataGenerator, load_data
 # MAGIC from src.surrogate_model import SurrogateModel
@@ -293,8 +292,6 @@ with mlflow.start_run() as run:
 if not DEBUG:
     # serialize the keras model and save to GCP
     sm.save_keras_model(run_id=run_id)
-    # save the features, targets, and upgrades for this training run to GCP for use by dohyo
-    write_json(fpath=GCS_ARTIFACT_PATH / sm.name / "features_targets_upgrades.json", data=DataGenerator.data_params)
 
 # COMMAND ----------
 

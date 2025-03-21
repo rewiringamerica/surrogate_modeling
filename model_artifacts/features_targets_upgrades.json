@@ -24,13 +24,16 @@
         "cooling_efficiency_eer",
         "cooling_setpoint_degrees_f",
         "cooling_setpoint_offset_magnitude_degrees_f",
+        "has_ducted_cooling",
         "water_heater_fuel",
         "water_heater_type",
         "water_heater_tank_volume_gal",
         "water_heater_efficiency_ef",
         "water_heater_recovery_efficiency_ef",
         "has_water_heater_in_unit",
+        "water_heater_location",
         "has_ducts",
+        "duct_location",
         "duct_insulation_r_value",
         "duct_leakage_percentage",
         "infiltration_ach50",
@@ -51,6 +54,7 @@
         "clothes_dryer_fuel",
         "clothes_washer_efficiency",
         "cooking_range_fuel",
+        "has_induction_range",
         "dishwasher_efficiency_kwh",
         "lighting_efficiency",
         "refrigerator_extra_efficiency_ef",
@@ -70,8 +74,7 @@
         "n_occupants",
         "vintage",
         "has_heat_pump_dryer",
-        "has_induction_range",
-        "has_methane_gas_appliance",
+        "has_natural_gas_appliance",
         "has_fuel_oil_appliance",
         "has_propane_appliance"
     ],
@@ -83,26 +86,29 @@
     ],
     "consumption_group_dict": {
         "electricity": [
-            "electricity__total"
+            "out_electricity_total_energy_consumption_kwh"
         ],
-        "methane_gas": [
-            "methane_gas__total"
+        "natural_gas": [
+            "out_natural_gas_total_energy_consumption_kwh"
         ],
         "fuel_oil": [
-            "fuel_oil__total"
+            "out_fuel_oil_total_energy_consumption_kwh"
         ],
         "propane": [
-            "propane__total"
+            "out_propane_total_energy_consumption_kwh"
         ]
     },
     "upgrade_ids": [
         0.0,
+        0.01,
         1.0,
         3.0,
         4.0,
         6.0,
         9.0,
+        11.05,
+        11.07,
         13.01,
-        11.05
+        13.02
     ]
 }

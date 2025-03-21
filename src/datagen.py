@@ -11,7 +11,7 @@ from databricks.sdk.runtime import spark
 
 from pyspark.sql import DataFrame
 
-from src.globals import LOCAL_ARTIFACT_PATH, CURRENT_VERSION_NUM
+import src.globals as g
 from src.utils.data_io import read_json
 from src.versioning import get_most_recent_table_version
 
@@ -48,11 +48,11 @@ class DataGenerator(tf.keras.utils.Sequence):
     # This could be adjusted manually if wanted to use different version numbers
     # TODO: This is a little janky, and running spark commands hereis not ideadl
     # but we'll move over to a more robust process later and this works for now
-    building_feature_table_name = get_most_recent_table_version("ml.surrogate_model.building_features")
-    weather_feature_table_name = get_most_recent_table_version("ml.surrogate_model.weather_features_hourly")
-    target_table_name = get_most_recent_table_version("ml.surrogate_model.building_simulation_outputs_annual")
-    # load the default features, targets, and upgrades to use for this training run based on params stored in current version's config
-    data_params = read_json(LOCAL_ARTIFACT_PATH / CURRENT_VERSION_NUM / "features_targets_upgrades.json")
+    building_feature_table_name = get_most_recent_table_version(g.BUILDING_FEATURE_TABLE)
+    weather_feature_table_name = get_most_recent_table_version(g.WEATHER_FEATURE_TABLE)
+    target_table_name = get_most_recent_table_version(g.ANNUAL_OUTPUTS_TABLE)
+    # load the default features, targets, and upgrades to use for this training run based on params stored in current version's config in GCS
+    data_params = read_json(g.GCS_CURRENT_VERSION_ARTIFACT_PATH / "features_targets_upgrades.json")
 
     def __init__(
         self,

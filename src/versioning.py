@@ -28,7 +28,7 @@ def get_most_recent_table_version(full_table_name, max_version=None, return_vers
 
     Parameters:
         full_table_name (str): Table name in the format `{catalog}.{database}.{table}`
-        max_version (str, optional): Max version to cap the table versions at (e.g., '02_05_10'). Defaults to None.
+        max_version (str, optional): Max version to cap the table versions at (e.g., '02_05_10'). Defaults to the current version number.
         return_version_number_only (bool, optional): Whether to return just the version number string. Defaults to False.
 
     Returns:
@@ -38,6 +38,9 @@ def get_most_recent_table_version(full_table_name, max_version=None, return_vers
         catalog, database, table = full_table_name.split(".")
     except ValueError:
         raise ValueError("Invalid table name format: must be in the form 'catalog.database.table'")
+
+    if max_version is None:
+        max_version = get_poetry_version_no()
 
     # List all tables in the catalog and database
     tables_df = spark.sql(f"SHOW TABLES IN {catalog}.{database}")

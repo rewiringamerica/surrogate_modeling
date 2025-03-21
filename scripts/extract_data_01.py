@@ -42,13 +42,13 @@ from pprint import pprint
 from pyspark.sql import DataFrame
 import pyspark.sql.functions as F
 
-from src.globals import CURRENT_VERSION_NUM
+import src.globals as g
 from src.utils import data_cleaning, qa_utils
 from src import feature_utils
 
 from dmlutils.building_upgrades.upgrades import BuildingSet
 
-print(CURRENT_VERSION_NUM)
+print(g.CURRENT_VERSION_NUM)
 
 # COMMAND ----------
 
@@ -276,7 +276,8 @@ building_metadata = align_baseline_metadata(building_metadata_2022, building_met
 # COMMAND ----------
 
 # DBTITLE 1,Write out building metadata
-table_name = f"ml.surrogate_model.building_metadata_{CURRENT_VERSION_NUM}"
+table_name = f"{g.BUILDING_METADATA_TABLE}_{g.CURRENT_VERSION_NUM}"
+print(table_name)
 building_metadata.write.saveAsTable(table_name, mode="overwrite", overwriteSchema=True)
 spark.sql(f"OPTIMIZE {table_name}")
 
@@ -305,7 +306,8 @@ annual_outputs = annual_outputs.withColumn("building_id", F.col("building_id").c
 # COMMAND ----------
 
 # DBTITLE 1,Write out annual outputs
-table_name = f"ml.surrogate_model.building_simulation_outputs_annual_{CURRENT_VERSION_NUM}"
+table_name = f"{g.ANNUAL_OUTPUTS_TABLE}_{g.CURRENT_VERSION_NUM}"
+print(table_name)
 annual_outputs.write.saveAsTable(table_name, mode="overwrite", overwriteSchema=True, partitionBy=["upgrade_id"])
 spark.sql(f"OPTIMIZE {table_name}")
 
@@ -366,7 +368,8 @@ hourly_weather_data = extract_hourly_weather_data()
 # COMMAND ----------
 
 # DBTITLE 1,Write out hourly weather data
-table_name = f"ml.surrogate_model.weather_data_hourly_{CURRENT_VERSION_NUM}"
+table_name = f"{g.WEATHER_DATA_TABLE}_{g.CURRENT_VERSION_NUM}"
+print(table_name)
 hourly_weather_data.write.saveAsTable(
     table_name,
     mode="overwrite",
