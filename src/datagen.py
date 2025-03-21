@@ -340,7 +340,7 @@ def load_data(
     sum_str = ", ".join([f"{'+'.join(v)} AS {k}" for k, v in consumption_group_dict.items()])
     data = spark.sql(
         f"""
-        SELECT B.building_id, B.upgrade_id, B.weather_file_city, {sum_str}
+        SELECT B.building_id, B.upgrade_id, B.weather_file_city, B.building_set, {sum_str}
         FROM {DataGenerator.target_table_name} O
         INNER JOIN {DataGenerator.building_feature_table_name} B 
             ON B.upgrade_id = O.upgrade_id AND B.building_id == O.building_id
