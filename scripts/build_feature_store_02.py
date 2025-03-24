@@ -81,7 +81,7 @@ baseline_building_metadata_transformed = feature_utils.transform_building_featur
 # COMMAND ----------
 
 # write out working test case data to gcs for dohyo apply upgrade logic to check against
-# NOTE: first make sure unit tests in tests/test_feature_utils.py are working
+# NOTE: first make sure unit tests in tests/test_feature_utils.py are working and that there is at least one test per implemented upgrade
 
 baseline_test_data_fname = "test_baseline_features_input.csv"
 upgraded_test_data_fname = "test_upgraded_features.csv"
