@@ -84,8 +84,8 @@ class ApplyUpgrades(unittest.TestCase):
         df_out[has_cols] = df_out[has_cols].fillna(False).astype(bool)
         df_out_expected[has_cols] = df_out_expected[has_cols].fillna(False).astype(bool)
 
-        # check whether logic produced expected output on the same set of columns
-        assert_frame_equal(df_out, df_out_expected[df_out.columns])
+        # check whether logic produced expected output on the same set of columns in same order
+        assert_frame_equal(df_out[df_out_expected.columns], df_out_expected)
 
 
 if os.environ.get("DATABRICKS_RUNTIME_VERSION", None):
