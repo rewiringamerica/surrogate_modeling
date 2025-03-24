@@ -54,7 +54,9 @@ class ApplyUpgrades(unittest.TestCase):
     )
     def test_apply_upgrades(self):
         """Test feautre upgrade tranformations match expected output."""
-        baseline_features = pd.read_csv("test_baseline_features_input.csv", keep_default_na=False, na_values=[""]).reset_index()
+        baseline_features = pd.read_csv(
+            "test_baseline_features_input.csv", keep_default_na=False, na_values=[""]
+        ).reset_index()
         df_out_expected = pd.read_csv("test_upgraded_features.csv", keep_default_na=False, na_values=[""])
 
         # apply upgrades to baseline features by upgrade group
@@ -72,7 +74,7 @@ class ApplyUpgrades(unittest.TestCase):
             )
             .toPandas()
             .sort_values("index")
-            .drop("index",axis=1)
+            .drop("index", axis=1)
             .reset_index(drop=True)
         )
 
@@ -84,6 +86,7 @@ class ApplyUpgrades(unittest.TestCase):
 
         # check whether logic produced expected output on the same set of columns
         assert_frame_equal(df_out, df_out_expected[df_out.columns])
+
 
 if os.environ.get("DATABRICKS_RUNTIME_VERSION", None):
     # If we are developing on databricks we have to manually
