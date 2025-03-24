@@ -915,8 +915,8 @@ def apply_upgrades(baseline_building_features: DataFrame, upgrade_id: int) -> Da
             # Air leakage reduction if high levels of infiltration
             .withColumn(
                 "infiltration_ach50",
-                F.when(F.col("infiltration_ach50") >= 10, F.col("infiltration_ach50") * 0.4)
-                .when(F.col("infiltration_ach50") >= 5, F.col("infiltration_ach50") * 0.25)
+                F.when(F.col("infiltration_ach50") >= 10, F.col("infiltration_ach50") * 0.6)
+                .when(F.col("infiltration_ach50") >= 5, F.col("infiltration_ach50") * 0.75)
                 .otherwise(F.col("infiltration_ach50")),
             )
         )
