@@ -1065,8 +1065,8 @@ def drop_non_upgraded_samples(building_features: DataFrame, check_applicability_
 
     if check_applicability_logic_against_version is not None:
         # test that the applicability logic matches between the features and targets
-        # we ignore 13.01 and 11.02 since they are all flagged as True in the output table
-        # even though many do not have the insulation upgrade applied and are therefore identical to 11.05
+        # we ignore a few RASstock upgrades since they are all flagged as True in the output table
+        # even though many do not have the insulation upgrade applied and are therefore identical to previous upgrades
         applicability_compare = building_features_applicability_flag.alias("features").join(
             spark.table(f"{ANNUAL_OUTPUTS_TABLE}_{check_applicability_logic_against_version}")
             .select("upgrade_id", "building_id", "applicability")
@@ -1075,7 +1075,7 @@ def drop_non_upgraded_samples(building_features: DataFrame, check_applicability_
         )
         mismatch_count = (
             applicability_compare.where(F.col("features.applicability") != F.col("targets.applicability"))
-            .where(~F.col("upgrade_id").isin([13.01, 11.02]))
+            .where(~F.col("upgrade_id").isin([13.01, 13.02, 11.05, 11.07]))
             .count()
         )
         if mismatch_count > 0:
