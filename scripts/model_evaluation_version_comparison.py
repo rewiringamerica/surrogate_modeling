@@ -1,7 +1,7 @@
 # Databricks notebook source
 # MAGIC %md # Compare Performance of Surrogate Model Versions
 # MAGIC
-# MAGIC Compares the evaluation metrics between two different surrogate models based on previously written out predictions on a held out test set. Write out csvs and figures to gcs and local artifacts.
+# MAGIC Compares the evaluation metrics between two different surrogate models versions based on previously written out predictions on a held out test set. Write out csvs and figures to gcs and local artifacts. The two version numbers are entered via widgets.
 
 # COMMAND ----------
 
@@ -33,6 +33,7 @@ pd.set_option('display.max_rows', 100)
 
 version_num_prev = dbutils.widgets.get("sumo_version_num_previous")
 version_num_new = dbutils.widgets.get("sumo_version_num_new")
+print(f"Comparing new version {version_num_new} against new version {version_num_prev}")
 
 # COMMAND ----------
 
@@ -93,6 +94,11 @@ df_diffs = compute_diffs(
   aggregated_metrics_prev,
   aggregated_metrics_new,
   index_cols=['Upgrade ID', 'Type'])
+df_diffs
+
+# COMMAND ----------
+
+#write these out to gcs and locally
 df_diffs.to_csv(str(GCS_ARTIFACT_PATH / "metrics_change_from_previous_version_by_upgrade_type.csv"))
 df_diffs.to_csv(str(LOCAL_ARTIFACT_PATH / "metrics_change_from_previous_version_by_upgrade_type.csv"))
 
@@ -206,6 +212,10 @@ fig = plot_error_comparison_boxplot(
     ],
     row="Upgrade Name",
     title="Model Prediction Comparison by Upgrade and Baseline Fuel Type: Total Annual Energy Savings")
+
+# COMMAND ----------
+
+# save these locally and to gcs
 fig.savefig(LOCAL_ARTIFACT_PATH / "model_prediction_comparison_boxplot_by_upgrade_type.png")
 save_fig_to_gcs(fig, GCS_ARTIFACT_PATH / version_num_new /  "model_prediction_comparison_boxplot_by_upgrade_type.png")
 
@@ -219,6 +229,8 @@ fig = plot_error_comparison_boxplot(
 # add a dotted line between baseline and other upgrades since this is absolute error rather than savings error plotted
 plt.axvline(x=1.5, color='gray', linestyle='--', linewidth=1.5)
 
+# COMMAND ----------
+
+# save these locally and to gcs
 fig.savefig(LOCAL_ARTIFACT_PATH / "model_prediction_comparison_boxplot_by_upgrade.png")
 save_fig_to_gcs(fig, GCS_ARTIFACT_PATH / version_num_new /  "model_prediction_comparison_boxplot_by_upgrade.png")
-
