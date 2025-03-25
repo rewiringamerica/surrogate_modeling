@@ -328,14 +328,14 @@ def load_data(
 
     Note that both splitting and subsetting are done approximately, so returned dataframes may not be exactly the requested size/ratio.
     """
-    
+
     if n_train and n_test:
         raise ValueError("Cannot specify both n_train and n_test")
     if consumption_group_dict is None:
         consumption_group_dict = DataGenerator.data_params["consumption_group_dict"]
     if upgrade_ids is None:
         upgrade_ids = DataGenerator.data_params["upgrade_ids"]
-    
+
     # Read outputs table and sum over consumption columns within each consumption group
     # join to the bm table to get required keys to join on and filter the building models based on charactaristics
     sum_str = ", ".join([f"{'+'.join(v)} AS {k}" for k, v in consumption_group_dict.items()])
@@ -350,10 +350,7 @@ def load_data(
     data = data.where(F.col("upgrade_id").isin(upgrade_ids))
 
     # define building sets and their respective baselines
-    building_sets = [
-        ("ResStock 2022.1", 0),
-        ("ResStock 2024.2", 0.01)
-    ]
+    building_sets = [("ResStock 2022.1", 0), ("ResStock 2024.2", 0.01)]
 
     # Create train, val and test datasets for each building set, where each building id and all of its upgrades
     # appear in exactly one split
@@ -382,9 +379,21 @@ def load_data(
             frac = 1.0
 
         # select train, val and test set based on building id and building set, subsetting to smaller sets if specified
-        train_df = train_ids.sample(fraction=frac, seed=0).join(data, on="building_id").where(F.col("building_set") == building_set)
-        val_df = val_ids.sample(fraction=frac, seed=0).join(data, on="building_id").where(F.col("building_set") == building_set)
-        test_df = test_ids.sample(fraction=frac, seed=0).join(data, on="building_id").where(F.col("building_set") == building_set)
+        train_df = (
+            train_ids.sample(fraction=frac, seed=0)
+            .join(data, on="building_id")
+            .where(F.col("building_set") == building_set)
+        )
+        val_df = (
+            val_ids.sample(fraction=frac, seed=0)
+            .join(data, on="building_id")
+            .where(F.col("building_set") == building_set)
+        )
+        test_df = (
+            test_ids.sample(fraction=frac, seed=0)
+            .join(data, on="building_id")
+            .where(F.col("building_set") == building_set)
+        )
 
         split_dfs.append((train_df, val_df, test_df))
 
