@@ -692,12 +692,14 @@ def transform_building_features(building_metadata_table_name) -> DataFrame:
             "heating_appliance_type",
             "heat_pump_sizing_methodology",
             "has_ducted_heating",
+            "hvac_heating_efficiency", # only used for applying upgrades, gets dropped later
             "heating_efficiency_nominal_percentage",
             "heating_setpoint_degrees_f",
             "heating_setpoint_offset_magnitude_degrees_f",
             # cooling
             "ac_type",
             "cooled_space_percentage",
+            "hvac_cooling_efficiency", # only used for applying upgrades, gets dropped later
             "cooling_efficiency_eer",
             "cooling_setpoint_degrees_f",
             "cooling_setpoint_offset_magnitude_degrees_f",
@@ -782,7 +784,8 @@ def upgrade_to_hp(
     Upgrade the baseline building features to an air source heat pump (ASHP) with specified efficiencies.
     Note that all baseline hps in Resstock are lower efficiency than specified upgrade thresholds
         (<=SEER 15; <=HSPF 8.5)
-
+    TODO: in 2024.2 there are now hps with ASHP, SEER 29.3, 14 HSPF in baseline so this is no longer true.
+    Need to modfify this to account for that. 
     Args:
         baseline_building_features (DataFrame): The baseline building features.
         ducted_efficiency (str): The efficiency of the ducted heat pump.
