@@ -108,9 +108,14 @@ df_diffs.to_csv(str(LOCAL_ARTIFACT_PATH / "metrics_change_from_previous_version_
 
 # COMMAND ----------
 
-#create mapping of upgrade id -> upgrade name
-upgrade_name_df = upgrades.upgrades_df(spark).select(F.col('name').alias('Upgrade Name'), 'upgrade_id').toPandas()
-upgrade_name_df['upgrade_id'] = upgrade_name_df['upgrade_id'].astype(float)
+#TODO: Import this from dmlutils after next release
+from dmlutils.building_upgrades.upgrades import UPGRADES, Upgrade
+UPGRADE_NAME_BY_ID = {float(upgrade.get("upgrade_id")): upgrade.get("name") for upgrade in UPGRADES}
+
+# COMMAND ----------
+
+#create dataframe of upgrade id -> upgrade name
+upgrade_name_df = pd.DataFrame([(k, v.value) for k,v in UPGRADE_NAME_BY_ID.items()], columns = ['upgrade_id', 'Upgrade Name'])
 
 # COMMAND ----------
 
