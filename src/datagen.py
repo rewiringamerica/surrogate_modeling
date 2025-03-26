@@ -49,7 +49,7 @@ class DataGenerator(tf.keras.utils.Sequence):
     # TODO: This is a little janky, and running spark commands hereis not ideadl
     # but we'll move over to a more robust process later and this works for now
     #TODO: change these back to just use "get_most_recent_table_version"
-    building_feature_table_name = f"{g.BUILDING_FEATURE_TABLE}_{g.CURRENT_VERSION_NUM}"
+    building_feature_table_name = f"{g.BUILDING_FEATURE_TABLE}_perf_curve_param_oem_hp_only_experiment"
     weather_feature_table_name = get_most_recent_table_version(g.WEATHER_FEATURE_TABLE, max_version=None)
     target_table_name = get_most_recent_table_version(g.ANNUAL_OUTPUTS_TABLE, max_version=None)
     # load the default features, targets, and upgrades to use for this training run based on params stored in current version's config in GCS
