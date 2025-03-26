@@ -119,7 +119,7 @@ prediction_arr = model_loaded.predict(inference_data)
 
 # DBTITLE 1,Concatenate pkeys and predictions
 # create an array of N x 2 with the pkeys needed to join this to metadata
-sample_pkeys = ["building_id", "upgrade_id"]
+sample_pkeys = ["building_id", "upgrade_id", "building_set"]
 sample_pkey_arr = inference_data[sample_pkeys].values
 
 # combine prediction (including sum over all fuels) and pkeys to create a N x 2 (pkeys) array + M (fuel targets) + 1 (summed fuels)
@@ -149,10 +149,6 @@ pred_only = spark.createDataFrame(
 
 # COMMAND ----------
 
-test_data
-
-# COMMAND ----------
-
 # DBTITLE 1,Combine actual and predicted targets
 # Create dataframe with columns for actual and predicted values for each fuel
 # and add a total columns to the actual
@@ -166,7 +162,7 @@ pred_wide = pred_only.join(
 # Melt to long format by fuel with columns: building, upgrade, fuel, true, pred
 pred_by_building_upgrade_fuel = (
     pred_wide.melt(
-        ids=sample_pkeys + ['building_set'],
+        ids=sample_pkeys,
         values=targets + target_pred_labels,
         valueColumnName="value",
         variableColumnName="fuel",
@@ -178,7 +174,7 @@ pred_by_building_upgrade_fuel = (
         ),
     )
     .withColumn("fuel", F.split(F.col("fuel"), "-")[0])
-    .groupBy(*sample_pkeys, "building_set", "fuel")
+    .groupBy(*sample_pkeys, "fuel")
     .pivot(pivot_col="target_type", values=["actual", "prediction"])
     .agg(F.first("value"))  # vacuous agg
 )

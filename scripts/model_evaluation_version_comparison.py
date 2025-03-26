@@ -175,6 +175,7 @@ def plot_error_comparison_boxplot(data, x, y="Absolute Error (kWh)", row=None, o
             y=y,
             hue="Version",
             order=order,
+            hue_order = [version_num_prev, version_num_new],
             palette="viridis",
             fill=False,
             linewidth=1.25,
