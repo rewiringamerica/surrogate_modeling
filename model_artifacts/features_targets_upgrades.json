@@ -76,19 +76,7 @@
         "has_heat_pump_dryer",
         "has_natural_gas_appliance",
         "has_fuel_oil_appliance",
-        "has_propane_appliance",
-        "min_capacity_47f",
-        "min_capacity_17f",
-        "min_capacity_5f",
-        "max_capacity_47f",
-        "max_capacity_17f",
-        "max_capacity_5f",
-        "min_cop_47f",
-        "min_cop_17f",
-        "min_cop_5f",
-        "max_cop_47f",
-        "max_cop_17f",
-        "max_cop_5f"
+        "has_propane_appliance"
     ],
     "weather_features": [
         "temp_air",
