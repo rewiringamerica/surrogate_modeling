@@ -146,7 +146,7 @@ predictions_combined_versions_savings_total = (
         )
 )
 
-# Combine upgreade id and name
+# Combine upgrade id and name
 predictions_combined_versions_savings_total['Upgrade Name'] = predictions_combined_versions_savings_total['Upgrade Name'] + ' (' + predictions_combined_versions_savings_total['Upgrade ID'].astype(str) + ')'
 
 # COMMAND ----------
