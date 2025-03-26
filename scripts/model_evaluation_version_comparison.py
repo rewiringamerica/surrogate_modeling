@@ -25,9 +25,9 @@ import pyspark.sql.functions as F
 from dmlutils.building_upgrades import upgrades
 from dmlutils.gcs import save_fig_to_gcs
 
-from src.globals import GCS_ARTIFACT_PATH, LOCAL_ARTIFACT_PATH
+from src.globals import GCS_ARTIFACT_PATH, LOCAL_ARTIFACT_PATH, CURRENT_VERSION_NUM
 
-pd.set_option('display.max_rows', 100) 
+pd.set_option("display.max_rows", 100)
 
 # COMMAND ----------
 
@@ -41,17 +41,21 @@ print(f"Comparing new version {version_num_new} against new version {version_num
 
 # COMMAND ----------
 
-predictions_version_prev = pd.read_csv(str(GCS_ARTIFACT_PATH / version_num_prev / "prediction_metrics_test_set.csv")).replace({"Methane Gas": "Natural Gas"})
+predictions_version_prev = pd.read_csv(
+    str(GCS_ARTIFACT_PATH / version_num_prev / "prediction_metrics_test_set.csv")
+).replace({"Methane Gas": "Natural Gas"})
 predictions_version_new = pd.read_csv(str(GCS_ARTIFACT_PATH / version_num_new / "prediction_metrics_test_set.csv"))
 
 # COMMAND ----------
 
-aggregated_metrics_prev = pd.read_csv(str(GCS_ARTIFACT_PATH / version_num_prev / "metrics_by_upgrade_type.csv")).replace({"Methane Gas": "Natural Gas"})
-aggregated_metrics_new = pd.read_csv(str(GCS_ARTIFACT_PATH / version_num_new  / "metrics_by_upgrade_type.csv"))
+aggregated_metrics_prev = pd.read_csv(
+    str(GCS_ARTIFACT_PATH / version_num_prev / "metrics_by_upgrade_type.csv")
+).replace({"Methane Gas": "Natural Gas"})
+aggregated_metrics_new = pd.read_csv(str(GCS_ARTIFACT_PATH / version_num_new / "metrics_by_upgrade_type.csv"))
 
 # COMMAND ----------
 
-aggregated_metrics_new.to_csv(str(LOCAL_ARTIFACT_PATH  / "metrics_by_upgrade_type.csv"), index=False)
+aggregated_metrics_new.to_csv(str(LOCAL_ARTIFACT_PATH / "metrics_by_upgrade_type.csv"), index=False)
 
 # COMMAND ----------
 
@@ -89,17 +93,16 @@ def compute_diffs(df1, df2, index_cols):
 
 # COMMAND ----------
 
-#compute table of the differences in error for each (upgrade, type), where positive numbers indicate higher error for the new version
-df_diffs = compute_diffs(
-  aggregated_metrics_prev,
-  aggregated_metrics_new,
-  index_cols=['Upgrade ID', 'Type'])
+# compute table of the differences in error for each (upgrade, type), where positive numbers indicate higher error for the new version
+df_diffs = compute_diffs(aggregated_metrics_prev, aggregated_metrics_new, index_cols=["Upgrade ID", "Type"])
 df_diffs
 
 # COMMAND ----------
 
-#write these out to gcs and locally
-df_diffs.to_csv(str(GCS_ARTIFACT_PATH / "metrics_change_from_previous_version_by_upgrade_type.csv"))
+# write these out to gcs and locally
+df_diffs.to_csv(
+    str(GCS_ARTIFACT_PATH / CURRENT_VERSION_NUM / "metrics_change_from_previous_version_by_upgrade_type.csv")
+)
 df_diffs.to_csv(str(LOCAL_ARTIFACT_PATH / "metrics_change_from_previous_version_by_upgrade_type.csv"))
 
 # COMMAND ----------
@@ -108,21 +111,28 @@ df_diffs.to_csv(str(LOCAL_ARTIFACT_PATH / "metrics_change_from_previous_version_
 
 # COMMAND ----------
 
-#TODO: Import this from dmlutils after next release
+# TODO: Import this from dmlutils after next release
 from dmlutils.building_upgrades.upgrades import UPGRADES, Upgrade
+
 UPGRADE_NAME_BY_ID = {float(upgrade.get("upgrade_id")): upgrade.get("name") for upgrade in UPGRADES}
 
 # COMMAND ----------
 
-#create dataframe of upgrade id -> upgrade name
-upgrade_name_df = pd.DataFrame([(k, v.value) for k,v in UPGRADE_NAME_BY_ID.items()], columns = ['upgrade_id', 'Upgrade Name'])
+# create dataframe of upgrade id -> upgrade name
+upgrade_name_df = pd.DataFrame(
+    [(k, v.value) for k, v in UPGRADE_NAME_BY_ID.items()], columns=["upgrade_id", "Upgrade Name"]
+)
 
 # COMMAND ----------
 
 # combine both versions into one dataframe
-predictions_combined_versions = pd.concat([
-  predictions_version_prev.assign(Version=version_num_prev),
-  predictions_version_new.assign(Version=version_num_new)], ignore_index=True)
+predictions_combined_versions = pd.concat(
+    [
+        predictions_version_prev.assign(Version=version_num_prev),
+        predictions_version_new.assign(Version=version_num_new),
+    ],
+    ignore_index=True,
+)
 
 # COMMAND ----------
 
@@ -133,30 +143,35 @@ predictions_combined_versions = pd.concat([
 # rename to cleaner labels
 
 predictions_combined_versions_savings_total = (
-    predictions_combined_versions
-        .query("fuel == 'total'")
-        .query("baseline_appliance not in ['Heat Pump', 'No Heating']")
-        .assign(
-            absolute_error=lambda df: df["absolute_error"]
-            .where(df["upgrade_id"].isin([0, 0.01]), df["absolute_error_savings"])
+    predictions_combined_versions.query("fuel == 'total'")
+    .query("baseline_appliance not in ['Heat Pump', 'No Heating']")
+    .assign(
+        absolute_error=lambda df: df["absolute_error"].where(
+            df["upgrade_id"].isin([0, 0.01]), df["absolute_error_savings"]
         )
-        .replace({"Electric Resistance": "Electricity"})
-        .merge(upgrade_name_df, on = 'upgrade_id')
-        .rename(
-            columns={
-                "baseline_appliance": "Baseline Fuel",
-                "absolute_error": "Absolute Error (kWh)",
-                "upgrade_id": "Upgrade ID"
-            }
-        )
+    )
+    .replace({"Electric Resistance": "Electricity"})
+    .merge(upgrade_name_df, on="upgrade_id")
+    .rename(
+        columns={
+            "baseline_appliance": "Baseline Fuel",
+            "absolute_error": "Absolute Error (kWh)",
+            "upgrade_id": "Upgrade ID",
+        }
+    )
 )
 
 # Combine upgrade id and name
-predictions_combined_versions_savings_total['Upgrade Name'] = predictions_combined_versions_savings_total['Upgrade Name'] + ' (' + predictions_combined_versions_savings_total['Upgrade ID'].astype(str) + ')'
+predictions_combined_versions_savings_total["Upgrade Name"] = (
+    predictions_combined_versions_savings_total["Upgrade Name"]
+    + " ("
+    + predictions_combined_versions_savings_total["Upgrade ID"].astype(str)
+    + ")"
+)
 
 # COMMAND ----------
 
-def plot_error_comparison_boxplot(data, x, y="Absolute Error (kWh)", row=None, order = None, title = None):
+def plot_error_comparison_boxplot(data, x, y="Absolute Error (kWh)", row=None, order=None, title=None):
     """
     Plots a comparison boxplot of prediction errors.
 
@@ -180,7 +195,7 @@ def plot_error_comparison_boxplot(data, x, y="Absolute Error (kWh)", row=None, o
             y=y,
             hue="Version",
             order=order,
-            hue_order = [version_num_prev, version_num_new],
+            hue_order=[version_num_prev, version_num_new],
             palette="viridis",
             fill=False,
             linewidth=1.25,
@@ -208,35 +223,32 @@ def plot_error_comparison_boxplot(data, x, y="Absolute Error (kWh)", row=None, o
 
 # Plot absolute error by upgrade and type
 fig = plot_error_comparison_boxplot(
-    data = predictions_combined_versions_savings_total.sort_values("Upgrade ID"),
+    data=predictions_combined_versions_savings_total.sort_values("Upgrade ID"),
     x="Baseline Fuel",
-    order=[
-        "Fuel Oil",
-        "Propane",
-        "Natural Gas",
-        "Electricity"
-    ],
+    order=["Fuel Oil", "Propane", "Natural Gas", "Electricity"],
     row="Upgrade Name",
-    title="Model Prediction Comparison by Upgrade and Baseline Fuel Type: Total Annual Energy Savings")
+    title="Model Prediction Comparison by Upgrade and Baseline Fuel Type: Total Annual Energy Savings",
+)
 
 # COMMAND ----------
 
 # save these locally and to gcs
 fig.savefig(LOCAL_ARTIFACT_PATH / "model_prediction_comparison_boxplot_by_upgrade_type.png")
-save_fig_to_gcs(fig, GCS_ARTIFACT_PATH / version_num_new /  "model_prediction_comparison_boxplot_by_upgrade_type.png")
+save_fig_to_gcs(fig, GCS_ARTIFACT_PATH / version_num_new / "model_prediction_comparison_boxplot_by_upgrade_type.png")
 
 # COMMAND ----------
 
 # Plot absolute error by upgrade
 fig = plot_error_comparison_boxplot(
-    data = predictions_combined_versions_savings_total,
-    x = "Upgrade ID",
-    title="Model Prediction Comparison by Upgrade: Total Annual Energy Savings")
+    data=predictions_combined_versions_savings_total,
+    x="Upgrade ID",
+    title="Model Prediction Comparison by Upgrade: Total Annual Energy Savings",
+)
 # add a dotted line between baseline and other upgrades since this is absolute error rather than savings error plotted
-plt.axvline(x=1.5, color='gray', linestyle='--', linewidth=1.5)
+plt.axvline(x=1.5, color="gray", linestyle="--", linewidth=1.5)
 
 # COMMAND ----------
 
 # save these locally and to gcs
 fig.savefig(LOCAL_ARTIFACT_PATH / "model_prediction_comparison_boxplot_by_upgrade.png")
-save_fig_to_gcs(fig, GCS_ARTIFACT_PATH / version_num_new /  "model_prediction_comparison_boxplot_by_upgrade.png")
+save_fig_to_gcs(fig, GCS_ARTIFACT_PATH / version_num_new / "model_prediction_comparison_boxplot_by_upgrade.png")
