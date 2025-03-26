@@ -54,168 +54,6 @@ from src import feature_utils, versioning
 
 # COMMAND ----------
 
-from src.feature_utils import extract_heating_efficiencyUDF, extract_cooling_efficiencyUDF
-
-# COMMAND ----------
-
-def get_hp_efficiencies_ducted_ductless(
-    building_features: DataFrame,
-    ducted_efficiency: str,
-    non_ducted_efficiency: str,
-) -> DataFrame:
-    """
-    Upgrade the baseline building features to an air source heat pump (ASHP) with specified efficiencies.
-    Note that all baseline hps in Resstock are lower efficiency than specified upgrade thresholds
-        (<=SEER 15; <=HSPF 8.5)
-    Need to modfify this to account for that. 
-    Args:
-        baseline_building_features (DataFrame): The baseline building features.
-        ducted_efficiency (str): The efficiency of the ducted heat pump.
-        non_ducted_efficiency (str): The efficiency of the ductless heat pump.
-
-    Returns:
-        DataFrame: The upgraded building features DataFrame with the heat pump.
-    """
-    return (
-        building_features
-            .withColumn(
-                "heating_efficiency_nominal_percentage",
-                F.when(F.col("has_ducts"), extract_heating_efficiencyUDF(F.lit(ducted_efficiency))).otherwise(
-                    extract_heating_efficiencyUDF(F.lit(non_ducted_efficiency))
-                ),
-            )
-            .withColumn(
-                "cooling_efficiency_eer",
-                F.when(
-                    F.col("has_ducts"),
-                    extract_cooling_efficiencyUDF(F.lit(ducted_efficiency)),
-                ).otherwise(extract_cooling_efficiencyUDF(F.lit(non_ducted_efficiency))),
-            )
-            .withColumn("has_ducted_heating", F.col("has_ducts"))
-            .withColumn("has_ducted_cooling", F.col("has_ducts"))
-    )
-
-
-def upgrade_to_hp_all(
-    building_features: DataFrame,
-    heat_pump_sizing_methodology: str = "ACCA",
-) -> DataFrame:
-    """
-    Upgrade the baseline building features to an air source heat pump (ASHP) with specified efficiencies.
-    Note that all baseline hps in Resstock are lower efficiency than specified upgrade thresholds
-        (<=SEER 15; <=HSPF 8.5)
-    TODO: in 2024.2 there are now hps with ASHP, SEER 29.3, 14 HSPF in baseline so this is no longer true.
-    Need to modfify this to account for that. 
-    Args:
-        building_features (DataFrame): The building features to upgrade.
-        ducted_efficiency (str): The efficiency of the ducted heat pump.
-        non_ducted_efficiency (str): The efficiency of the ductless heat pump.
-
-    Returns:
-        DataFrame: The upgraded building features DataFrame with the heat pump.
-    """
-    return (
-        building_features
-            .withColumn("heating_appliance_type", F.lit("ASHP"))
-            .withColumn("heating_fuel", F.lit("Electricity"))
-            .withColumn("ac_type", F.lit("Heat Pump"))
-            .withColumn("cooled_space_percentage", F.lit(1.0))
-            .withColumn("heat_pump_sizing_methodology", F.lit(heat_pump_sizing_methodology))
-    )
-
-
-def single_zone_is_applicable():
-    """
-    Define the condition for home size logic reuse.
-    """
-    return (
-        (F.col("n_bedrooms") == 1) | 
-        (F.col("sqft") <= 749) | 
-        ((F.col("n_bedrooms") == 2) & (F.col("sqft") <= 999))
-    )
-
-def get_hp_efficiencies_single_multi_zone(
-    building_features: DataFrame,
-    single_zone_efficiency: str,
-    multi_zone_efficiency: str,
-    perf_data_df: DataFrame):
-    """
-    :param df: Input DataFrame with baseline features.
-    :param perf_data_df: DataFrame containing detailed performance data for joining.
-    :return: Updated DataFrame with applied upgrades.
-    """
-    
-    # Package apply logic (return rows unchanged if they don't match the conditions)
-    # do not apply to: MSHP, SEER 29.3, 14 HSPF
-    building_features = building_features.withColumn("upgrade_is_applicable", (
-        (F.col("heating_fuel") != "None") &
-        (F.col("hvac_heating_efficiency") != "ASHP, SEER 25, 12.7 HSPF") &
-        (F.col("hvac_heating_efficiency") != "ASHP, SEER 29.3, 14 HSPF") &
-        (F.col("hvac_heating_efficiency") != "ASHP, SEER 33, 13.3 HSPF")
-    ))
-    
-    building_features = (
-        building_features
-        .withColumn("heating_efficiency_nominal_percentage", 
-            F.when(F.col("upgrade_is_applicable"), 
-                F.when(single_zone_is_applicable(), extract_heating_efficiencyUDF(F.lit(single_zone_efficiency)))
-                .otherwise(extract_heating_efficiencyUDF(F.lit(multi_zone_efficiency))))
-            .otherwise(F.col("hvac_heating_efficiency")))
-            .withColumn(
-                "cooling_efficiency_eer",
-                    F.when(F.col("upgrade_is_applicable"), 
-                        F.when(single_zone_is_applicable(), extract_cooling_efficiencyUDF(F.lit(single_zone_efficiency)))
-                        .otherwise(extract_cooling_efficiencyUDF(F.lit(multi_zone_efficiency))))
-                    .otherwise(F.col("cooling_efficiency_eer")))
-            .withColumn("HVAC Detailed Performance Data",
-            F.when(F.col("upgrade_is_applicable"),
-                F.when(single_zone_is_applicable(),single_zone_efficiency)
-                .otherwise(multi_zone_efficiency))
-            .otherwise(F.lit("")))
-    )
-    
-    building_features = building_features.drop("upgrade_is_applicable")
-    
-    # Join with performance data
-    df = building_features.join(perf_data_df, on="HVAC Detailed Performance Data", how="left")
-    
-    return df
-
-# Example DataFrame schema for baseline features
-schema = ["heating_fuel", "hvac_heating_efficiency", "heating_efficiency_nominal_percentage", "cooling_efficiency_eer", "HVAC Detailed Performance Data", "n_bedrooms", "sqft"]
-
-# Sample input data (Replace with actual data)
-building_data = [
-    ("Electricity", "MSHP, SEER 20, 10 HSPF", "", 2, 10, 2, 800),
-    ("Electricity", "MSHP, SEER 20, 10 HSPF", "", 2, 10, 3, 800),
-    ("None", "MSHP, SEER 25, 12.7 HSPF", "", 2, 10, 3, 1220),
-]
-
-# Create DataFrame
-buildings_df = spark.createDataFrame(building_data, schema=schema)
-
-# Sample performance data (Replace with actual data)
-perf_data_schema = ["HVAC Detailed Performance Data", "Perf_Metric_1", "Perf_Metric_2"]
-perf_data = [
-    ("Daikin MSHP SZ, SEER 22.05, 10.64 HSPF", 12.5, 8.3),
-    ("Daikin MSHP MZ, SEER 22.05, 11.2 HSPF", 11.7, 7.9),
-]
-perf_data_df = spark.createDataFrame(perf_data, schema=perf_data_schema)
-
-# Apply upgrade logic
-final_df = get_hp_efficiencies_single_multi_zone(
-    buildings_df,
-    single_zone_efficiency="Daikin MSHP SZ, SEER 22.05, 10.64 HSPF",
-    multi_zone_efficiency="Daikin MSHP MZ, SEER 22.05, 11.2 HSPF",
-    perf_data_df = perf_data_df)
-
-
-# COMMAND ----------
-
-final_df.display()
-
-# COMMAND ----------
-
 # MAGIC %md ## Feature Transformation
 
 # COMMAND ----------
@@ -230,23 +68,10 @@ final_df.display()
 # DBTITLE 1,Transform building metadata
 # get most recent table version for baseline metadata -- we don't enforce the current version because the code change in this version
 # may not affect the upstream table
-building_metadata_table_name = versioning.get_most_recent_table_version(g.BUILDING_METADATA_TABLE)
+# TODO: remove max_version
+building_metadata_table_name = versioning.get_most_recent_table_version(g.BUILDING_METADATA_TABLE, max_version=None)
 print(building_metadata_table_name)
 baseline_building_metadata_transformed = feature_utils.transform_building_features(building_metadata_table_name)
-
-# COMMAND ----------
-
-baseline_building_metadata_transformed.select('has_water_heater_in_unit').distinct().display()
-
-# COMMAND ----------
-
-test_df = get_hp_efficiencies_single_multi_zone(
-    baseline_building_metadata_transformed,
-    single_zone_efficiency="Daikin MSHP SZ, SEER 22.05, 10.64 HSPF",
-    multi_zone_efficiency="Daikin MSHP MZ, SEER 22.05, 11.2 HSPF",
-    perf_data_df = perf_data_df)
-test_df.display()
-
 
 # COMMAND ----------
 
@@ -269,15 +94,17 @@ upgraded_test_features.to_csv(str(g.GCS_CURRENT_VERSION_ARTIFACT_PATH / upgraded
 # COMMAND ----------
 
 # DBTITLE 1,Build metadata table for all samples and upgrades
-building_metadata_upgrades = feature_utils.build_upgrade_metadata_table(baseline_building_metadata_transformed)
+#TODO: remove null filtering once we have a way to handle these null features
+building_metadata_upgrades = feature_utils.build_upgrade_metadata_table(baseline_building_metadata_transformed).where(F.col('min_capacity_47f').isNotNull())
 
 # COMMAND ----------
 
 # DBTITLE 1,Drop rows where upgrade was not applied
+# TODO: remove max_version
 # get most recent table version for annual outputs to compare against
-outputs_most_recent_version_num = versioning.get_most_recent_table_version(g.ANNUAL_OUTPUTS_TABLE, return_version_number_only=True)
+outputs_most_recent_version_num = versioning.get_most_recent_table_version(g.ANNUAL_OUTPUTS_TABLE, return_version_number_only=True, max_version=None)
 building_metadata_applicable_upgrades = feature_utils.drop_non_upgraded_samples(
-    building_metadata_upgrades, check_applicability_logic_against_version=outputs_most_recent_version_num
+    building_metadata_upgrades, check_applicability_logic_against_version=None
 )
 
 # COMMAND ----------
@@ -346,7 +173,8 @@ def transform_weather_features(table_name) -> DataFrame:
 # COMMAND ----------
 
 # DBTITLE 1,Transform weather features
-weather_table_name = versioning.get_most_recent_table_version(g.WEATHER_DATA_TABLE)
+# TODO: remove max_version
+weather_table_name = versioning.get_most_recent_table_version(g.WEATHER_DATA_TABLE, max_version=None)
 print(weather_table_name)
 weather_features = transform_weather_features(weather_table_name)
 

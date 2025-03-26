@@ -14,12 +14,13 @@ def get_poetry_version_no():
     poetry_version_no = project_data["tool"]["poetry"]["version"]
 
     # Zero-pad each component of the version
-    formatted_version_no = "_".join(f"{int(part):02}" for part in poetry_version_no.split("."))
+    if '.' in poetry_version_no:
+        return  "_".join(f"{int(part):02}" for part in poetry_version_no.split("."))
+    else:
+        return poetry_version_no
+    
 
-    return formatted_version_no
-
-
-def get_most_recent_table_version(full_table_name, max_version=None, return_version_number_only=False):
+def get_most_recent_table_version(full_table_name, max_version='current_version', return_version_number_only=False):
     """
     Get the most recent version of a table defined as the table with the highest zero-padded, underscore-delimited
     semantic version suffix.
@@ -39,7 +40,7 @@ def get_most_recent_table_version(full_table_name, max_version=None, return_vers
     except ValueError:
         raise ValueError("Invalid table name format: must be in the form 'catalog.database.table'")
 
-    if max_version is None:
+    if max_version == 'current_version':
         max_version = get_poetry_version_no()
 
     # List all tables in the catalog and database

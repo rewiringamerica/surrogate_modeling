@@ -76,7 +76,19 @@
         "has_heat_pump_dryer",
         "has_natural_gas_appliance",
         "has_fuel_oil_appliance",
-        "has_propane_appliance"
+        "has_propane_appliance",
+        "min_capacity_47f",
+        "min_capacity_17f",
+        "min_capacity_5f",
+        "max_capacity_47f",
+        "max_capacity_17f",
+        "max_capacity_5f",
+        "min_cop_47f",
+        "min_cop_17f",
+        "min_cop_5f",
+        "max_cop_47f",
+        "max_cop_17f",
+        "max_cop_5f"
     ],
     "weather_features": [
         "temp_air",
@@ -99,16 +111,8 @@
         ]
     },
     "upgrade_ids": [
-        0.0,
-        0.01,
-        1.0,
-        3.0,
-        4.0,
-        6.0,
-        9.0,
-        11.05,
-        11.07,
-        13.01,
-        13.02
+        15.04,
+        15.05,
+        15.06
     ]
 }

@@ -4,7 +4,7 @@
 
 [tool.poetry]
 name = "surrogate_modeling"
-version = "1.2.0"
+version = "perf_curve_param_oem_hp_only_experiment"
 description = "Surrogate modeling."
 authors = ["Miki Verma <miki@rewiringamerica.org>"]
 readme = "README.md"

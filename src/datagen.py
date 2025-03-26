@@ -48,9 +48,10 @@ class DataGenerator(tf.keras.utils.Sequence):
     # This could be adjusted manually if wanted to use different version numbers
     # TODO: This is a little janky, and running spark commands hereis not ideadl
     # but we'll move over to a more robust process later and this works for now
-    building_feature_table_name = get_most_recent_table_version(g.BUILDING_FEATURE_TABLE)
-    weather_feature_table_name = get_most_recent_table_version(g.WEATHER_FEATURE_TABLE)
-    target_table_name = get_most_recent_table_version(g.ANNUAL_OUTPUTS_TABLE)
+    #TODO: change these back to just use "get_most_recent_table_version"
+    building_feature_table_name = f"{g.BUILDING_FEATURE_TABLE}_{g.CURRENT_VERSION_NUM}"
+    weather_feature_table_name = get_most_recent_table_version(g.WEATHER_FEATURE_TABLE, max_version=None)
+    target_table_name = get_most_recent_table_version(g.ANNUAL_OUTPUTS_TABLE, max_version=None)
     # load the default features, targets, and upgrades to use for this training run based on params stored in current version's config in GCS
     data_params = read_json(g.GCS_CURRENT_VERSION_ARTIFACT_PATH / "features_targets_upgrades.json")
 
@@ -349,7 +350,8 @@ def load_data(
     data = data.where(F.col("upgrade_id").isin(upgrade_ids))
 
     # get list of unique building ids, which will be the basis for the dataset split
-    unique_building_ids = data.where(F.col("upgrade_id") == 0).select("building_id")
+    #TODO: change this back to 0
+    unique_building_ids = data.where(F.col("upgrade_id") == 15.04).select("building_id")
 
     # Split the building_ids into train, validation, and test sets (may not exactly match passed proportions)
     p_train = 1 - p_val - p_test
