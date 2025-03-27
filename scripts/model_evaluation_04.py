@@ -1,9 +1,23 @@
 # Databricks notebook source
 # MAGIC %md # Evaluate Surrogate Model
+# MAGIC
+# MAGIC ### Goal
+# MAGIC Predict on a held out test set and then summarize aggregated metrics. 
+# MAGIC
+# MAGIC ### I/Os
+# MAGIC
+# MAGIC ##### Inputs:
+# MAGIC The passsed in mlflow `run_id` determines which saved surrogate model is evaluated. The `test_size` determines the number of samples to perform inference on (subset from the pre-defined held out test set). *If running on a large test set (>10,000), a GPU is reccomended*.
+# MAGIC
+# MAGIC ##### Outputs:
+# MAGIC Outputs are written based on the current version number of this repo in `pyproject.toml`.
+# MAGIC         str(GCS_CURRENT_VERSION_ARTIFACT_PATH / "prediction_metrics_test_set.csv"),
+# MAGIC - `gs://the-cube/export/surrogate_model/model_artifacts/{CURRENT_VERSION_NUM}/prediction_metrics_test_set.csv`: predictions, actuals and errors for each (building_id, upgrade_id, fuel), also tagged with important metadata such as baseline appliance fuel and cooling type. 
+# MAGIC - `gs://the-cube/export/surrogate_model/model_artifacts/{CURRENT_VERSION_NUM}/metrics_by_upgrade_type.csv`: aggregated errors for each (upgrade_id, type) where type categories vary based on the upgrade. 
 
 # COMMAND ----------
 
-# MAGIC %pip install mlflow==2.13.0 seaborn==v0.13.0
+# MAGIC %pip install mlflow==2.13.0
 # MAGIC dbutils.library.restartPython()
 
 # COMMAND ----------
@@ -46,7 +60,6 @@ print(TEST_SIZE)
 # MAGIC import numpy as np
 # MAGIC import pandas as pd
 # MAGIC import pyspark.sql.functions as F
-# MAGIC import seaborn as sns
 # MAGIC from pyspark.sql import DataFrame, Column
 # MAGIC from pyspark.sql.window import Window
 # MAGIC
@@ -80,7 +93,7 @@ model_loaded = mlflow.pyfunc.load_model(model_uri=sm.get_model_uri(run_id=RUN_ID
 # DBTITLE 1,Load test data
 # load test data
 _, _, test_data = load_data(n_test=TEST_SIZE)
-# init data generator so we can get all of the features -- note that we can't use databricks automatic lookup of features since we logged with mlflow
+#init data generator so we can get all of the features -- note that we can't use databricks automatic lookup of features since we logged with mlflow
 test_gen = DataGenerator(test_data)
 # reload the training set but with building id and upgrade id keys which we need (this is a little hacky..)
 test_set = test_gen.init_training_set(
@@ -106,7 +119,7 @@ prediction_arr = model_loaded.predict(inference_data)
 
 # DBTITLE 1,Concatenate pkeys and predictions
 # create an array of N x 2 with the pkeys needed to join this to metadata
-sample_pkeys = ["building_id", "upgrade_id"]
+sample_pkeys = ["building_id", "upgrade_id", "building_set"]
 sample_pkey_arr = inference_data[sample_pkeys].values
 
 # combine prediction (including sum over all fuels) and pkeys to create a N x 2 (pkeys) array + M (fuel targets) + 1 (summed fuels)
@@ -170,7 +183,7 @@ pred_by_building_upgrade_fuel = (
 
 # DBTITLE 1,Calculate savings
 # setup window to calculate savings between baseline (upgrade 0) all other upgrades
-w_building = Window().partitionBy("building_id", "fuel").orderBy(F.asc("upgrade_id"))
+w_building = Window().partitionBy("building_id", "fuel", "building_set").orderBy(F.asc("upgrade_id"))
 
 # calculate savings
 pred_by_building_upgrade_fuel_savings = (
@@ -190,15 +203,10 @@ pred_by_building_upgrade_fuel_savings = (
 # add metadata that we will want to cut up results by
 baseline_appliance_features = [
     "heating_fuel",
-    "heating_appliance_type",
     "ac_type",
     "water_heater_fuel",
-    "clothes_dryer_fuel",
-    "cooking_range_fuel",
-    # "is_mobile_home",
-    # "is_attached",
-    # "unit_level_in_building"
 ]
+
 pred_by_building_upgrade_fuel_model_with_metadata = test_set.select(
     *sample_pkeys, *baseline_appliance_features
 ).join(pred_by_building_upgrade_fuel_savings, on=sample_pkeys)
@@ -278,7 +286,16 @@ pred_df_savings = (
         "absolute_percentage_error_savings",
         APE(F.col("absolute_error_savings"), F.col("actual_savings")),
     )
-)
+).drop(*baseline_appliance_features)
+
+# COMMAND ----------
+
+# write out metrics for each sample in the test set to gcs so that ananlyses can be performed subsequently
+if not DEBUG:
+    pred_df_savings.toPandas().to_csv(
+        str(GCS_CURRENT_VERSION_ARTIFACT_PATH / "prediction_metrics_test_set.csv"),
+        index=False
+    )
 
 # COMMAND ----------
 
@@ -458,87 +475,3 @@ if not DEBUG:
         str(GCS_CURRENT_VERSION_ARTIFACT_PATH / "metrics_by_upgrade_type.csv"),
         index=False
     )
-
-# COMMAND ----------
-
-# MAGIC %md ### Visualize
-# MAGIC
-# MAGIC NOTE: not saving these figs anywhere now. I think in the future we'll want a way to visualize the comparison between two model versions runs, and we can adapt this code to do that
-
-# COMMAND ----------
-
-# DBTITLE 1,Preprocess building level metrics
-# subset to only total consumption predictions and
-# set the metric to abs error on savings on upgrade rows and abs error for baseline
-pred_df_savings_total = (
-    pred_df_savings.where(F.col("fuel") == "total")
-    .withColumn(
-        "absolute_error",
-        F.when(F.col("upgrade_id") == 0, F.col("absolute_error")).otherwise(
-            F.col("absolute_error_savings")
-        ),
-    )
-    .select(
-        "upgrade_id",
-        "baseline_appliance",
-        "absolute_error",
-    )
-)
-
-# COMMAND ----------
-
-# DBTITLE 1,Label cleanup
-# do some cleanup to make labels more presentable, including removing baseline hps and shared heating for the sake of space
-pred_df_savings_pd = (
-    pred_df_savings_total.replace(
-        {"No Heating": "None", "Electric Resistance": "Electricity"},
-        subset="baseline_appliance",
-    )
-    .where(F.col("baseline_appliance") != "Heat Pump")
-    .withColumnsRenamed(
-        {
-            "baseline_appliance": "Baseline Fuel",
-            "absolute_error": "Absolute Error (kWh)",
-            "upgrade_id": "Upgrade ID",
-        }
-    )
-).toPandas()
-
-# COMMAND ----------
-
-# DBTITLE 1,Draw boxplot of comparison
-pred_df_savings_pd_clip = pred_df_savings_pd.copy()
-
-with sns.axes_style("whitegrid"):
-    g = sns.catplot(
-        data=pred_df_savings_pd_clip,
-        x="Baseline Fuel",
-        y="Absolute Error (kWh)",
-        order=[
-            "Fuel Oil",
-            "Propane",
-            "Natural Gas",
-            "Electricity",
-            "None",
-        ],
-        # hue="Model",
-        # palette="viridis",
-        fill=False,
-        linewidth=1.25,
-        kind="box",
-        row="Upgrade ID",
-        height=2.5,
-        aspect=3.25,
-        sharey=False,
-        sharex=True,
-        showfliers=False,
-        showmeans=True,
-        meanprops={
-            "marker": "o",
-            "markerfacecolor": "white",
-            "markeredgecolor": "k",
-            "markersize": "4",
-        },
-    )
-g.fig.subplots_adjust(top=0.93)
-g.fig.suptitle("Model Prediction Comparison: Total Annual Energy Savings")

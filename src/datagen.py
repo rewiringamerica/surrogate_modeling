@@ -335,40 +335,71 @@ def load_data(
         consumption_group_dict = DataGenerator.data_params["consumption_group_dict"]
     if upgrade_ids is None:
         upgrade_ids = DataGenerator.data_params["upgrade_ids"]
+
     # Read outputs table and sum over consumption columns within each consumption group
     # join to the bm table to get required keys to join on and filter the building models based on charactaristics
     sum_str = ", ".join([f"{'+'.join(v)} AS {k}" for k, v in consumption_group_dict.items()])
     data = spark.sql(
         f"""
-        SELECT B.building_id, B.upgrade_id, B.weather_file_city, {sum_str}
+        SELECT B.building_id, B.upgrade_id, B.weather_file_city, B.building_set, {sum_str}
         FROM {DataGenerator.target_table_name} O
         INNER JOIN {DataGenerator.building_feature_table_name} B 
-            ON B.upgrade_id = O.upgrade_id AND B.building_id == O.building_id
+            ON B.upgrade_id = O.upgrade_id AND B.building_id = O.building_id
         """
     )
     data = data.where(F.col("upgrade_id").isin(upgrade_ids))
 
-    # get list of unique building ids, which will be the basis for the dataset split
-    unique_building_ids = data.where(F.col("upgrade_id") == 0).select("building_id")
+    # define building sets and their respective baselines
+    building_sets = [("ResStock 2022.1", 0), ("ResStock 2024.2", 0.01)]
 
-    # Split the building_ids into train, validation, and test sets (may not exactly match passed proportions)
-    p_train = 1 - p_val - p_test
-    train_ids, val_ids, test_ids = unique_building_ids.randomSplit(weights=[p_train, p_val, p_test], seed=seed)
+    # Create train, val and test datasets for each building set, where each building id and all of its upgrades
+    # appear in exactly one split
+    split_dfs = []
+    for building_set, baseline_upgrade in building_sets:
+        # Select unique building IDs for the given building set, which will be the basis for the dataset split
+        unique_building_ids = (
+            data.where((F.col("upgrade_id") == baseline_upgrade) & (F.col("building_set") == building_set))
+            .select("building_id")
+            .distinct()
+        )
 
-    # if n_train or n_test are passed, get the fraction of the train or test subset that this represents
-    if n_train or n_test:
-        p_baseline = unique_building_ids.count() / data.count()  # proportion of data that is the baseline upgrade
+        # split the building_ids into train, validation, and test sets (may not exactly match passed proportions)
+        p_train = 1 - p_val - p_test
+        train_ids, val_ids, test_ids = unique_building_ids.randomSplit(weights=[p_train, p_val, p_test], seed=seed)
 
-        if n_train:
-            frac = np.clip(n_train * p_baseline / train_ids.count(), a_max=1.0, a_min=0.0)
-        elif n_test:
-            frac = np.clip(n_test * p_baseline / test_ids.count(), a_max=1.0, a_min=0.0)
-    else:
-        frac = 1.0
+        # if n_train or n_test are passed, get the fraction of the train or test subset that this represents
+        if n_train or n_test:
+            p_baseline = unique_building_ids.count() / data.count()  # proportion of data that is the baseline upgrade
 
-    # select train, val and test set based on building ids, subsetting to smaller sets if specified
-    train_df = train_ids.sample(fraction=frac, seed=0).join(data, on="building_id")
-    val_df = val_ids.sample(fraction=frac, seed=0).join(data, on="building_id")
-    test_df = test_ids.sample(fraction=frac, seed=0).join(data, on="building_id")
+            if n_train:
+                frac = np.clip(n_train * p_baseline / train_ids.count(), a_max=1.0, a_min=0.0)
+            elif n_test:
+                frac = np.clip(n_test * p_baseline / test_ids.count(), a_max=1.0, a_min=0.0)
+        else:
+            frac = 1.0
+
+        # select train, val and test set based on building id and building set, subsetting to smaller sets if specified
+        train_df = (
+            train_ids.sample(fraction=frac, seed=0)
+            .join(data, on="building_id")
+            .where(F.col("building_set") == building_set)
+        )
+        val_df = (
+            val_ids.sample(fraction=frac, seed=0)
+            .join(data, on="building_id")
+            .where(F.col("building_set") == building_set)
+        )
+        test_df = (
+            test_ids.sample(fraction=frac, seed=0)
+            .join(data, on="building_id")
+            .where(F.col("building_set") == building_set)
+        )
+
+        split_dfs.append((train_df, val_df, test_df))
+
+    # Concatenate train, val, and test sets across building sets
+    train_df = split_dfs[0][0].unionByName(split_dfs[1][0])
+    val_df = split_dfs[0][1].unionByName(split_dfs[1][1])
+    test_df = split_dfs[0][2].unionByName(split_dfs[1][2])
 
     return train_df, val_df, test_df

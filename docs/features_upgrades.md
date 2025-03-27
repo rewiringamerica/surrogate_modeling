@@ -408,7 +408,9 @@ We have implemented the logic for the following upgrades:
 
 **RAStock (Simulated by RA)**
 
-* 11.05: Medium-Efficiency Heat Pumps (SEER 18, 10 HSPF HERS Sizing) with Electric Backup, No Setpoint Setback
+* 0.01 : Baseline for using ResStock 2024.2 building samples, but without setpoint setbacks.
+
+* 11.05: Medium-Efficiency Heat Pumps (SEER 18, 10 HSPF HERS Sizing) with Electric Backup, No Setpoint Setback [Samples=2022.1] 
     
     * Details: HVAC Heating Efficiency = ‘ASHP, SEER 18, 10 HSPF' if HVAC Has Ducts, otherwise 'ASHP, SEER 18, 10.5 HSPF’. This then gets transformed as described [here](https://www.notion.so/Features-Upgrades-c8239f52a100427fbf445878663d7135?pvs=21). 
     
@@ -418,7 +420,14 @@ We have implemented the logic for the following upgrades:
         
         `heating_setpoint_offset_magnitude_degrees_f` = 0
         
+* 11.07: Identical to 11.05 but with 2024.2 samples. 
 
-* 13.01: Medium-Efficiency Heat Pumps (SEER 18, 10 HSPF HERS Sizing) with Electric Backup, No Setpoint Setback + Basic Enclosure Package (1 + 11.05)
+* 13.01: Medium-Efficiency Heat Pumps (SEER 18, 10 HSPF HERS Sizing) with Electric Backup, No Setpoint Setback + Basic Enclosure Package (1 + 11.05) [Samples=2022.1] 
+
+* 13.02: Medium-Efficiency Heat Pumps (SEER 18, 10 HSPF HERS Sizing) with Electric Backup, No Setpoint Setback + Light Touch Air Sealing [Samples=2024.2]
+    * Details: 
+        * 40% reduction in ACH 50 for dwelling unit with greater than 15 ACH50
+        * 30% reduction in ACH 50 for dwelling units with greater than 10 ACH50
+        * 20% reduction in ACH 50 for dwelling units with greater than 7.5 ACH50
 
 Note that while we have implemented the logic for heat pump dryers and induction ranges as standalone upgrades, we have chosen to not use these in training due to terrible performance on predicting these tiny savings values, particularly compared to the good performance of the benchmark on these low variance end uses.
