@@ -11,6 +11,6 @@
 # note that glob patterns are case sensitive
 # more examples can be found here: https://docs.databricks.com/repos/repos-setup.html#patterns-for-a-repo-config-file
 
-# Uncomment the following pattern to include output for all notebooks
-# **
+# Include outputs of .ipynb files in notebooks/ dir
+notebooks/**
  
