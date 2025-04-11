@@ -68,8 +68,7 @@ from src import feature_utils, versioning
 # DBTITLE 1,Transform building metadata
 # get most recent table version for baseline metadata -- we don't enforce the current version because the code change in this version
 # may not affect the upstream table
-# TODO: remove max_version
-building_metadata_table_name = versioning.get_most_recent_table_version(g.BUILDING_METADATA_TABLE, max_version=None)
+building_metadata_table_name = versioning.get_most_recent_table_version(g.BUILDING_METADATA_TABLE)
 print(building_metadata_table_name)
 baseline_building_metadata_transformed = feature_utils.transform_building_features(building_metadata_table_name)
 
@@ -100,11 +99,11 @@ building_metadata_upgrades = feature_utils.build_upgrade_metadata_table(baseline
 # COMMAND ----------
 
 # DBTITLE 1,Drop rows where upgrade was not applied
-# TODO: remove max_version
+#TODO: generalize logic of this function to work for RAStock as well
 # get most recent table version for annual outputs to compare against
-outputs_most_recent_version_num = versioning.get_most_recent_table_version(g.ANNUAL_OUTPUTS_TABLE, return_version_number_only=True, max_version=None)
+#outputs_most_recent_version_num = versioning.get_most_recent_table_version(g.ANNUAL_OUTPUTS_TABLE, return_version_number_only=True)
 building_metadata_applicable_upgrades = feature_utils.drop_non_upgraded_samples(
-    building_metadata_upgrades, check_applicability_logic_against_version=None
+    building_metadata_upgrades, check_applicability_logic_against_version=False
 )
 
 # COMMAND ----------
@@ -173,8 +172,7 @@ def transform_weather_features(table_name) -> DataFrame:
 # COMMAND ----------
 
 # DBTITLE 1,Transform weather features
-# TODO: remove max_version
-weather_table_name = versioning.get_most_recent_table_version(g.WEATHER_DATA_TABLE, max_version=None)
+weather_table_name = versioning.get_most_recent_table_version(g.WEATHER_DATA_TABLE)
 print(weather_table_name)
 weather_features = transform_weather_features(weather_table_name)
 

@@ -2,6 +2,7 @@ import os
 from pathlib import Path
 import pyspark.sql.functions as F
 import toml
+import re
 
 if os.environ.get("DATABRICKS_RUNTIME_VERSION"):
     from databricks.sdk.runtime import *
@@ -14,7 +15,7 @@ def get_poetry_version_no():
     poetry_version_no = project_data["tool"]["poetry"]["version"]
 
     # Zero-pad each component of the version
-    if '.' in poetry_version_no:
+    if re.fullmatch(r'\d+\.\d+\.\d+', poetry_version_no):
         return  "_".join(f"{int(part):02}" for part in poetry_version_no.split("."))
     else:
         return poetry_version_no
@@ -42,6 +43,9 @@ def get_most_recent_table_version(full_table_name, max_version='current_version'
 
     if max_version == 'current_version':
         max_version = get_poetry_version_no()
+        # if doesnt match a semantic version number, just ignore since ordinality does
+        if not re.fullmatch(r'\d+\.\d+\.\d+', max_version):
+            max_version=None
 
     # List all tables in the catalog and database
     tables_df = spark.sql(f"SHOW TABLES IN {catalog}.{database}")
