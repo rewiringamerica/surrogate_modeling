@@ -48,7 +48,7 @@ class DataGenerator(tf.keras.utils.Sequence):
     # This could be adjusted manually if wanted to use different version numbers
     # TODO: This is a little janky, and running spark commands here is not ideal
     # but we'll move over to a more robust process later and this works for now
-    #TODO: change this back to just use "get_most_recent_table_version"
+    # TODO: change this back to just use "get_most_recent_table_version"
     building_feature_table_name = f"{g.BUILDING_FEATURE_TABLE}_perf_curve_param_experiment"
     weather_feature_table_name = get_most_recent_table_version(g.WEATHER_FEATURE_TABLE)
     target_table_name = get_most_recent_table_version(g.ANNUAL_OUTPUTS_TABLE)
