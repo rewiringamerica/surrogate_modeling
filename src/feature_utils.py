@@ -775,9 +775,9 @@ def transform_building_features(building_metadata_table_name) -> DataFrame:
 # ('1', 13, 30) means units in climate zones 1A (1-anything) with R13 insulation or less are upgraded to R30
 BASIC_ENCLOSURE_INSULATION_SPARK = spark.createDataFrame(BASIC_ENCLOSURE_INSULATION)
 
-# Define schema for mapping "hvac_heating_efficiency" to parameters of performance curve based on energy plus options.tsv
+# Define mapping of "hvac_heating_efficiency" to parameters of performance curve based on energy plus options.tsv in each upgrade config
 # This defines the capacity and cop at min and max speeds for 3 outdoor temperatures
-#TODO: schema will need to further identify the heat pump if ever there are hvac_heating_efficiency's that map to multiple performance curves
+#NOTE: schema will need to further identify the heat pump if ever there are hvac_heating_efficiency's that map to multiple performance curves
 performance_curve_parameter_schema = StructType([
     StructField("hvac_heating_efficiency", StringType(), True),
     StructField("min_capacity_47f", DoubleType(), True),
@@ -793,6 +793,7 @@ performance_curve_parameter_schema = StructType([
     StructField("max_cop_17f", DoubleType(), True),
     StructField("max_cop_5f", DoubleType(), True)
 ])
+#TODO: add in performance curve params for NREL HPs
 performance_curve_parameter_data = [
     ("Daikin MSHP SZ, SEER 22.05, 10.64 HSPF",
      0.24, 0.15, 0.12, 1.13, 0.98, 0.79, 5.76, 5.55, 5.47, 4.25, 2.63, 1.8), 
@@ -809,6 +810,31 @@ performance_curve_parameter_data = [
 ]
 
 HEAT_PUMP_PERFORMANCE_CURVE_DF = spark.createDataFrame(performance_curve_parameter_data,schema=performance_curve_parameter_schema)
+
+def fill_null_with_column(df, source_column, columns_to_fill):
+    """
+    Fills null values in specified columns with the value from a source column
+    
+    Args:
+        df: Input DataFrame
+        source_column: Column name to use as the fill value
+        columns_to_fill: List of column names to fill when null
+        
+    Returns:
+        DataFrame with null values filled
+    """
+    # Create a dictionary of column expressions
+    column_exprs = {
+        column: F.when(F.col(column).isNull(), F.col(source_column))
+               .otherwise(F.col(column))
+        for column in columns_to_fill
+    }
+    
+    # Apply all transformations at once
+    return df.select(
+        *[F.col(c) for c in df.columns if c not in columns_to_fill],  # keep all other columns as-is
+        *[column_exprs[c].alias(c) for c in columns_to_fill]        # apply our transformations
+    )
 
 def remove_setbacks(building_features: DataFrame) -> DataFrame:
     """
@@ -1153,9 +1179,16 @@ def apply_upgrades(baseline_building_features: DataFrame, upgrade_id: int) -> Da
                 .withColumn("has_induction_range", F.lit(True))
         )
     
-    # join with heat pump performance curve params
-    #TODO: figure out a good null representation for all non-heat pumps
+    # Add in heat pump performance curve params using pre-defined specs, or impute for building samples that do not have a hp
     upgrade_building_features = upgrade_building_features.join(HEAT_PUMP_PERFORMANCE_CURVE_DF, on="hvac_heating_efficiency", how="left")
+    # For samples without a heat pump, impute all COP columns with heating_efficiency_nominal_percentage
+    # and all capacity retention columns with 1
+    upgrade_building_features = fill_null_with_column(upgrade_building_features, 
+                                source_column = "heating_efficiency_nominal_percentage",
+                                columns_to_fill = ["min_cop_47f", "min_cop_17f","min_cop_5f","max_cop_47f","max_cop_17f", "max_cop_5f"])
+    upgrade_building_features = upgrade_building_features.fillna(
+        1,
+        subset = ["min_capacity_47f","min_capacity_17f","min_capacity_5f", "max_capacity_47f", "max_capacity_17f","max_capacity_5f"])
 
     # add indicator features for presence of fuels (not including electricity)
     upgrade_building_features = (
@@ -1213,7 +1246,7 @@ def build_upgrade_metadata_table(baseline_building_features: DataFrame) -> DataF
             upgrade_id=upgrade_id,
         ).withColumn("upgrade_name", F.lit(upgrade_name))
         upgraded_dfs.append(df)
-    # Union into one tables
+    # Union into one table
     return reduce(DataFrame.unionByName, upgraded_dfs)
 
 
