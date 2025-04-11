@@ -119,7 +119,7 @@ prediction_arr = model_loaded.predict(inference_data)
 
 # DBTITLE 1,Concatenate pkeys and predictions
 # create an array of N x 2 with the pkeys needed to join this to metadata
-sample_pkeys = ["building_id", "upgrade_id"]
+sample_pkeys = ["building_id", "upgrade_id", "building_set"]
 sample_pkey_arr = inference_data[sample_pkeys].values
 
 # combine prediction (including sum over all fuels) and pkeys to create a N x 2 (pkeys) array + M (fuel targets) + 1 (summed fuels)
