@@ -778,6 +778,7 @@ BASIC_ENCLOSURE_INSULATION_SPARK = spark.createDataFrame(BASIC_ENCLOSURE_INSULAT
 # Define mapping of "hvac_heating_efficiency" to parameters of performance curve based on energy plus options.tsv in each upgrade config
 # This defines the capacity and cop at min and max speeds for 3 outdoor temperatures
 # NOTE: schema will need to further identify the heat pump if ever there are hvac_heating_efficiency's that map to multiple performance curves
+# TODO: change to "capacity_retention"
 performance_curve_parameter_schema = StructType(
     [
         StructField("hvac_heating_efficiency", StringType(), True),
