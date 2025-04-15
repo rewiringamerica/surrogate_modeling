@@ -52,6 +52,8 @@ import src.globals as g
 from src.utils import qa_utils, data_io
 from src import feature_utils, versioning
 
+print(g.CURRENT_VERSION_NUM)
+
 # COMMAND ----------
 
 # MAGIC %md ## Feature Transformation
@@ -71,6 +73,8 @@ from src import feature_utils, versioning
 building_metadata_table_name = versioning.get_most_recent_table_version(g.BUILDING_METADATA_TABLE)
 print(building_metadata_table_name)
 baseline_building_metadata_transformed = feature_utils.transform_building_features(building_metadata_table_name)
+# remove homes without heating: TODO: move this upstream to filter out of general universe of buildings
+baseline_building_metadata_transformed = baseline_building_metadata_transformed.where(F.col("heating_fuel") != "None")
 
 # COMMAND ----------
 
@@ -98,11 +102,13 @@ building_metadata_upgrades = feature_utils.build_upgrade_metadata_table(baseline
 # COMMAND ----------
 
 # DBTITLE 1,Drop rows where upgrade was not applied
+# TODO: bring the check back once we generalize logic of this function to work for RAStock as well
 # get most recent table version for annual outputs to compare against
-outputs_most_recent_version_num = versioning.get_most_recent_table_version(g.ANNUAL_OUTPUTS_TABLE, return_version_number_only=True)
+# outputs_most_recent_version_num = versioning.get_most_recent_table_version(g.ANNUAL_OUTPUTS_TABLE, return_version_number_only=True)
 building_metadata_applicable_upgrades = feature_utils.drop_non_upgraded_samples(
-    building_metadata_upgrades, check_applicability_logic_against_version=outputs_most_recent_version_num
+    building_metadata_upgrades, check_applicability_logic_against_version=None
 )
+building_metadata_applicable_upgrades.groupby("upgrade_id").agg(F.count("*")).display()
 
 # COMMAND ----------
 

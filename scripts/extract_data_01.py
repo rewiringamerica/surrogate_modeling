@@ -127,6 +127,7 @@ def align_baseline_metadata(
 
     # Duct and Water Heater Location: In 2024 these were expanded from just presence to more descriptive location.
     # We will keep the flag features and simply impute all those with the flag as True to an unknown token
+    # TODO: investigate why "water_heater_in_unit" is always yes
     building_metadata_2022 = building_metadata_2022.withColumn(
         "duct_location", F.when(F.col("hvac_has_ducts") == "Yes", "Unknown Location").otherwise("None")
     ).withColumn(

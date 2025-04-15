@@ -45,6 +45,9 @@ SUPPORTED_UPGRADES = [
     Upgrade.MED_EFF_HP_HERS_SIZING_NO_SETBACK_2024_2.value,
     Upgrade.MED_EFF_HP_HERS_SIZING_NO_SETBACK_BASIC_ENCLOSURE.value,
     Upgrade.MED_EFF_HP_HERS_SIZING_NO_SETBACK_LIGHT_TOUCH_AIR_SEALING.value,
+    Upgrade.DAIKIN_COLD_CLIMATE_HP_HERS_No_SETBACK.value,
+    Upgrade.CARRIER_COLD_CLIMATE_HP_HERS_No_SETBACK.value,
+    Upgrade.YORK_COLD_CLIMATE_HP_HERS_No_SETBACK.value,
 ]
 
 # mapping of window description to ufactor and shgc (solar heat gain coefficient) pulled from options.tsv
@@ -695,6 +698,7 @@ def transform_building_features(building_metadata_table_name) -> DataFrame:
             "heating_efficiency_nominal_percentage",
             "heating_setpoint_degrees_f",
             "heating_setpoint_offset_magnitude_degrees_f",
+            "hvac_heating_efficiency",  # only used for applying upgrades, gets dropped later
             # cooling
             "ac_type",
             "cooled_space_percentage",
@@ -771,37 +775,108 @@ def transform_building_features(building_metadata_table_name) -> DataFrame:
 # ('1', 13, 30) means units in climate zones 1A (1-anything) with R13 insulation or less are upgraded to R30
 BASIC_ENCLOSURE_INSULATION_SPARK = spark.createDataFrame(BASIC_ENCLOSURE_INSULATION)
 
+# Define mapping of "hvac_heating_efficiency" to parameters of performance curve based on energy plus options.tsv in each upgrade config
+# This defines the capacity and cop at min and max speeds for 3 outdoor temperatures
+# NOTE: schema will need to further identify the heat pump if ever there are hvac_heating_efficiency's that map to multiple performance curves
+# TODO: change to "capacity_retention"
+performance_curve_parameter_schema = StructType(
+    [
+        StructField("hvac_heating_efficiency", StringType(), True),
+        StructField("min_capacity_47f", DoubleType(), True),
+        StructField("min_capacity_17f", DoubleType(), True),
+        StructField("min_capacity_5f", DoubleType(), True),
+        StructField("max_capacity_47f", DoubleType(), True),
+        StructField("max_capacity_17f", DoubleType(), True),
+        StructField("max_capacity_5f", DoubleType(), True),
+        StructField("min_cop_47f", DoubleType(), True),
+        StructField("min_cop_17f", DoubleType(), True),
+        StructField("min_cop_5f", DoubleType(), True),
+        StructField("max_cop_47f", DoubleType(), True),
+        StructField("max_cop_17f", DoubleType(), True),
+        StructField("max_cop_5f", DoubleType(), True),
+    ]
+)
+# TODO: add in performance curve params for NREL HPs
+performance_curve_parameter_data = [
+    ("Daikin MSHP SZ, SEER 22.05, 10.64 HSPF", 0.24, 0.15, 0.12, 1.13, 0.98, 0.79, 5.76, 5.55, 5.47, 4.25, 2.63, 1.8),
+    ("Daikin MSHP MZ, SEER 22.05, 11.2 HSPF", 0.32, 0.22, 0.18, 1.33, 1.08, 1.0, 4.95, 4.85, 4.96, 2.61, 1.99, 1.80),
+    ("Carrier MSHP SZ, SEER 24.255, 13.104 HSPF", 0.4, 0.24, 0.26, 1.23, 0.77, 0.78, 5.58, 2.37, 2.0, 2.87, 2.33, 2.54),
+    ("Carrier MSHP MZ, SEER 26.25, 10.64 HSPF", 0.34, 0.24, 0.22, 1.16, 0.76, 0.72, 4.92, 2.93, 2.43, 3.54, 2.3, 2.0),
+    ("York MSHP SZ, SEER 23.625, 11.21 HSPF", 0.33, 0.42, 0.21, 1.04, 1.0, 0.8, 4.7, 1.95, 1.96, 2.4, 1.86, 1.80),
+    ("York MSHP MZ, SEER 25.36, 11.2 HSPF", 0.44, 0.42, 0.12, 1.55, 1.01, 0.95, 2.3, 1.45, 0.3, 2.9, 2.4, 1.8),
+]
 
-def upgrade_to_hp(
-    baseline_building_features: DataFrame,
-    ducted_efficiency: str,
-    non_ducted_efficiency: str,
-    heat_pump_sizing_methodology: str = "ACCA",
-) -> DataFrame:
+HEAT_PUMP_PERFORMANCE_CURVE_DF = spark.createDataFrame(
+    performance_curve_parameter_data, schema=performance_curve_parameter_schema
+)
+
+
+def fill_null_with_column(df, source_column, columns_to_fill):
     """
-    Upgrade the baseline building features to an air source heat pump (ASHP) with specified efficiencies.
-    Note that all baseline hps in Resstock are lower efficiency than specified upgrade thresholds
-        (<=SEER 15; <=HSPF 8.5)
+    Fills null values in specified columns with the value from a source column
 
     Args:
-        baseline_building_features (DataFrame): The baseline building features.
+        df: Input DataFrame
+        source_column: Column name to use as the fill value
+        columns_to_fill: List of column names to fill when null
+
+    Returns:
+        DataFrame with null values filled
+    """
+    # Create a dictionary of column expressions
+    column_exprs = {
+        column: F.when(F.col(column).isNull(), F.col(source_column)).otherwise(F.col(column))
+        for column in columns_to_fill
+    }
+
+    # Apply all transformations at once
+    return df.select(
+        *[F.col(c) for c in df.columns if c not in columns_to_fill],  # keep all other columns as-is
+        *[column_exprs[c].alias(c) for c in columns_to_fill],  # apply our transformations
+    )
+
+
+def remove_setbacks(building_features: DataFrame) -> DataFrame:
+    """
+    Remove setbacks by setting the cooling and heating setpoint offset magnitudes to zero.
+
+    Args:
+        building_features (DataFrame): The baseline building features.
+
+    Returns:
+        DataFrame: The building features DataFrame with setbacks removed.
+    """
+    return building_features.withColumn("cooling_setpoint_offset_magnitude_degrees_f", F.lit(0.0)).withColumn(
+        "heating_setpoint_offset_magnitude_degrees_f", F.lit(0.0)
+    )
+
+
+def update_hp_ducted_ductless(
+    building_features: DataFrame,
+    ducted_efficiency: str,
+    non_ducted_efficiency: str,
+) -> DataFrame:
+    """
+    Upgrade the baseline building features for heating and cooling efficiencies and ducted heating/cooling status
+    with a ducted heat pump if the home has ducts and a ductless heat pump if the home does not have ducts.
+    TODO: make the specified upgrade thresholds  (<=SEER 15; <=HSPF 8.5) explicit here. In 2024.2 there are now
+    baseline hps that exceed these thresholds (MSHP, SEER 29.3, 14 HSPF).
+
+    Args:
+        building_features (DataFrame): The baseline building features.
         ducted_efficiency (str): The efficiency of the ducted heat pump.
         non_ducted_efficiency (str): The efficiency of the ductless heat pump.
 
     Returns:
-        DataFrame: The upgraded building features DataFrame with the heat pump.
+        DataFrame: The upgraded building features DataFrame with the heat pump logic applied.
     """
     return (
-        baseline_building_features.withColumn("heating_appliance_type", F.lit("ASHP"))
-        .withColumn("heating_fuel", F.lit("Electricity"))
-        .withColumn(
+        building_features.withColumn(
             "heating_efficiency_nominal_percentage",
             F.when(F.col("has_ducts"), extract_heating_efficiencyUDF(F.lit(ducted_efficiency))).otherwise(
                 extract_heating_efficiencyUDF(F.lit(non_ducted_efficiency))
             ),
         )
-        .withColumn("has_ducted_heating", F.col("has_ducts"))
-        .withColumn("has_ducted_cooling", F.col("has_ducts"))
         .withColumn(
             "cooling_efficiency_eer",
             F.when(
@@ -809,6 +884,100 @@ def upgrade_to_hp(
                 extract_cooling_efficiencyUDF(F.lit(ducted_efficiency)),
             ).otherwise(extract_cooling_efficiencyUDF(F.lit(non_ducted_efficiency))),
         )
+        .withColumn("has_ducted_heating", F.col("has_ducts"))
+        .withColumn("has_ducted_cooling", F.col("has_ducts"))
+    )
+
+
+def get_hp_efficiencies_single_multi_zone_ductless(
+    building_features: DataFrame, single_zone_efficiency: str, multi_zone_efficiency: str, perf_curve_df: DataFrame
+) -> DataFrame:
+    """
+    Upgrade the baseline building features for heating and cooling efficiencies with a ductless heat pump.
+    Applies single-zone or multi-zone efficiency based on the size of the home and joins performance curve parameters.
+
+    Args:
+        building_features (DataFrame): The baseline building features.
+        single_zone_efficiency (str): The efficiency of the single-zone ductless heat pump.
+        multi_zone_efficiency (str): The efficiency of the multi-zone ductless heat pump.
+        perf_curve_df (DataFrame): DataFrame containing detailed performance data for joining.
+
+    Returns:
+        DataFrame: The upgraded building features DataFrame with the ductless heat pump logic applied.
+    """
+
+    def single_zone_is_applicable():
+        """
+        Define the condition for home size logic reuse.
+        """
+        return (
+            (F.col("n_bedrooms") == 1) | (F.col("sqft") <= 749) | ((F.col("n_bedrooms") == 2) & (F.col("sqft") <= 999))
+        )
+
+    # Package apply logic (return rows unchanged if they don't match the conditions)
+    building_features = building_features.withColumn(
+        "upgrade_is_applicable",
+        (
+            (F.col("heating_fuel") != "None")
+            & (
+                (
+                    F.col("heating_efficiency_nominal_percentage")
+                    < extract_heating_efficiency("ASHP, SEER 25, 12.7 HSPF")
+                )
+                | (F.col("cooling_efficiency_eer") < extract_cooling_efficiency("ASHP, SEER 25, 12.7 HSPF"))
+            )
+        ),
+    )
+    # add column on with string on hp efficiency which we can extract heating and cooling efficiencies
+    # and performance curve metrics
+    building_features = building_features.withColumn(
+        "hvac_heating_efficiency",
+        F.when(
+            F.col("upgrade_is_applicable"),
+            F.when(single_zone_is_applicable(), single_zone_efficiency).otherwise(multi_zone_efficiency),
+        ).otherwise(F.lit("")),
+    )
+
+    # extract heating and cooling efficiencies
+    building_features = building_features.withColumn(
+        "heating_efficiency_nominal_percentage",
+        F.when(
+            F.col("upgrade_is_applicable"), extract_heating_efficiencyUDF(F.col("hvac_heating_efficiency"))
+        ).otherwise(F.col("heating_efficiency_nominal_percentage")),
+    ).withColumn(
+        "cooling_efficiency_eer",
+        F.when(
+            F.col("upgrade_is_applicable"), extract_cooling_efficiencyUDF(F.col("hvac_heating_efficiency"))
+        ).otherwise(F.col("cooling_efficiency_eer")),
+    )
+
+    # heating and cooling is now ductless
+    building_features = building_features.withColumn(
+        "has_ducted_heating", F.when(F.col("upgrade_is_applicable"), False).otherwise(F.col("has_ducted_heating"))
+    ).withColumn(
+        "has_ducted_cooling", F.when(F.col("upgrade_is_applicable"), False).otherwise(F.col("has_ducted_cooling"))
+    )
+
+    return building_features.drop("upgrade_is_applicable")
+
+
+def upgrade_to_hp_general(
+    building_features: DataFrame,
+    heat_pump_sizing_methodology: str = "ACCA",
+) -> DataFrame:
+    """
+    Upgrade the baseline building features to an air source heat pump (ASHP) with logic common to all heat pump upgrades.
+
+    Args:
+        building_features (DataFrame): The building features to upgrade.
+        heat_pump_sizing_methodology (str, optional) : the name of the heat pump sizing methodology. Defaults to "ACCA".
+
+    Returns:
+        DataFrame: The upgraded building features DataFrame with the heat pump.
+    """
+    return (
+        building_features.withColumn("heating_appliance_type", F.lit("ASHP"))
+        .withColumn("heating_fuel", F.lit("Electricity"))
         .withColumn("ac_type", F.lit("Heat Pump"))
         .withColumn("cooled_space_percentage", F.lit(1.0))
         .withColumn("heat_pump_sizing_methodology", F.lit(heat_pump_sizing_methodology))
@@ -817,10 +986,11 @@ def upgrade_to_hp(
 
 def apply_upgrades(baseline_building_features: DataFrame, upgrade_id: int) -> DataFrame:
     """
-    Modify building features to reflect the upgrade. Source:
+    Modify building features to reflect the upgrade.
     https://oedi-data-lake.s3.amazonaws.com/nrel-pds-building-stock/end-use-load-profiles-for-us-building-stock
          /2022/EUSS_ResRound1_Technical_Documentation.pdf
     In case of contradictions, consult: https://github.com/NREL/resstock/blob/run/euss/EUSS-project-file_2018_10k.yml.
+    For RAStock upgrades, consult the config.json and options.tsv in the simulation folder.
 
     Args:
           baseline_building_features: (DataFrame) building features coming from metadata.
@@ -842,9 +1012,7 @@ def apply_upgrades(baseline_building_features: DataFrame, upgrade_id: int) -> Da
         pass
 
     if upgrade_id == 0.01:  # baseline with no setbacks
-        upgrade_building_features = upgrade_building_features.withColumn(
-            "cooling_setpoint_offset_magnitude_degrees_f", F.lit(0.0)
-        ).withColumn("heating_setpoint_offset_magnitude_degrees_f", F.lit(0.0))
+        upgrade_building_features = remove_setbacks(upgrade_building_features)
 
     if upgrade_id in [1, 9, 13.01]:  # basic enclosure
         upgrade_building_features = (
@@ -923,27 +1091,65 @@ def apply_upgrades(baseline_building_features: DataFrame, upgrade_id: int) -> Da
         )
 
     if upgrade_id == 3:  # heat pump: min efficiency, electric backup
+        # apply transforms for ducted vs ductless depending whether the home has ducts
         upgrade_building_features = upgrade_building_features.transform(
-            upgrade_to_hp, "Heat Pump, SEER 15, 9 HSPF", "Heat Pump, SEER 15, 9 HSPF"
+            update_hp_ducted_ductless, "Heat Pump, SEER 15, 9 HSPF", "Heat Pump, SEER 15, 9 HSPF"
         )
+        # apply general heat pump transforms common to all heat pumps
+        upgrade_building_features = upgrade_building_features.transform(upgrade_to_hp_general)
 
     if upgrade_id in [4, 9]:  # heat pump: high efficiency, electric backup
+        # apply transforms for ducted vs ductless depending whether the home has ducts
         upgrade_building_features = upgrade_building_features.transform(
-            upgrade_to_hp,
-            "Heat Pump, SEER 24, 13 HSPF",
-            "Heat Pump, SEER 29.3, 14 HSPF",
+            update_hp_ducted_ductless, "Heat Pump, SEER 24, 13 HSPF", "Heat Pump, SEER 29.3, 14 HSPF"
         )
+        # apply general heat pump transforms common to all heat pumps
+        upgrade_building_features = upgrade_building_features.transform(upgrade_to_hp_general)
+
+    if upgrade_id == 15.04:  # Daikin ductless cchp
+        # apply ductless heat pump transforms for multi vs single zone depending on the size of the home
+        upgrade_building_features = get_hp_efficiencies_single_multi_zone_ductless(
+            upgrade_building_features,
+            single_zone_efficiency="Daikin MSHP SZ, SEER 22.05, 10.64 HSPF",
+            multi_zone_efficiency="Daikin MSHP MZ, SEER 22.05, 11.2 HSPF",
+            perf_curve_df=HEAT_PUMP_PERFORMANCE_CURVE_DF,
+        )
+
+    if upgrade_id == 15.05:  # Carrier performance ductless cchp
+        # apply ductless heat pump transforms for multi vs single zone depending on the size of the home
+        upgrade_building_features = get_hp_efficiencies_single_multi_zone_ductless(
+            upgrade_building_features,
+            single_zone_efficiency="Carrier MSHP SZ, SEER 24.255, 13.104 HSPF",
+            multi_zone_efficiency="Carrier MSHP MZ, SEER 26.25, 10.64 HSPF",
+            perf_curve_df=HEAT_PUMP_PERFORMANCE_CURVE_DF,
+        )
+
+    if upgrade_id == 15.06:  # York ductless cchp
+        # apply ductless heat pump transforms for multi vs single zone depending on the size of the home
+        upgrade_building_features = get_hp_efficiencies_single_multi_zone_ductless(
+            upgrade_building_features,
+            single_zone_efficiency="York MSHP SZ, SEER 23.625, 11.21 HSPF",
+            multi_zone_efficiency="York MSHP MZ, SEER 25.36, 11.2 HSPF",
+            perf_curve_df=HEAT_PUMP_PERFORMANCE_CURVE_DF,
+        )
+
+    # all ductless cold climate heat pumps for rfp
+    if upgrade_id in [15.04, 15.05, 15.06]:
+        # apply general heat pump transforms common to all heat pumps
+        upgrade_building_features = upgrade_building_features.transform(upgrade_to_hp_general, "HERS")
+        # remove setbacks
+        upgrade_building_features = remove_setbacks(upgrade_building_features)
+
     if upgrade_id in [11.05, 11.07, 13.01, 13.02]:
-        upgrade_building_features = (
-            upgrade_building_features.transform(
-                upgrade_to_hp,
-                "Heat Pump, SEER 18, 10 HSPF",
-                "Heat Pump, SEER 18, 10.5 HSPF",
-                "HERS",
-            )
-            .withColumn("cooling_setpoint_offset_magnitude_degrees_f", F.lit(0.0))
-            .withColumn("heating_setpoint_offset_magnitude_degrees_f", F.lit(0.0))
+        # apply transforms for ducted vs ductless depending whether the home has ducts
+        upgrade_building_features = upgrade_building_features.transform(
+            update_hp_ducted_ductless, "Heat Pump, SEER 18, 10 HSPF", "Heat Pump, SEER 18, 10.5 HSPF"
         )
+        # apply general heat pump transforms common to all heat pumps
+        upgrade_building_features = upgrade_building_features.transform(upgrade_to_hp_general, "HERS")
+        # remove setbacks
+        upgrade_building_features = remove_setbacks(upgrade_building_features)
+
     if upgrade_id in [6, 9]:
         upgrade_building_features = (
             upgrade_building_features.withColumn("water_heater_fuel", F.lit("Electricity"))
@@ -960,14 +1166,37 @@ def apply_upgrades(baseline_building_features: DataFrame, upgrade_id: int) -> Da
             .transform(add_water_heater_features)
         )
 
-    if upgrade_id in [8.1, 9]:
-        upgrade_building_features = upgrade_building_features.withColumn(
-            "clothes_dryer_fuel", F.lit("Electricity")
-        ).withColumn("has_heat_pump_dryer", F.lit(True))
-    if upgrade_id in [8.2, 9]:
-        upgrade_building_features = upgrade_building_features.withColumn(
-            "cooking_range_fuel", F.lit("Electricity")
-        ).withColumn("has_induction_range", F.lit(True))
+    if upgrade_id == 9:
+        # update to heat pump dryer and induction range
+        upgrade_building_features = (
+            upgrade_building_features.withColumn("clothes_dryer_fuel", F.lit("Electricity"))
+            .withColumn("has_heat_pump_dryer", F.lit(True))
+            .withColumn("cooking_range_fuel", F.lit("Electricity"))
+            .withColumn("has_induction_range", F.lit(True))
+        )
+
+    # Add in heat pump performance curve params using pre-defined specs, or impute for building samples that do not have a hp
+    upgrade_building_features = upgrade_building_features.join(
+        HEAT_PUMP_PERFORMANCE_CURVE_DF, on="hvac_heating_efficiency", how="left"
+    )
+    # For samples without a heat pump, impute all COP columns with heating_efficiency_nominal_percentage
+    # and all capacity retention columns with 1
+    upgrade_building_features = fill_null_with_column(
+        upgrade_building_features,
+        source_column="heating_efficiency_nominal_percentage",
+        columns_to_fill=["min_cop_47f", "min_cop_17f", "min_cop_5f", "max_cop_47f", "max_cop_17f", "max_cop_5f"],
+    )
+    upgrade_building_features = upgrade_building_features.fillna(
+        1,
+        subset=[
+            "min_capacity_47f",
+            "min_capacity_17f",
+            "min_capacity_5f",
+            "max_capacity_47f",
+            "max_capacity_17f",
+            "max_capacity_5f",
+        ],
+    )
 
     # add indicator features for presence of fuels (not including electricity)
     upgrade_building_features = (
@@ -1025,7 +1254,7 @@ def build_upgrade_metadata_table(baseline_building_features: DataFrame) -> DataF
             upgrade_id=upgrade_id,
         ).withColumn("upgrade_name", F.lit(upgrade_name))
         upgraded_dfs.append(df)
-    # Union into one tables
+    # Union into one table
     return reduce(DataFrame.unionByName, upgraded_dfs)
 
 

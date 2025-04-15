@@ -258,6 +258,8 @@ if not DEBUG:
 with mlflow.start_run() as run:
     # Get the unique ID of the current run in case we aren't registering it
     run_id = mlflow.active_run().info.run_id
+    # Set the tag based on the version num
+    mlflow.set_tag(key="version", value=sm.name)
 
     # Create the keras model
     keras_model = sm.create_model(train_gen=train_gen, layer_params=layer_params)
