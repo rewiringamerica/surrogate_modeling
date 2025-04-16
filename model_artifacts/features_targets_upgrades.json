@@ -77,12 +77,12 @@
         "has_natural_gas_appliance",
         "has_fuel_oil_appliance",
         "has_propane_appliance",
-        "min_capacity_47f",
-        "min_capacity_17f",
-        "min_capacity_5f",
-        "max_capacity_47f",
-        "max_capacity_17f",
-        "max_capacity_5f",
+        "min_capacity_retention_47f",
+        "min_capacity_retention_17f",
+        "min_capacity_retention_5f",
+        "max_capacity_retention_47f",
+        "max_capacity_retention_17f",
+        "max_capacity_retention_5f",
         "min_cop_47f",
         "min_cop_17f",
         "min_cop_5f",
@@ -124,6 +124,7 @@
         13.02,
         15.04,
         15.05,
-        15.06
+        15.06, 
+        15.08
     ]
 }

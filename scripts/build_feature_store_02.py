@@ -37,6 +37,11 @@
 
 # COMMAND ----------
 
+from dmlutils.building_upgrades.upgrades import Upgrade
+Upgrade.CARRIER_DUCTLESS_PERFORMANCE_COLD_CLIMATE_HP_HERS_No_SETBACK
+
+# COMMAND ----------
+
 # DBTITLE 1,Imports
 import re
 from functools import reduce
@@ -73,8 +78,8 @@ print(g.CURRENT_VERSION_NUM)
 building_metadata_table_name = versioning.get_most_recent_table_version(g.BUILDING_METADATA_TABLE)
 print(building_metadata_table_name)
 baseline_building_metadata_transformed = feature_utils.transform_building_features(building_metadata_table_name)
-# remove homes without heating: TODO: move this upstream to filter out of general universe of buildings
-baseline_building_metadata_transformed = baseline_building_metadata_transformed.where(F.col("heating_fuel") != "None")
+# temporarily remove homes with baseline heat pumps-- TODO: add these back after we have performance curve parameters for these
+baseline_building_metadata_transformed = baseline_building_metadata_transformed.where(F.col('heating_appliance_type') != "ASHP")
 
 # COMMAND ----------
 
@@ -222,6 +227,10 @@ data_io.write_json(
     data={"climate_zone_to_index": climate_zone_to_index, "weather_city_to_index": weather_city_to_index},
     overwrite=True,
 )
+
+# COMMAND ----------
+
+building_metadata_with_weather_index = building_metadata_with_weather_index.where(~((F.col('upgrade_id')==15.08) & ~(F.col('has_ducts'))))
 
 # COMMAND ----------
 
