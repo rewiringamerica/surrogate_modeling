@@ -1135,30 +1135,35 @@ def apply_upgrades(baseline_building_features: DataFrame, upgrade_id: int) -> Da
             single_zone_efficiency="York MSHP SZ, SEER 23.625, 11.21 HSPF",
             multi_zone_efficiency="York MSHP MZ, SEER 25.36, 11.2 HSPF",
         )
-    #TODO: fix this to just first check if ducted and then not apply anything if not
+
     if upgrade_id == 15.08:  # Daikin ducted cc MSHP
         # apply ducted heat pump to only homes with ducts
-        upgrade_building_features = (
-            upgrade_building_features
-            .withColumn("heating_efficiency_nominal_percentage",
-                F.when(F.col("has_ducts"), extract_heating_efficiencyUDF(F.lit("Daikin 7 series ASHP, SEER 20, 10.35 HSPF"))).otherwise(
-                    F.col("heating_efficiency_nominal_percentage"))
-                )
-        .withColumn(
-            "cooling_efficiency_eer",
-            F.when(
-                F.col("has_ducts"),
-                extract_cooling_efficiencyUDF(F.lit("Daikin 7 series ASHP, SEER 20, 10.35 HSPF")),
-            ).otherwise(F.col("cooling_efficiency_eer")),
-        )
-        .withColumn("has_ducted_heating", F.col("has_ducts"))
-        .withColumn("has_ducted_cooling", F.col("has_ducts"))
-        # Add column to join to performance curve metrics on
-        .withColumn("hvac_heating_efficiency", F.lit("Daikin 7 series ASHP, SEER 20, 10.35 HSPF"))
-    )
+        # Split into two DataFrames:
+        df_with_ducts = upgrade_building_features.filter(F.col("has_ducts"))
+        df_without_ducts = upgrade_building_features.filter(~F.col("has_ducts"))
 
-    # all cold climate heat pumps for rfp
-    if upgrade_id in [15.04, 15.05, 15.06, 15.08]:
+        # Apply transformations only to df_with_ducts
+        df_with_ducts_transformed = (
+            df_with_ducts
+                .withColumn("heating_efficiency_nominal_percentage",
+                            extract_heating_efficiencyUDF(F.lit("Daikin 7 series ASHP, SEER 20, 10.35 HSPF")))
+                 .withColumn(
+                        "cooling_efficiency_eer",
+                            extract_cooling_efficiencyUDF(F.lit("Daikin 7 series ASHP, SEER 20, 10.35 HSPF"))
+                        )
+                .withColumn("has_ducted_heating",F.lit(True))
+                .withColumn("has_ducted_cooling",F.lit(True))
+                # Add column to join to performance curve metrics on
+                .withColumn("hvac_heating_efficiency",F.lit("Daikin 7 series ASHP, SEER 20, 10.35 HSPF"))
+                .transform(upgrade_to_hp_general, "HERS")
+                .transform(remove_setbacks)
+        )
+
+        # Union transformed and unchanged DataFrames
+        upgrade_building_features = df_with_ducts_transformed.union(df_without_ducts)
+
+    # all ductless cold climate heat pumps for rfp
+    if upgrade_id in [15.04, 15.05, 15.06]:
         # apply general heat pump transforms common to all heat pumps
         upgrade_building_features = upgrade_building_features.transform(upgrade_to_hp_general, "HERS")
         # remove setbacks

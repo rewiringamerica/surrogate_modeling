@@ -1,30 +1,43 @@
-upgrade_id_input,climate_zone_temp,attic_type,insulation_wall,wall_material,insulation_wall_r_value,insulation_ceiling_r_value,duct_insulation_r_value,duct_leakage_percentage,duct_leakage_and_insulation,infiltration_ach50,has_ducts,has_ducted_heating,has_ducted_cooling,heating_fuel,heating_appliance_type,heating_efficiency_nominal_percentage,cooling_efficiency_eer,ac_type,cooled_space_percentage,heat_pump_sizing_methodology,cooling_setpoint_offset_magnitude_degrees_f,heating_setpoint_offset_magnitude_degrees_f,n_bedrooms,water_heater_fuel,water_heater_efficiency,water_heater_type,water_heater_efficiency_ef,water_heater_recovery_efficiency_ef,water_heater_tank_volume_gal,clothes_dryer_fuel,cooking_range_fuel,hot_tub_spa_fuel,pool_heater_fuel,has_gas_fireplace,has_gas_grill,has_gas_lighting,has_induction_range
-0.0,2,Vented Attic,"Brick, R-13","Brick",13,15,6,.2,"20% Leakage to Outside, R-6",15,True,True,True,Natural Gas,Furnace,.8,15,'Central AC',1,None,3,3,2,Natural Gas,Natural Gas Premium,Premium,1.5,1.0,50,Natural Gas,Natural Gas,Natural Gas,None,False,False,False,False
-0.01,2,Vented Attic,"Brick, R-13","Brick",13,15,6,.2,"20% Leakage to Outside, R-6",15,True,True,True,Natural Gas,Furnace,.8,15,'Central AC',1,None,3,3,2,Natural Gas,Natural Gas Premium,Premium,1.5,1.0,50,Natural Gas,Natural Gas,Natural Gas,None,False,False,False,False
-1.0,1,Vented Attic,"Wood Stud, Uninsulated","Wood Stud",0,10,0,.2,"30% Leakage to Outside, Uninsulated",4,True,,,,,,,,,,,,,,,,,,,,,,,True,,,True
-1.0,1,Vented Attic,"Wood Stud, R-15","Wood Stud",15,15,0,0,"None",4,False,,,,,,,,,,,,,,,,,,,,,,,,True,,
-1.0,2,Vented Attic,"Brick, R-13","Brick",13,15,6,.2,"20% Leakage to Outside, R-6",15,True,,,,,,,,,,,,,,,,,,,,,,,,,True,
-1.0,3,Vented Attic,"Wood Stud, R-15","Wood Stud",15,35,6,.05,"5% Leakage to Outside, R-6",15,True,,,,,,,,,,,,,,,,,,,,,,,,,,
-1.0,6,Vented Attic,"Wood Stud, R-15","Wood Stud",15,15,12,.2,"30% Leakage to Outside, R-12",20,True,,,,,,,,,,,,,,,,,,,,,,,,,,
-1.0,7,Vented Attic,"Wood Stud, R-15","Wood Stud",15,40,6,.2,"20% Leakage to Outside, R-6",20,True,,,,,,,,,,,,,,,,,,,,,,,,,,
-1.0,7,None,"Wood Stud, R-15","Wood Stud",15,15,6,.2,"20% Leakage to Outside, R-6",20,True,,,,,,,,,,,,,,,,,,,,,,,,,,
-3.0,7,,,,,,,,,,True,True,True,Natural Gas,Furnace,.8,10.7,'Central AC',1,None,3,3,,,,,,,,,,,,,,,
-3.0,7,,,,,,,,,,False,False,False,Electricity,ASHP,2.0,15,'ASHP',1,ACCA,6,3,,,,,,,,,,,,,,,
-4.0,7,,,,,,,,,,True,True,False,Natural Gas,Furnace,.8,10.7,'Room AC',.5,None,6,9,,,,,,,,,,,,,,,
-4.0,7,,,,,,,,,,True,False,True,Natural Gas,Furnace,.8,15,'Central AC',1,None,6,3,,,,,,,,,,,,,,,
-4.0,7,,,,,,,,,,False,False,False,Natural Gas,Furnace,.8,10.7,'Room AC',.5,None,9,9,,,,,,,,,,,,,,,
-6.0,7,,,,,,,,,,,,,,,,,,,,,,3,Natural Gas,Natural Gas Tankless,Instantaneous,2.0,1.0,0,,,,,,,,
-6.0,7,,,,,,,,,,,,,,,,,,,,,,3,Electricity,Electric Tankless,Instantaneous,.99,1.0,0,,,,,,,,
-6.0,7,,,,,,,,,,,,,,,,,,,,,,3,Electricity,Electric Standard,Standard,1.5,1.0,20,,,,,,,,
-6.0,7,,,,,,,,,,,,,Fuel Oil,,,,,,,,,4,Fuel Oil,Fuel Oil Standard,Standard,1.5,1.0,50,Propane,Propane,None,None,False,False,False,False
-6.0,7,,,,,,,,,,,,,,,,,,,,,,5,Natural Gas,Natural Gas Premium,Premium,1.5,1.0,50,,,,,,,,
-9.0,7,None,"Wood Stud, R-15","Wood Stud",15,15,6,.2,"20% Leakage to Outside, R-6",20,True,True,True,Natural Gas,Furnace,.8,10.7,'Central AC',1,None,9,9,5,Natural Gas,Natural Gas Premium,Premium,1.5,1.0,50,Natural Gas,Natural Gas,Natural Gas,None,False,False,True,True
-11.05,7,,,,,,,,,,True,True,True,Natural Gas,Furnace,.8,15,'Central AC',1,None,3,3,,,,,,,,,,,,,,,
-11.05,7,,,,,,,,,,False,False,False,Natural Gas,Furnace,.8,10.7,'Room AC',.5,None,9,9,,,,,,,,,,,,,,,
-11.07,7,,,,,,,,,,True,True,True,Natural Gas,Furnace,.8,15,'Central AC',1,None,3,3,,,,,,,,,,,,,,,
-11.07,7,,,,,,,,,,False,False,False,Natural Gas,Furnace,.8,10.7,'Room AC',.5,None,9,9,,,,,,,,,,,,,,,
-13.01,2,Vented Attic,"Brick, R-13","Brick",13,15,6,.2,"20% Leakage to Outside, R-6",15,True,True,True,Natural Gas,Furnace,.8,15,'Central AC',1,None,3,3,2,Natural Gas,Natural Gas Premium,Premium,1.5,1.0,50,Natural Gas,Natural Gas,Natural Gas,None,False,False,False,False
-13.02,2,Vented Attic,"Brick, R-13","Brick",13,15,6,.2,"20% Leakage to Outside, R-6",20,True,True,True,Natural Gas,Furnace,.8,15,'Central AC',1,None,3,3,2,Natural Gas,Natural Gas Premium,Premium,1.5,1.0,50,Natural Gas,Natural Gas,Natural Gas,None,False,False,False,False
-13.02,2,Vented Attic,"Brick, R-13","Brick",13,15,6,.2,"20% Leakage to Outside, R-6",12,True,True,True,Natural Gas,Furnace,.8,15,'Central AC',1,None,3,3,2,Natural Gas,Natural Gas Premium,Premium,1.5,1.0,50,Natural Gas,Natural Gas,Natural Gas,None,False,False,False,False
-13.02,2,Vented Attic,"Brick, R-13","Brick",13,15,6,.2,"20% Leakage to Outside, R-6",8,True,True,True,Natural Gas,Furnace,.8,15,'Central AC',1,None,3,3,2,Natural Gas,Natural Gas Premium,Premium,1.5,1.0,50,Natural Gas,Natural Gas,Natural Gas,None,False,False,False,False
-13.02,2,Vented Attic,"Brick, R-13","Brick",13,15,6,.2,"20% Leakage to Outside, R-6",4,True,True,True,Natural Gas,Furnace,.8,15,'Central AC',1,None,3,3,2,Natural Gas,Natural Gas Premium,Premium,1.5,1.0,50,Natural Gas,Natural Gas,Natural Gas,None,False,False,False,False
+upgrade_id_input,climate_zone_temp,attic_type,insulation_wall,wall_material,insulation_wall_r_value,insulation_ceiling_r_value,duct_insulation_r_value,duct_leakage_percentage,duct_leakage_and_insulation,infiltration_ach50,has_ducts,has_ducted_heating,has_ducted_cooling,heating_fuel,heating_appliance_type,heating_efficiency_nominal_percentage,cooling_efficiency_eer,ac_type,cooled_space_percentage,heat_pump_sizing_methodology,cooling_setpoint_offset_magnitude_degrees_f,heating_setpoint_offset_magnitude_degrees_f,n_bedrooms,water_heater_fuel,water_heater_efficiency,water_heater_type,water_heater_efficiency_ef,water_heater_recovery_efficiency_ef,water_heater_tank_volume_gal,clothes_dryer_fuel,cooking_range_fuel,hot_tub_spa_fuel,pool_heater_fuel,has_gas_fireplace,has_gas_grill,has_gas_lighting,has_induction_range,sqft,hvac_heating_efficiency
+0.0,2,Vented Attic,"Brick, R-13","Brick",13,15,6,.2,"20% Leakage to Outside, R-6",15,True,True,True,Natural Gas,Furnace,.8,15,'Central AC',1,None,3.,3.,2,Natural Gas,Natural Gas Premium,Premium,1.5,1.0,50,Natural Gas,Natural Gas,Natural Gas,None,False,False,False,False
+0.01,2,Vented Attic,"Brick, R-13","Brick",13,15,6,.2,"20% Leakage to Outside, R-6",15,True,True,True,Natural Gas,Furnace,.8,15,'Central AC',1,None,3.,3.,2,Natural Gas,Natural Gas Premium,Premium,1.5,1.0,50,Natural Gas,Natural Gas,Natural Gas,None,False,False,False,False
+1.0,1,Vented Attic,"Wood Stud, Uninsulated","Wood Stud",0,10,0,.2,"30% Leakage to Outside, Uninsulated",4,True,,,,,1.0,,,,,,,,,,,,,,,,,,True,,,True
+1.0,1,Vented Attic,"Wood Stud, R-15","Wood Stud",15,15,0,0,"None",4,False,,,,,1.0,,,,,,,,,,,,,,,,,,,True,,
+1.0,2,Vented Attic,"Brick, R-13","Brick",13,15,6,.2,"20% Leakage to Outside, R-6",15,True,,,,,1.0,,,,,,,,,,,,,,,,,,,,True,
+1.0,3,Vented Attic,"Wood Stud, R-15","Wood Stud",15,35,6,.05,"5% Leakage to Outside, R-6",15,True,,,,,1.0,,,,,,,,,,,,,,,,,,,,,
+1.0,6,Vented Attic,"Wood Stud, R-15","Wood Stud",15,15,12,.2,"30% Leakage to Outside, R-12",20,True,,,,,1.0,,,,,,,,,,,,,,,,,,,,,
+1.0,7,Vented Attic,"Wood Stud, R-15","Wood Stud",15,40,6,.2,"20% Leakage to Outside, R-6",20,True,,,,,1.0,,,,,,,,,,,,,,,,,,,,,
+1.0,7,None,"Wood Stud, R-15","Wood Stud",15,15,6,.2,"20% Leakage to Outside, R-6",20,True,,,,,1.0,,,,,,,,,,,,,,,,,,,,,
+3.0,7,,,,,,,,,,True,True,True,Natural Gas,Furnace,.8,10.7,'Central AC',1,None,3.,3.,,,,,,,,,,,,,,,
+3.0,7,,,,,,,,,,False,False,False,Electricity,ASHP,2.0,15,'ASHP',1,ACCA,6.,3.,,,,,,,,,,,,,,,
+4.0,7,,,,,,,,,,True,True,False,Natural Gas,Furnace,.8,10.7,'Room AC',.5,None,6.,9.,,,,,,,,,,,,,,,
+4.0,7,,,,,,,,,,True,False,True,Natural Gas,Furnace,.8,15,'Central AC',1,None,6.,3.,,,,,,,,,,,,,,,
+4.0,7,,,,,,,,,,False,False,False,Natural Gas,Furnace,.8,10.7,'Room AC',.5,None,9.,9.,,,,,,,,,,,,,,,
+6.0,7,,,,,,,,,,,,,,,1.0,,,,,,,3,Natural Gas,Natural Gas Tankless,Instantaneous,2.0,1.0,0,,,,,,,,
+6.0,7,,,,,,,,,,,,,,,1.0,,,,,,,3,Electricity,Electric Tankless,Instantaneous,.99,1.0,0,,,,,,,,
+6.0,7,,,,,,,,,,,,,,,1.0,,,,,,,3,Electricity,Electric Standard,Standard,1.5,1.0,20,,,,,,,,
+6.0,7,,,,,,,,,,,,,Fuel Oil,,1.0,,,,,,,4,Fuel Oil,Fuel Oil Standard,Standard,1.5,1.0,50,Propane,Propane,None,None,False,False,False,False
+6.0,7,,,,,,,,,,,,,,,1.0,,,,,,,5,Natural Gas,Natural Gas Premium,Premium,1.5,1.0,50,,,,,,,,
+9.0,7,None,"Wood Stud, R-15","Wood Stud",15,15,6,.2,"20% Leakage to Outside, R-6",20,True,True,True,Natural Gas,Furnace,.8,10.7,'Central AC',1,None,9.,9.,5,Natural Gas,Natural Gas Premium,Premium,1.5,1.0,50,Natural Gas,Natural Gas,Natural Gas,None,False,False,True,True
+11.05,7,,,,,,,,,,True,True,True,Natural Gas,Furnace,.8,15,'Central AC',1,None,3.,3.,,,,,,,,,,,,,,,
+11.05,7,,,,,,,,,,False,False,False,Natural Gas,Furnace,.8,10.7,'Room AC',.5,None,9.,9.,,,,,,,,,,,,,,,
+11.07,7,,,,,,,,,,True,True,True,Natural Gas,Furnace,.8,15,'Central AC',1,None,3.,3.,,,,,,,,,,,,,,,
+11.07,7,,,,,,,,,,False,False,False,Natural Gas,Furnace,.8,10.7,'Room AC',.5,None,9.,9.,,,,,,,,,,,,,,,
+13.01,2,Vented Attic,"Brick, R-13","Brick",13,15,6,.2,"20% Leakage to Outside, R-6",15,True,True,True,Natural Gas,Furnace,.8,15,'Central AC',1,None,3.,3.,2,Natural Gas,Natural Gas Premium,Premium,1.5,1.0,50,Natural Gas,Natural Gas,Natural Gas,None,False,False,False,False
+13.02,2,Vented Attic,"Brick, R-13","Brick",13,15,6,.2,"20% Leakage to Outside, R-6",20,True,True,True,Natural Gas,Furnace,.8,15,'Central AC',1,None,3.,3.,2,Natural Gas,Natural Gas Premium,Premium,1.5,1.0,50,Natural Gas,Natural Gas,Natural Gas,None,False,False,False,False
+13.02,2,Vented Attic,"Brick, R-13","Brick",13,15,6,.2,"20% Leakage to Outside, R-6",12,True,True,True,Natural Gas,Furnace,.8,15,'Central AC',1,None,3.,3.,2,Natural Gas,Natural Gas Premium,Premium,1.5,1.0,50,Natural Gas,Natural Gas,Natural Gas,None,False,False,False,False
+13.02,2,Vented Attic,"Brick, R-13","Brick",13,15,6,.2,"20% Leakage to Outside, R-6",8,True,True,True,Natural Gas,Furnace,.8,15,'Central AC',1,None,3.,3.,2,Natural Gas,Natural Gas Premium,Premium,1.5,1.0,50,Natural Gas,Natural Gas,Natural Gas,None,False,False,False,False
+13.02,2,Vented Attic,"Brick, R-13","Brick",13,15,6,.2,"20% Leakage to Outside, R-6",4,True,True,True,Natural Gas,Furnace,.8,15,'Central AC',1,None,3.,3.,2,Natural Gas,Natural Gas Premium,Premium,1.5,1.0,50,Natural Gas,Natural Gas,Natural Gas,None,False,False,False,False
+15.04,7,,,,,,,,,,False,False,False,Natural Gas,Furnace,.8,10.7,'Room AC',.5,None,9.,9.,1,,,,,,,,,,,,,,,1000
+15.04,7,,,,,,,,,,True,True,True,Natural Gas,Furnace,.8,10.7,'Room AC',.5,None,9.,9.,1,,,,,,,,,,,,,,,1000
+15.04,7,,,,,,,,,,True,True,True,Natural Gas,Furnace,.8,10.7,'Room AC',.5,None,9.,9.,3,,,,,,,,,,,,,,,700
+15.04,7,,,,,,,,,,True,True,True,Natural Gas,Furnace,.8,10.7,'Room AC',.5,None,9.,9.,2,,,,,,,,,,,,,,,700
+15.04,7,,,,,,,,,,True,True,True,Natural Gas,Furnace,.8,10.7,'Room AC',.5,None,9.,9.,3,,,,,,,,,,,,,,,1500
+15.05,7,,,,,,,,,,False,False,False,Natural Gas,Furnace,.8,10.7,'Room AC',.5,None,9.,9.,1,,,,,,,,,,,,,,,1000
+15.05,7,,,,,,,,,,True,True,True,Natural Gas,Furnace,.8,10.7,'Room AC',.5,None,9.,9.,1,,,,,,,,,,,,,,,1000
+15.05,7,,,,,,,,,,True,True,True,Natural Gas,Furnace,.8,10.7,'Room AC',.5,None,9.,9.,3,,,,,,,,,,,,,,,1500
+15.06,7,,,,,,,,,,False,False,False,Natural Gas,Furnace,.8,10.7,'Room AC',.5,None,9.,9.,1,,,,,,,,,,,,,,,1000
+15.06,7,,,,,,,,,,True,True,True,Natural Gas,Furnace,.8,10.7,'Room AC',.5,None,9.,9.,1,,,,,,,,,,,,,,,1000
+15.06,7,,,,,,,,,,True,True,True,Natural Gas,Furnace,.8,10.7,'Room AC',.5,None,9.,9.,3,,,,,,,,,,,,,,,1500
+15.08,7,,,,,,,,,,True,True,True,Natural Gas,Furnace,.8,10.7,'Room AC',.5,None,9.,9.,3,,,,,,,,,,,,,,,1000
+15.08,7,,,,,,,,,,False,False,False,Natural Gas,Furnace,.8,10.7,'Room AC',.5,None,9.,9.,3,,,,,,,,,,,,,,,1000

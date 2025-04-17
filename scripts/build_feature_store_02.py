@@ -37,11 +37,6 @@
 
 # COMMAND ----------
 
-from dmlutils.building_upgrades.upgrades import Upgrade
-Upgrade.CARRIER_DUCTLESS_PERFORMANCE_COLD_CLIMATE_HP_HERS_No_SETBACK
-
-# COMMAND ----------
-
 # DBTITLE 1,Imports
 import re
 from functools import reduce
