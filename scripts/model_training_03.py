@@ -271,7 +271,7 @@ with mlflow.start_run() as run:
         epochs=2 if DEBUG else 200,
         batch_size=train_gen.batch_size,
         verbose=2,
-        callbacks=[keras.callbacks.EarlyStopping(monitor="val_loss", patience=15)],
+        callbacks=[keras.callbacks.EarlyStopping(monitor="val_loss", patience=12)],
     )
 
     # wrap in custom class that defines pre and post processing steps to be applied when called at inference time
