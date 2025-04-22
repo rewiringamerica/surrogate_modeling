@@ -118,12 +118,18 @@ val_gen = DataGenerator(train_data=val_data)
 
 # COMMAND ----------
 
+train_gen.baseline_weight
+
+# COMMAND ----------
+
 # DBTITLE 1,Inspect data gen output for one batch
 if DEBUG:
     print("FEATURES:")
     print(train_gen[0][0])
     print("\n OUTPUTS:")
     print(train_gen[0][1])
+    print("\n WEIGHTS:")
+    print(train_gen[0][2])
 
 # COMMAND ----------
 

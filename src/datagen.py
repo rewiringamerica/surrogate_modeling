@@ -15,6 +15,8 @@ import src.globals as g
 from src.utils.data_io import read_json
 from src.versioning import get_most_recent_table_version
 
+# define building sets and their respective baselines
+baseline_building_sets = [("ResStock 2022.1", 0), ("ResStock 2024.2", 0.01)]
 
 class DataGenerator(tf.keras.utils.Sequence):
     """
@@ -53,6 +55,7 @@ class DataGenerator(tf.keras.utils.Sequence):
     target_table_name = get_most_recent_table_version(g.ANNUAL_OUTPUTS_TABLE)
     # load the default features, targets, and upgrades to use for this training run based on params stored in current version's config in GCS
     data_params = read_json(g.GCS_CURRENT_VERSION_ARTIFACT_PATH / "features_targets_upgrades.json")
+    
 
     def __init__(
         self,
@@ -82,6 +85,9 @@ class DataGenerator(tf.keras.utils.Sequence):
         self.building_features = building_features
         self.weather_features = weather_features
         self.targets = targets
+        # get the upgrade ids of the of baseline upgrades in the training set
+        self.baseline_ids = [x for x in self.data_params["upgrade_ids"] for b in baseline_building_sets if x == b[1]]
+        self.baseline_weight = self.get_baseline_sample_weight(target_proportion = .3)
 
         self.batch_size = batch_size
         self.dtype = dtype
@@ -98,6 +104,10 @@ class DataGenerator(tf.keras.utils.Sequence):
         self.building_feature_vocab_dict = self.init_building_feature_vocab_dict()
 
         self.on_epoch_end()
+    
+    def get_baseline_sample_weight(self, target_proportion=.5):
+        # calculate the weight needed for each baseline sample to make it the target proportion of the training set
+        return target_proportion * len(self.data_params["upgrade_ids"]) / len(self.baseline_ids)
 
     def get_building_feature_lookups(self) -> FeatureLookup:
         """
@@ -176,7 +186,7 @@ class DataGenerator(tf.keras.utils.Sequence):
             df=train_data,
             feature_lookups=self.get_building_feature_lookups(),
             label=self.targets,
-            exclude_columns=["building_id", "upgrade_id"],
+            exclude_columns=["building_id"],
         )
         return training_set.load_df().toPandas()
 
@@ -279,12 +289,21 @@ class DataGenerator(tf.keras.utils.Sequence):
         - X (dict): features for batch in format {feature_name (str): np.array of shape [batch_size]}
         - y (dict) : targets for the batch in format {target_name (str): np.array of shape [batch_size]}
         """
-        # subset rows of targets and building features to batch
+        # subset rows of targets, building features, and upgrade ids to batch
         batch_df = self.training_df.iloc[self.batch_size * index : self.batch_size * (index + 1)]
+        batch_ids = self.training_df.upgrade_id[self.batch_size * index : self.batch_size * (index + 1)]
         # convert from df to dict
         X = self.convert_dataframe_to_dict(feature_df=batch_df)
         y = {col: np.array(batch_df[col]) for col in self.targets}
-        return X, y
+
+        # Assign higher weight weight to baseline samples
+        w = np.where(
+            np.isin(batch_ids, self.baseline_ids),
+            self.baseline_weight,
+            1.0
+        )  
+
+        return X, y, w
 
     def on_epoch_end(self):
         """
@@ -349,13 +368,10 @@ def load_data(
     )
     data = data.where(F.col("upgrade_id").isin(upgrade_ids))
 
-    # define building sets and their respective baselines
-    building_sets = [("ResStock 2022.1", 0), ("ResStock 2024.2", 0.01)]
-
     # Create train, val and test datasets for each building set, where each building id and all of its upgrades
     # appear in exactly one split
     split_dfs = []
-    for building_set, baseline_upgrade in building_sets:
+    for building_set, baseline_upgrade in baseline_building_sets:
         # Select unique building IDs for the given building set, which will be the basis for the dataset split
         unique_building_ids = (
             data.where((F.col("upgrade_id") == baseline_upgrade) & (F.col("building_set") == building_set))
