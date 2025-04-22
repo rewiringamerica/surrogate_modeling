@@ -27,7 +27,7 @@ from dmlutils.gcs import save_fig_to_gcs
 
 from src.globals import GCS_ARTIFACT_PATH, LOCAL_ARTIFACT_PATH, CURRENT_VERSION_NUM
 
-pd.set_option("display.max_rows", 100)
+pd.set_option("display.max_rows", 120)
 
 # COMMAND ----------
 
