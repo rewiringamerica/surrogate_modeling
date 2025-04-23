@@ -90,7 +90,6 @@ class ApplyUpgrades(unittest.TestCase):
 
 
 class TestFillNullWithColumn(unittest.TestCase):
-
     @unittest.skipIf(
         os.environ.get("DATABRICKS_RUNTIME_VERSION", None) is None,
         reason="Only runs on databricks cluster.",
