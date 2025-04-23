@@ -8,7 +8,13 @@ The following list describes mapping from Simulation Features to Surrogate Model
 
 **Surrogate Model Features**: Simulation inputs transformed for the surrogate model. The [options_lookup.tsv](https://github.com/NREL/resstock/blob/run/euss/resources/options_lookup.tsv) defines the mapping from select ResStock characteristics to EnergyPlus arguments. In many cases this provides a mapping from a categorical feature to a set of numerical features, and so we will likely want to leverage this mapping. In future work, we will directly use this .tsv file to apply the mapping, but for the MVP we decided to just define these manually and non-comprehensively.
 
-We consider the set of Simulation Features, the details for which can be viewed in this sheet when applying the “Simulation Features” filtered view. Note that this list of features is based on ResStock 2024.2 features that are relevant for the scope of buildings supported by the model: Occupied homes without shared HVAC or water heating systems or un-modeled fuels (e.g, wood or coal) and that fall into the following housing categories: single family homes (attached and detached), mobile homes, and multi-family homes with <5 units. Because we train the model on a mix samples from 2024.2 and 2022.1, we have to map 2022.1 features to 2024.2, [see details below](#aligning-2022-to-2024-metadata). 
+We consider the set of Simulation Features, the details for which can be viewed in this sheet when applying the “Simulation Features” filtered view. Note that this list of features is based on ResStock 2024.2 features that are relevant for the scope of buildings supported by the model:
+    - Single family homes (attached and detached), mobile homes, and multi-family homes with <5 units. 
+    - Occupied homes
+    - Have a heating system and are not heated by a heat pump in baseline
+    - Do not have appliances with un-modeled fuels (e.g, wood or coal)
+    - Do not have shared HVAC or water heating systems 
+Because we train the model on a mix samples from 2024.2 and 2022.1, we have to map 2022.1 features to 2024.2, [see details below](#aligning-2022-to-2024-metadata). 
 
 
 ### Simulation Features → Surrogate Model Features
@@ -316,23 +322,33 @@ Range Spot Vent Hour: Temporal variable seems unnecessary for predicting annual 
 
 ### Additional Features
 
-Fuel type indicator columns: which may help the model predict specific fuel consumptions more accurately. While the various appliance fuel columns will be one hot encoded , the model would have to learn the relationships between one hot encodings and targets: e.g, one hot encoding for  `heating_fuel = 'Methane Gas'` OHE for`clothes_dryer_fuel = 'Methane Gas'` , `has_gas_grill=True` and the target `methane gas`. This also just helps facilitate post-processing, wherein a fuel prediction is set to 0 if no appliance uses that fuel. 
+- Fuel type indicator columns: which may help the model predict specific fuel consumptions more accurately. While the various appliance fuel columns will be one hot encoded , the model would have to learn the relationships between one hot encodings and targets: e.g, one hot encoding for  `heating_fuel = 'Methane Gas'` OHE for`clothes_dryer_fuel = 'Methane Gas'` , `has_gas_grill=True` and the target `methane gas`. This also just helps facilitate post-processing, wherein a fuel prediction is set to 0 if no appliance uses that fuel. 
 
-`has_methane_gas_appliance`
+    - `has_methane_gas_appliance` (bool)
+    - `has_fuel_oil_appliance` (bool)
+    - `has_propane_appliance` (bool)
 
-`has_fuel_oil_appliance`
+-  Heat Pump dryer upgrade indicator columns: while this columns are not used for any of the baseline appliances, we need a way to distinguish heat pump dryers from electric resistance in the upgrade metadata. Rather than just adding another category to `clothes_dryer_fuel`, we chose to represent this as a boolean indicator so that electric resistance and heat pumps would still have a common feature value, which may be useful for predicting the `electricity` target. 
 
-`has_propane_appliance`
+    - `has_heat_pump_dryer` (bool)
 
-Heat Pump tech upgrade indicator columns: while these columns are not used for any of the baseline appliances, we need a way to distinguish these heat pump appliances from electric resistance in the upgrade metadata. Rather than just adding another category to `cooking_range_fuel` and `clothes_dryer_fuel`, we chose to represent this as a boolean indicator so that electric resistance and heat pumps would still have a common feature value, which may be useful for predicting the `electricity` target. 
-
-`has_heat_pump_dryer`
-
-`has_induction_range`
-
-Additional Heat Pump Detail Columns: The heat pump sizing method is specified in the options.tsv rather than in the samples, so since we are altering this methodology in some of the RAStock HP upgrades, we need a column to reflect this. 
-
-`heat_pump_sizing_methodology` (str): The methodology used for sizing the heat pump, which is either `ACCA` (default) `HERS` (for upgrade 11.05) or `None` (if no heat pump).
+- Additional Heat Pump Detail Columns: 
+    - The heat pump sizing method is specified in the options.tsv rather than in the samples, so since we are altering this methodology in some of the RAStock HP upgrades, we need a column to reflect this. 
+        - `heat_pump_sizing_methodology` (str): The methodology used for sizing the heat pump, which is either `ACCA` (default) `HERS` (for RAStock heat pumps) or `None` (if no heat pump).
+    - Twelve heat pump performance curve parameters are specified in the options.tsv for specific OEM heat pumps that we model. These specify the COP (coefficient of performance) and capacity retention at min and max speed and at 5F, 17F, and 45F. For NREL heat pumps, these are not explicit in the options.tsv so we have to extract proxy numbers for these by [TODO]. Finally, for samples without heat pumps, we set all COP parameters to the nominal heating efficiency percentage and the capacity retention to 1, since the efficiency and capacity retention of the non-heat pump heating system does not vary with speed or temperature.
+        - `min_capacity_retention_47f` (float)
+        - `min_capacity_retention_17f` (float)
+        - `min_capacity_retention_5f` (float)
+        - `max_capacity_retention_47f` (float)
+        - `max_capacity_retention_17f` (float)
+        - `max_capacity_retention_5f` (float)
+        - `min_cop_47f` (float)
+        - `min_cop_17f` (float)
+        - `min_cop_5f` (float)
+        - `max_cop_47f` (float)
+        - `max_cop_17f` (float)
+        - `max_cop_5f` (float)
+    See [notebook](../notebooks/adding_performance_curve_params_exploration.ipynb) to see an exploration of how the model learns these features. 
 
 ### Aligning 2022 to 2024 metadata
 
@@ -429,5 +445,7 @@ We have implemented the logic for the following upgrades:
         * 40% reduction in ACH 50 for dwelling unit with greater than 15 ACH50
         * 30% reduction in ACH 50 for dwelling units with greater than 10 ACH50
         * 20% reduction in ACH 50 for dwelling units with greater than 7.5 ACH50
+
+* 15.04-15.06, 15.08: A variety of cold climate heat pumps from different OEMs, where the first three are ductless and the final one is ducted. See [Notion](https://www.notion.so/rewiringamerica/RAStock-upgrades-151f02cf12a4475fb45db5b899f2dcd0?pvs=4) for details. [Samples=2024.2]
 
 Note that while we have implemented the logic for heat pump dryers and induction ranges as standalone upgrades, we have chosen to not use these in training due to terrible performance on predicting these tiny savings values, particularly compared to the good performance of the benchmark on these low variance end uses.
