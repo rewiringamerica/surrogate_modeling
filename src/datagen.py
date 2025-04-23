@@ -65,6 +65,7 @@ class DataGenerator(tf.keras.utils.Sequence):
         targets: List[str] = None,
         batch_size: int = 256,
         dtype: np.dtype = np.float32,
+        baseline_weight_target_proportion = 0.5
     ):
         """
         Initializes the DataGenerator object.
@@ -72,6 +73,8 @@ class DataGenerator(tf.keras.utils.Sequence):
         Parameters
         ----------
         - train_data (DataFrame): the training data containing the targets and keys to join to the feature tables.
+        - baseline_weight_target_proportion (float): The targeted proportional weight of the baseline samples in the training set. Defaults to .5, since they make up half of every savings calculation. 
+        
         See class docstring for all other parameters.
         """
         # Read from config file if not passed
@@ -87,7 +90,7 @@ class DataGenerator(tf.keras.utils.Sequence):
         self.targets = targets
         # get the upgrade ids of the of baseline upgrades in the training set
         self.baseline_ids = [x for x in self.data_params["upgrade_ids"] for b in baseline_building_sets if x == b[1]]
-        self.baseline_weight = self.get_baseline_sample_weight(target_proportion = .3)
+        self.baseline_weight = self.get_baseline_sample_weight(target_proportion = baseline_weight_target_proportion)
 
         self.batch_size = batch_size
         self.dtype = dtype
@@ -106,7 +109,18 @@ class DataGenerator(tf.keras.utils.Sequence):
         self.on_epoch_end()
     
     def get_baseline_sample_weight(self, target_proportion=.5):
-        # calculate the weight needed for each baseline sample to make it the target proportion of the training set
+        """
+        Calculate the weight needed for a baseline sample to be the target proportion of the training set
+
+        Parameters
+        ----------
+        - target_proportion (float): The targeted proportional weight of the baseline samples in the training set. Defaults to .5, since they make up half of every savings calculation. 
+
+        Returns
+        -------
+        - float: baseline sample weight
+        """
+     
         return target_proportion * len(self.data_params["upgrade_ids"]) / len(self.baseline_ids)
 
     def get_building_feature_lookups(self) -> FeatureLookup:

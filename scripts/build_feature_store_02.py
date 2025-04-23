@@ -225,10 +225,6 @@ data_io.write_json(
 
 # COMMAND ----------
 
-building_metadata_with_weather_index = building_metadata_with_weather_index.where(~((F.col('upgrade_id')==15.08) & ~(F.col('has_ducts'))))
-
-# COMMAND ----------
-
 # MAGIC %md ## Create Feature Store
 # MAGIC
 

@@ -1160,7 +1160,7 @@ def apply_upgrades(baseline_building_features: DataFrame, upgrade_id: int) -> Da
         )
 
         # Union transformed and unchanged DataFrames
-        upgrade_building_features = df_with_ducts_transformed.union(df_without_ducts)
+        upgrade_building_features = df_with_ducts_transformed.union(df_without_ducts.transform(remove_setbacks))
 
     # all ductless cold climate heat pumps for rfp
     if upgrade_id in [15.04, 15.05, 15.06]:
