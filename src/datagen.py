@@ -18,6 +18,7 @@ from src.versioning import get_most_recent_table_version
 # define building sets and their respective baselines
 baseline_building_sets = [("ResStock 2022.1", 0), ("ResStock 2024.2", 0.01)]
 
+
 class DataGenerator(tf.keras.utils.Sequence):
     """
     A data generator for generating training data to feed to a keras model. Since the weather features are large and duplicative across many buildings,
@@ -55,7 +56,6 @@ class DataGenerator(tf.keras.utils.Sequence):
     target_table_name = get_most_recent_table_version(g.ANNUAL_OUTPUTS_TABLE)
     # load the default features, targets, and upgrades to use for this training run based on params stored in current version's config in GCS
     data_params = read_json(g.GCS_CURRENT_VERSION_ARTIFACT_PATH / "features_targets_upgrades.json")
-    
 
     def __init__(
         self,
@@ -65,7 +65,7 @@ class DataGenerator(tf.keras.utils.Sequence):
         targets: List[str] = None,
         batch_size: int = 256,
         dtype: np.dtype = np.float32,
-        baseline_weight_target_proportion = 0.5
+        baseline_weight_target_proportion=0.5,
     ):
         """
         Initializes the DataGenerator object.
@@ -73,8 +73,8 @@ class DataGenerator(tf.keras.utils.Sequence):
         Parameters
         ----------
         - train_data (DataFrame): the training data containing the targets and keys to join to the feature tables.
-        - baseline_weight_target_proportion (float): The targeted proportional weight of the baseline samples in the training set. Defaults to .5, since they make up half of every savings calculation. 
-        
+        - baseline_weight_target_proportion (float): The targeted proportional weight of the baseline samples in the training set. Defaults to .5, since they make up half of every savings calculation.
+
         See class docstring for all other parameters.
         """
         # Read from config file if not passed
@@ -90,7 +90,7 @@ class DataGenerator(tf.keras.utils.Sequence):
         self.targets = targets
         # get the upgrade ids of the of baseline upgrades in the training set
         self.baseline_ids = [x for x in self.data_params["upgrade_ids"] for b in baseline_building_sets if x == b[1]]
-        self.baseline_weight = self.get_baseline_sample_weight(target_proportion = baseline_weight_target_proportion)
+        self.baseline_weight = self.get_baseline_sample_weight(target_proportion=baseline_weight_target_proportion)
 
         self.batch_size = batch_size
         self.dtype = dtype
@@ -107,20 +107,20 @@ class DataGenerator(tf.keras.utils.Sequence):
         self.building_feature_vocab_dict = self.init_building_feature_vocab_dict()
 
         self.on_epoch_end()
-    
-    def get_baseline_sample_weight(self, target_proportion=.5):
+
+    def get_baseline_sample_weight(self, target_proportion=0.5):
         """
         Calculate the weight needed for a baseline sample to be the target proportion of the training set
 
         Parameters
         ----------
-        - target_proportion (float): The targeted proportional weight of the baseline samples in the training set. Defaults to .5, since they make up half of every savings calculation. 
+        - target_proportion (float): The targeted proportional weight of the baseline samples in the training set. Defaults to .5, since they make up half of every savings calculation.
 
         Returns
         -------
         - float: baseline sample weight
         """
-     
+
         return target_proportion * len(self.data_params["upgrade_ids"]) / len(self.baseline_ids)
 
     def get_building_feature_lookups(self) -> FeatureLookup:
@@ -311,11 +311,7 @@ class DataGenerator(tf.keras.utils.Sequence):
         y = {col: np.array(batch_df[col]) for col in self.targets}
 
         # Assign higher weight weight to baseline samples
-        w = np.where(
-            np.isin(batch_ids, self.baseline_ids),
-            self.baseline_weight,
-            1.0
-        )  
+        w = np.where(np.isin(batch_ids, self.baseline_ids), self.baseline_weight, 1.0)
 
         return X, y, w
 
