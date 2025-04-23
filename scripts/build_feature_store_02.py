@@ -73,8 +73,6 @@ print(g.CURRENT_VERSION_NUM)
 building_metadata_table_name = versioning.get_most_recent_table_version(g.BUILDING_METADATA_TABLE)
 print(building_metadata_table_name)
 baseline_building_metadata_transformed = feature_utils.transform_building_features(building_metadata_table_name)
-# temporarily remove homes with baseline heat pumps-- TODO: add these back after we have performance curve parameters for these
-baseline_building_metadata_transformed = baseline_building_metadata_transformed.where(F.col('heating_appliance_type') != "ASHP")
 
 # COMMAND ----------
 

@@ -131,6 +131,8 @@ def clean_building_metadata(raw_resstock_metadata_df: DataFrame) -> DataFrame:
         # other fuels are not modeled in resstock, and we are not including homes without heating due to poor performance
         # and this filter is sufficienct to remove units that have other fuels for any applaince
         .where(~F.col("heating_fuel").isin(["Other Fuel", "None"])).where(F.col("water_heater_fuel") != "Other Fuel")
+        # temporarily remove homes with baseline heat pumps-- TODO: add these back after we have performance curve parameters for these
+        .where(F.col('heating_appliance_type') != "ASHP")
         # filter out vacant homes
         .where(F.col("vacancy_status") == "Occupied")
         # filter out homes with shared HVAC or water heating systems
