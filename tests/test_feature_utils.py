@@ -90,11 +90,11 @@ class ApplyUpgrades(unittest.TestCase):
 
 
 class TestFillNullWithColumn(unittest.TestCase):
+
     @unittest.skipIf(
         os.environ.get("DATABRICKS_RUNTIME_VERSION", None) is None,
         reason="Only runs on databricks cluster.",
     )
-
     def test_fill_null_with_column_basic(self):
         # Create test data
         data = [(1, "X", "A", None), (2, "Y", None, "B"), (3, "Z", None, None), (4, None, "D", "C")]
@@ -111,6 +111,10 @@ class TestFillNullWithColumn(unittest.TestCase):
         # Compare results
         self.assertEqual(result.collect(), expected_df.collect())
 
+    @unittest.skipIf(
+        os.environ.get("DATABRICKS_RUNTIME_VERSION", None) is None,
+        reason="Only runs on databricks cluster.",
+    )
     def test_fill_null_with_column_empty_list(self):
         # Data with empty columns_to_fill list
         data = [(1, "A", None), (2, None, "B")]
