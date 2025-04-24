@@ -122,7 +122,7 @@ class DataGenerator(tf.keras.utils.Sequence):
 
         Raises
         -------
-        ValueError: If upgrade ids in config does not include at least one baseline id. 
+        ValueError: If upgrade ids in config does not include at least one baseline id.
 
         """
         if len(self.baseline_ids) == 0:
@@ -317,7 +317,7 @@ class DataGenerator(tf.keras.utils.Sequence):
         y = {col: np.array(batch_df[col]) for col in self.targets}
 
         # Assign higher weight weight to baseline samples
-        #NOTE: this assigns weight based on the overall target baseline proportion over the entire training set.
+        # NOTE: this assigns weight based on the overall target baseline proportion over the entire training set.
         # If sample weighting is in the long term we should experiment with calculating batch-level weights
         w = np.where(np.isin(batch_ids, self.baseline_ids), self.baseline_weight, 1.0)
 
