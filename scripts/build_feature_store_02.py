@@ -255,6 +255,11 @@ fe = FeatureEngineeringClient()
 
 # COMMAND ----------
 
+# Uncomment to dtop existing existing table version before writing below, the command below does not support overwriting
+#spark.sql(f"DROP TABLE IF EXISTS {g.BUILDING_FEATURE_TABLE}_{g.CURRENT_VERSION_NUM}")
+
+# COMMAND ----------
+
 # DBTITLE 1,Write out building metadata feature store
 table_name = f"{g.BUILDING_FEATURE_TABLE}_{g.CURRENT_VERSION_NUM}"
 print(table_name)
