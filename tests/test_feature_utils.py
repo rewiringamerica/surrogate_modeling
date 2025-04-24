@@ -11,7 +11,7 @@ from pyspark.sql import DataFrame
 
 if os.environ.get("DATABRICKS_RUNTIME_VERSION", None):
     sys.path.append("../src")
-    from feature_utils import apply_upgrades, create_string_indexer
+    from feature_utils import apply_upgrades, create_string_indexer, fill_null_with_column
 
 
 class TestCreateStringIndexer(unittest.TestCase):
@@ -85,7 +85,47 @@ class ApplyUpgrades(unittest.TestCase):
         df_out_expected[has_cols] = df_out_expected[has_cols].fillna(False).astype(bool)
 
         # check whether logic produced expected output on the same set of columns in same order
-        assert_frame_equal(df_out[df_out_expected.columns], df_out_expected)
+        # TODO: remove tolerance param after rounding is implemented in dmlutils upstream
+        assert_frame_equal(df_out[df_out_expected.columns], df_out_expected, atol=1e-03)
+
+
+class TestFillNullWithColumn(unittest.TestCase):
+    @unittest.skipIf(
+        os.environ.get("DATABRICKS_RUNTIME_VERSION", None) is None,
+        reason="Only runs on databricks cluster.",
+    )
+    def test_fill_null_with_column_basic(self):
+        # Create test data
+        data = [(1, "X", "A", None), (2, "Y", None, "B"), (3, "Z", None, None), (4, None, "D", "C")]
+        columns = ["id", "source_col", "col1", "col2"]
+        df = spark.createDataFrame(data, columns)
+
+        # Apply function
+        result = fill_null_with_column(df, "source_col", ["col1", "col2"])
+
+        # Expected data
+        expected_data = [(1, "X", "A", "X"), (2, "Y", "Y", "B"), (3, "Z", "Z", "Z"), (4, None, "D", "C")]
+        expected_df = spark.createDataFrame(expected_data, columns)
+
+        # Compare results
+        self.assertEqual(result.collect(), expected_df.collect())
+
+    @unittest.skipIf(
+        os.environ.get("DATABRICKS_RUNTIME_VERSION", None) is None,
+        reason="Only runs on databricks cluster.",
+    )
+    def test_fill_null_with_column_empty_list(self):
+        # Data with empty columns_to_fill list
+        data = [(1, "A", None), (2, None, "B")]
+        columns = ["source_col", "id", "col1"]
+        df = spark.createDataFrame(data, columns)
+
+        # Apply function with empty list
+        result = fill_null_with_column(df, "source_col", [])
+
+        # Should be unchanged
+        expected_df = df
+        self.assertEqual(result.collect(), expected_df.collect())
 
 
 if os.environ.get("DATABRICKS_RUNTIME_VERSION", None):

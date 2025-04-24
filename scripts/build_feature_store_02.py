@@ -73,8 +73,6 @@ print(g.CURRENT_VERSION_NUM)
 building_metadata_table_name = versioning.get_most_recent_table_version(g.BUILDING_METADATA_TABLE)
 print(building_metadata_table_name)
 baseline_building_metadata_transformed = feature_utils.transform_building_features(building_metadata_table_name)
-# remove homes without heating: TODO: move this upstream to filter out of general universe of buildings
-baseline_building_metadata_transformed = baseline_building_metadata_transformed.where(F.col("heating_fuel") != "None")
 
 # COMMAND ----------
 
@@ -254,6 +252,11 @@ data_io.write_json(
 
 # DBTITLE 1,Create a FeatureEngineeringClient
 fe = FeatureEngineeringClient()
+
+# COMMAND ----------
+
+# Uncomment to dtop existing existing table version before writing below, the command below does not support overwriting
+#spark.sql(f"DROP TABLE IF EXISTS {g.BUILDING_FEATURE_TABLE}_{g.CURRENT_VERSION_NUM}")
 
 # COMMAND ----------
 

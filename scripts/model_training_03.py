@@ -113,8 +113,8 @@ train_data, val_data, test_data = load_data(n_train=1000 if DEBUG else None)
 # COMMAND ----------
 
 # DBTITLE 1,Initialize train/val data generators
-train_gen = DataGenerator(train_data=train_data)
-val_gen = DataGenerator(train_data=val_data)
+train_gen = DataGenerator(train_data=train_data, baseline_weight_target_proportion = 0.3)
+val_gen = DataGenerator(train_data=val_data, baseline_weight_target_proportion = 0.3)
 
 # COMMAND ----------
 
@@ -124,6 +124,8 @@ if DEBUG:
     print(train_gen[0][0])
     print("\n OUTPUTS:")
     print(train_gen[0][1])
+    print("\n WEIGHTS:")
+    print(train_gen[0][2])
 
 # COMMAND ----------
 
@@ -271,7 +273,7 @@ with mlflow.start_run() as run:
         epochs=2 if DEBUG else 200,
         batch_size=train_gen.batch_size,
         verbose=2,
-        callbacks=[keras.callbacks.EarlyStopping(monitor="val_loss", patience=15)],
+        callbacks=[keras.callbacks.EarlyStopping(monitor="val_loss", patience=12)],
     )
 
     # wrap in custom class that defines pre and post processing steps to be applied when called at inference time

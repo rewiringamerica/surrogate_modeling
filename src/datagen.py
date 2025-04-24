@@ -15,6 +15,9 @@ import src.globals as g
 from src.utils.data_io import read_json
 from src.versioning import get_most_recent_table_version
 
+# define building sets and their respective baselines
+baseline_building_sets = [("ResStock 2022.1", 0), ("ResStock 2024.2", 0.01)]
+
 
 class DataGenerator(tf.keras.utils.Sequence):
     """
@@ -62,6 +65,7 @@ class DataGenerator(tf.keras.utils.Sequence):
         targets: List[str] = None,
         batch_size: int = 256,
         dtype: np.dtype = np.float32,
+        baseline_weight_target_proportion=0.5,
     ):
         """
         Initializes the DataGenerator object.
@@ -69,6 +73,8 @@ class DataGenerator(tf.keras.utils.Sequence):
         Parameters
         ----------
         - train_data (DataFrame): the training data containing the targets and keys to join to the feature tables.
+        - baseline_weight_target_proportion (float): The targeted proportional weight of the baseline samples in the training set. Defaults to .5, since they make up half of every savings calculation.
+
         See class docstring for all other parameters.
         """
         # Read from config file if not passed
@@ -82,6 +88,9 @@ class DataGenerator(tf.keras.utils.Sequence):
         self.building_features = building_features
         self.weather_features = weather_features
         self.targets = targets
+        # get the upgrade ids of the of baseline upgrades in the training set
+        self.baseline_ids = [x for x in self.data_params["upgrade_ids"] for b in baseline_building_sets if x == b[1]]
+        self.baseline_weight = self.get_baseline_sample_weight(target_proportion=baseline_weight_target_proportion)
 
         self.batch_size = batch_size
         self.dtype = dtype
@@ -98,6 +107,27 @@ class DataGenerator(tf.keras.utils.Sequence):
         self.building_feature_vocab_dict = self.init_building_feature_vocab_dict()
 
         self.on_epoch_end()
+
+    def get_baseline_sample_weight(self, target_proportion=0.5):
+        """
+        Calculate the weight needed for a baseline sample to be the target proportion of the training set
+
+        Parameters
+        ----------
+        - target_proportion (float): The targeted proportional weight of the baseline samples in the training set. Defaults to .5, since they make up half of every savings calculation.
+
+        Returns
+        -------
+        - float: baseline sample weight
+
+        Raises
+        -------
+        ValueError: If upgrade ids in config does not include at least one baseline id.
+
+        """
+        if len(self.baseline_ids) == 0:
+            raise ValueError("Upgrade ids must contain at least one baseline (0 or 0.01)")
+        return target_proportion * len(self.data_params["upgrade_ids"]) / len(self.baseline_ids)
 
     def get_building_feature_lookups(self) -> FeatureLookup:
         """
@@ -176,7 +206,7 @@ class DataGenerator(tf.keras.utils.Sequence):
             df=train_data,
             feature_lookups=self.get_building_feature_lookups(),
             label=self.targets,
-            exclude_columns=["building_id", "upgrade_id"],
+            exclude_columns=["building_id"],
         )
         return training_set.load_df().toPandas()
 
@@ -279,12 +309,19 @@ class DataGenerator(tf.keras.utils.Sequence):
         - X (dict): features for batch in format {feature_name (str): np.array of shape [batch_size]}
         - y (dict) : targets for the batch in format {target_name (str): np.array of shape [batch_size]}
         """
-        # subset rows of targets and building features to batch
+        # subset rows of targets, building features, and upgrade ids to batch
         batch_df = self.training_df.iloc[self.batch_size * index : self.batch_size * (index + 1)]
+        batch_ids = self.training_df.upgrade_id[self.batch_size * index : self.batch_size * (index + 1)]
         # convert from df to dict
         X = self.convert_dataframe_to_dict(feature_df=batch_df)
         y = {col: np.array(batch_df[col]) for col in self.targets}
-        return X, y
+
+        # Assign higher weight weight to baseline samples
+        # NOTE: this assigns weight based on the overall target baseline proportion over the entire training set.
+        # If sample weighting is in the long term we should experiment with calculating batch-level weights
+        w = np.where(np.isin(batch_ids, self.baseline_ids), self.baseline_weight, 1.0)
+
+        return X, y, w
 
     def on_epoch_end(self):
         """
@@ -335,6 +372,10 @@ def load_data(
         consumption_group_dict = DataGenerator.data_params["consumption_group_dict"]
     if upgrade_ids is None:
         upgrade_ids = DataGenerator.data_params["upgrade_ids"]
+        # TODO: change how unique_building_ids are chosen so that this is not a requirement
+        for b in baseline_building_sets:
+            if b[1] not in upgrade_ids:
+                raise ValueError(f"Baseline ids {b[1]} must be in the upgrade_ids")
 
     # Read outputs table and sum over consumption columns within each consumption group
     # join to the bm table to get required keys to join on and filter the building models based on charactaristics
@@ -349,13 +390,10 @@ def load_data(
     )
     data = data.where(F.col("upgrade_id").isin(upgrade_ids))
 
-    # define building sets and their respective baselines
-    building_sets = [("ResStock 2022.1", 0), ("ResStock 2024.2", 0.01)]
-
     # Create train, val and test datasets for each building set, where each building id and all of its upgrades
     # appear in exactly one split
     split_dfs = []
-    for building_set, baseline_upgrade in building_sets:
+    for building_set, baseline_upgrade in baseline_building_sets:
         # Select unique building IDs for the given building set, which will be the basis for the dataset split
         unique_building_ids = (
             data.where((F.col("upgrade_id") == baseline_upgrade) & (F.col("building_set") == building_set))
