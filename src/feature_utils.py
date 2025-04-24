@@ -892,7 +892,7 @@ def update_hp_ducted_ductless(
         )
         .withColumn("has_ducted_heating", F.col("has_ducts"))
         .withColumn("has_ducted_cooling", F.col("has_ducts"))
-        # Add column to join to performance curve metrics on where performance metrics are currently based on ducted ducted
+        # Add column to join to performance curve metrics on where performance metrics are currently based on ducted heat pumps
         # TODO: generalize this to work for ducted or ductless when we have those params
         .withColumn("hvac_heating_efficiency", F.lit(ducted_efficiency))
     )

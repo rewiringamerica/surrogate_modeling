@@ -119,8 +119,14 @@ class DataGenerator(tf.keras.utils.Sequence):
         Returns
         -------
         - float: baseline sample weight
-        """
 
+        Raises
+        -------
+        ValueError: If upgrade ids in config does not include at least one baseline id. 
+
+        """
+        if len(self.baseline_ids) == 0:
+            raise ValueError("Upgrade ids must contain at least one baseline (0 or 0.01)")
         return target_proportion * len(self.data_params["upgrade_ids"]) / len(self.baseline_ids)
 
     def get_building_feature_lookups(self) -> FeatureLookup:
@@ -311,6 +317,8 @@ class DataGenerator(tf.keras.utils.Sequence):
         y = {col: np.array(batch_df[col]) for col in self.targets}
 
         # Assign higher weight weight to baseline samples
+        #NOTE: this assigns weight based on the overall target baseline proportion over the entire training set.
+        # If sample weighting is in the long term we should experiment with calculating batch-level weights
         w = np.where(np.isin(batch_ids, self.baseline_ids), self.baseline_weight, 1.0)
 
         return X, y, w
@@ -364,6 +372,10 @@ def load_data(
         consumption_group_dict = DataGenerator.data_params["consumption_group_dict"]
     if upgrade_ids is None:
         upgrade_ids = DataGenerator.data_params["upgrade_ids"]
+        # TODO: change how unique_building_ids are chosen so that this is not a requirement
+        for b in baseline_building_sets:
+            if b[1] not in upgrade_ids:
+                raise ValueError(f"Baseline ids {b[1]} must be in the upgrade_ids")
 
     # Read outputs table and sum over consumption columns within each consumption group
     # join to the bm table to get required keys to join on and filter the building models based on charactaristics
