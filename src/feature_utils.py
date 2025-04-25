@@ -1191,10 +1191,7 @@ def apply_upgrades(baseline_building_features: DataFrame, upgrade_id: int) -> Da
         source_column="heating_efficiency_nominal_percentage",
         columns_to_fill=COP_FEATURES,
     )
-    upgrade_building_features = upgrade_building_features.fillna(
-        1,
-        subset=CAPACITY_RETENTION_FEATURES
-    )
+    upgrade_building_features = upgrade_building_features.fillna(1, subset=CAPACITY_RETENTION_FEATURES)
 
     # add indicator features for presence of fuels (not including electricity)
     upgrade_building_features = (
