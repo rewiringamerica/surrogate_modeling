@@ -35,9 +35,6 @@ from dmlutils.surrogate_model.apply_upgrades import (
     HEAT_PUMP_PERFORMANCE_CURVE_PARAMS,
 )
 
-# # TODO: remove bugfix with new version of dmlutils
-HEAT_PUMP_PERFORMANCE_CURVE_PARAMS.columns = ["hvac_heating_efficiency"] + CAPACITY_RETENTION_FEATURES + COP_FEATURES
-
 #  -- constants -- #
 SUPPORTED_UPGRADES = [
     Upgrade.BASELINE_2022_1.value,
