@@ -12,7 +12,7 @@ upgrade_id_input,climate_zone_temp,attic_type,wall_material,insulation_wall_r_va
 3.0,7,,,,,,,,,False,False,False,Electricity,ASHP,2.638,13.125,Heat Pump,1.0,ACCA,6.0,3.0,,,,,,,,,,,,,,False,3.0,False,False,False,False,,"ASHP, SEER 15, 9 HSPF", 0.98, 0.62, 0.50, 1.01, 0.64, 0.52, 3.80, 2.79, 2.41, 4.34, 3.23, 2.78
 4.0,7,,,,,,,,,True,True,True,Electricity,ASHP,3.81,21.0,Heat Pump,1.0,ACCA,6.0,9.0,,,,,,,,,,,,,,False,4.0,False,False,False,False,,"MSHP, SEER 24, 13 HSPF", 0.97, 0.73, 0.63, 1.03, 0.79, 0.69, 5.72, 3.66, 3.26, 8.27, 5.93, 5.31
 4.0,7,,,,,,,,,True,True,True,Electricity,ASHP,3.81,21.0,Heat Pump,1.0,ACCA,6.0,3.0,,,,,,,,,,,,,,False,4.0,False,False,False,False,,"MSHP, SEER 24, 13 HSPF", 0.97, 0.73, 0.63, 1.03, 0.79, 0.69, 5.72, 3.66, 3.26, 8.27, 5.93, 5.31
-4.0,7,,,,,,,,,False,False,False,Electricity,ASHP,4.103,25.6375,Heat Pump,1.0,ACCA,9.0,9.0,,,,,,,,,,,,,,False,4.0,False,False,False,False,,"MSHP, SEER 24, 13 HSPF", 0.97, 0.73, 0.63, 1.03, 0.79, 0.69, 5.72, 3.66, 3.26, 8.27, 5.93, 5.31
+4.0,7,,,,,,,,,False,False,False,Electricity,ASHP,4.103,25.637,Heat Pump,1.0,ACCA,9.0,9.0,,,,,,,,,,,,,,False,4.0,False,False,False,False,,"MSHP, SEER 24, 13 HSPF", 0.97, 0.73, 0.63, 1.03, 0.79, 0.69, 5.72, 3.66, 3.26, 8.27, 5.93, 5.31
 6.0,7,,,,,,,,,,,,,,1.0,,,,,,,3.0,Electricity,Heat Pump,3.57,1.0,50.0,,,,,,,,False,6.0,False,False,False,False,,,1.,1.,1.,1.,1.,1.,1.,1.,1.,1.,1.,1.
 6.0,7,,,,,,,,,,,,,,1.0,,,,,,,3.0,Electricity,Instantaneous,0.99,1.0,0.0,,,,,,,,False,6.0,False,False,False,False,,,1.,1.,1.,1.,1.,1.,1.,1.,1.,1.,1.,1.
 6.0,7,,,,,,,,,,,,,,1.0,,,,,,,3.0,Electricity,Heat Pump,3.57,1.0,50.0,,,,,,,,False,6.0,False,False,False,False,,,1.,1.,1.,1.,1.,1.,1.,1.,1.,1.,1.,1.
