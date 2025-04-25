@@ -1613,14 +1613,14 @@ reference = "rewiring-america-python-repo"
 
 [[package]]
 name = "dmlutils"
-version = "0.13.5"
+version = "0.13.6"
 description = "RA internal data and machine learning utilities."
 optional = false
 python-versions = ">=3.10,<4.0"
 groups = ["main"]
 files = [
-    {file = "dmlutils-0.13.5-py3-none-any.whl", hash = "sha256:5d676a5ec31325ba3f87b02e5de37e52283477b1fcfd10c761b74227ae795b2a"},
-    {file = "dmlutils-0.13.5.tar.gz", hash = "sha256:db753022fc5bc8160fb5e5ee42e5353fed492626d2371eddea13f9473526450c"},
+    {file = "dmlutils-0.13.6-py3-none-any.whl", hash = "sha256:b4dd7a561e3ef913c2d220a04990b4d9147a7418ebafdb56656bd50b880ffe4b"},
+    {file = "dmlutils-0.13.6.tar.gz", hash = "sha256:ccae079ea9343a79e1ce591e625438bffb8170c9d6d156948225e129a061e31f"},
 ]
 
 [package.dependencies]
@@ -9687,4 +9687,4 @@ testing = ["flake8 (<5)", "func-timeout", "jaraco.functools", "jaraco.itertools"
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.10, <3.11"
-content-hash = "bd440392560f48238154eddeff940f9afa833adacb13e619cf7f939f0fd33dcb"
+content-hash = "cb4badc8a12fe37579e197e334edf4ad5d6432bb94744b51a021371bae7f3452"
