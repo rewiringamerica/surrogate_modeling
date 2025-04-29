@@ -1,4 +1,4 @@
-# TODO: Run tests using doctest
+"""Functions for applying metadata feature transformations for baseline and upgrades."""
 
 import re
 from functools import reduce
@@ -30,6 +30,9 @@ from dmlutils.surrogate_model.apply_upgrades import (
     BASIC_ENCLOSURE_INSULATION,
     APPLIANCE_FUEL_COLS,
     GAS_APPLIANCE_INDICATOR_COLS,
+    CAPACITY_RETENTION_FEATURES,
+    COP_FEATURES,
+    HEAT_PUMP_PERFORMANCE_CURVE_PARAMS,
 )
 
 #  -- constants -- #
@@ -781,40 +784,7 @@ BASIC_ENCLOSURE_INSULATION_SPARK = spark.createDataFrame(BASIC_ENCLOSURE_INSULAT
 # Define mapping of "hvac_heating_efficiency" to parameters of performance curve based on energy plus options.tsv in each upgrade config
 # This defines the capacity and cop at min and max speeds for 3 outdoor temperatures
 # NOTE: schema will need to further identify the heat pump if ever there are hvac_heating_efficiency's that map to multiple performance curves
-performance_curve_parameter_schema = StructType(
-    [
-        StructField("hvac_heating_efficiency", StringType(), True),
-        StructField("min_capacity_retention_47f", DoubleType(), True),
-        StructField("min_capacity_retention_17f", DoubleType(), True),
-        StructField("min_capacity_retention_5f", DoubleType(), True),
-        StructField("max_capacity_retention_47f", DoubleType(), True),
-        StructField("max_capacity_retention_17f", DoubleType(), True),
-        StructField("max_capacity_retention_5f", DoubleType(), True),
-        StructField("min_cop_47f", DoubleType(), True),
-        StructField("min_cop_17f", DoubleType(), True),
-        StructField("min_cop_5f", DoubleType(), True),
-        StructField("max_cop_47f", DoubleType(), True),
-        StructField("max_cop_17f", DoubleType(), True),
-        StructField("max_cop_5f", DoubleType(), True),
-    ]
-)
-# TODO: add in performance curve params for NREL baseline HPs and for ductless NREL HPs
-performance_curve_parameter_data = [
-    ("ASHP, SEER 15, 9 HSPF", 0.98, 0.62, 0.50, 1.01, 0.64, 0.52, 3.80, 2.79, 2.41, 4.34, 3.23, 2.78),
-    ("MSHP, SEER 24, 13 HSPF", 0.97, 0.73, 0.63, 1.03, 0.79, 0.69, 5.72, 3.66, 3.26, 8.27, 5.93, 5.31),
-    ("ASHP, SEER 18, 10 HSPF", 1.01, 0.60, 0.44, 1.04, 0.63, 0.47, 4.23, 2.57, 1.98, 5.83, 3.44, 2.85),
-    ("Daikin MSHP SZ, SEER 22.05, 10.64 HSPF", 0.24, 0.15, 0.12, 1.13, 0.98, 0.79, 5.76, 5.55, 5.47, 4.25, 2.63, 1.8),
-    ("Daikin MSHP MZ, SEER 22.05, 11.2 HSPF", 0.32, 0.22, 0.18, 1.33, 1.08, 1.0, 4.95, 4.85, 4.96, 2.61, 1.99, 1.80),
-    ("Carrier MSHP SZ, SEER 24.255, 13.104 HSPF", 0.4, 0.24, 0.26, 1.23, 0.77, 0.78, 5.58, 2.37, 2.0, 2.87, 2.33, 2.54),
-    ("Carrier MSHP MZ, SEER 26.25, 10.64 HSPF", 0.34, 0.24, 0.22, 1.16, 0.76, 0.72, 4.92, 2.93, 2.43, 3.54, 2.3, 2.0),
-    ("York MSHP SZ, SEER 23.625, 11.21 HSPF", 0.33, 0.42, 0.21, 1.04, 1.0, 0.8, 4.7, 1.95, 1.96, 2.4, 1.86, 1.80),
-    ("York MSHP MZ, SEER 25.36, 11.2 HSPF", 0.44, 0.42, 0.12, 1.55, 1.01, 0.95, 2.3, 1.45, 0.3, 2.9, 2.4, 1.8),
-    ("Daikin 7 series ASHP, SEER 20, 10.35 HSPF", 0.25, 0.41, 0.34, 1.0, 0.94, 0.73, 4.32, 2.75, 2.36, 3.3, 2.32, 2.0),
-]
-
-HEAT_PUMP_PERFORMANCE_CURVE_DF = spark.createDataFrame(
-    performance_curve_parameter_data, schema=performance_curve_parameter_schema
-)
+HEAT_PUMP_PERFORMANCE_CURVE_PARAMS_SPARK = spark.createDataFrame(HEAT_PUMP_PERFORMANCE_CURVE_PARAMS)
 
 
 def fill_null_with_column(df, source_column, columns_to_fill):
@@ -1209,26 +1179,16 @@ def apply_upgrades(baseline_building_features: DataFrame, upgrade_id: int) -> Da
 
     # Add in heat pump performance curve params using pre-defined specs, or impute for building samples that do not have a hp
     upgrade_building_features = upgrade_building_features.join(
-        HEAT_PUMP_PERFORMANCE_CURVE_DF, on="hvac_heating_efficiency", how="left"
+        HEAT_PUMP_PERFORMANCE_CURVE_PARAMS_SPARK, on="hvac_heating_efficiency", how="left"
     )
     # For samples without a heat pump, impute all COP columns with heating_efficiency_nominal_percentage
     # and all capacity retention columns with 1
     upgrade_building_features = fill_null_with_column(
         upgrade_building_features,
         source_column="heating_efficiency_nominal_percentage",
-        columns_to_fill=["min_cop_47f", "min_cop_17f", "min_cop_5f", "max_cop_47f", "max_cop_17f", "max_cop_5f"],
+        columns_to_fill=COP_FEATURES,
     )
-    upgrade_building_features = upgrade_building_features.fillna(
-        1,
-        subset=[
-            "min_capacity_retention_47f",
-            "min_capacity_retention_17f",
-            "min_capacity_retention_5f",
-            "max_capacity_retention_47f",
-            "max_capacity_retention_17f",
-            "max_capacity_retention_5f",
-        ],
-    )
+    upgrade_building_features = upgrade_building_features.fillna(1, subset=CAPACITY_RETENTION_FEATURES)
 
     # add indicator features for presence of fuels (not including electricity)
     upgrade_building_features = (

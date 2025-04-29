@@ -1613,14 +1613,14 @@ reference = "rewiring-america-python-repo"
 
 [[package]]
 name = "dmlutils"
-version = "0.13.4"
+version = "0.13.6"
 description = "RA internal data and machine learning utilities."
 optional = false
 python-versions = ">=3.10,<4.0"
 groups = ["main"]
 files = [
-    {file = "dmlutils-0.13.4-py3-none-any.whl", hash = "sha256:e6119ec8373f42434ef6cdf715e0941a5272bc1dbd31f1b02442a4e4820d6703"},
-    {file = "dmlutils-0.13.4.tar.gz", hash = "sha256:f01a7009fbab7f777357a6fa04edd02c2432660c1d999cba743f018a8ccf5d5f"},
+    {file = "dmlutils-0.13.6-py3-none-any.whl", hash = "sha256:b4dd7a561e3ef913c2d220a04990b4d9147a7418ebafdb56656bd50b880ffe4b"},
+    {file = "dmlutils-0.13.6.tar.gz", hash = "sha256:ccae079ea9343a79e1ce591e625438bffb8170c9d6d156948225e129a061e31f"},
 ]
 
 [package.dependencies]
@@ -2302,14 +2302,14 @@ tqdm = ["tqdm (>=4.7.4,<5.0.0dev)"]
 
 [[package]]
 name = "google-cloud-bigquery-storage"
-version = "2.30.0"
+version = "2.31.0"
 description = "Google Cloud Bigquery Storage API client library"
 optional = false
 python-versions = ">=3.7"
 groups = ["main"]
 files = [
-    {file = "google_cloud_bigquery_storage-2.30.0-py3-none-any.whl", hash = "sha256:c4cea1a2969bf46d1cc3fda644552dcf301b33378f3a1c7de945e1603edffadd"},
-    {file = "google_cloud_bigquery_storage-2.30.0.tar.gz", hash = "sha256:41ac83fa9eddbc820102177984ab92f8b7bbdfa7d90ea64b3a0af5ecb4fca3f2"},
+    {file = "google_cloud_bigquery_storage-2.31.0-py3-none-any.whl", hash = "sha256:1721792f39f5ecb49b8503cf197ee8ab79f7deebf17fc4a4a44585959336365b"},
+    {file = "google_cloud_bigquery_storage-2.31.0.tar.gz", hash = "sha256:e4b42df3374dbc9575268c89d5dec47fced075c44904c463b12aed2b01be6790"},
 ]
 
 [package.dependencies]
@@ -9687,4 +9687,4 @@ testing = ["flake8 (<5)", "func-timeout", "jaraco.functools", "jaraco.itertools"
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.10, <3.11"
-content-hash = "b8ef366754438ee82ed3a91b8af9698b2e80c9058bc7c7d64fafdbc7b1438442"
+content-hash = "cb4badc8a12fe37579e197e334edf4ad5d6432bb94744b51a021371bae7f3452"
