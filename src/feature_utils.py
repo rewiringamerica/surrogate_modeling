@@ -1,4 +1,4 @@
-# TODO: Run tests using doctest
+"""Functions for applying metadata feature transformations for baseline and upgrades."""
 
 import re
 from functools import reduce

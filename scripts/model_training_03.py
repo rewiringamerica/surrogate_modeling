@@ -86,9 +86,10 @@ os.environ["TF_FORCE_GPU_ALLOW_GROWTH"] = "true"
 # MAGIC from tensorflow import keras
 # MAGIC from typing import Tuple, Dict
 # MAGIC
-# MAGIC from src.utils.data_io import write_json
+# MAGIC from src.utils.data_io import write_json, read_json
 # MAGIC from src.datagen import DataGenerator, load_data
 # MAGIC from src.surrogate_model import SurrogateModel
+# MAGIC import src.globals as g
 # MAGIC
 # MAGIC # list available GPUs
 # MAGIC tf.config.list_physical_devices("GPU")
@@ -103,6 +104,13 @@ EXPERIMENT_LOCATION = "/Shared/surrogate_model/"
 # COMMAND ----------
 
 # MAGIC %md ## Load Data
+
+# COMMAND ----------
+
+# NOTE: uncomment this to copy params for this training run from local to GCS. This should be run during a test mode run of this
+# notebook prior to a full training run in a job. This line will error out in a job so do not leave it uncommented when running in a job. 
+# data_params = read_json(g.GCS_CURRENT_VERSION_ARTIFACT_PATH / "features_targets_upgrades.json")
+# write_json(g.GCS_CURRENT_VERSION_ARTIFACT_PATH / "features_targets_upgrades.json", data_params)
 
 # COMMAND ----------
 
