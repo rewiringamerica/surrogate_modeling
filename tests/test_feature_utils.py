@@ -57,7 +57,9 @@ class ApplyUpgrades(unittest.TestCase):
         baseline_features = pd.read_csv(
             "test_baseline_features_input.csv", keep_default_na=False, na_values=[""]
         ).reset_index()
-        df_out_expected = pd.read_csv("test_upgraded_features.csv", keep_default_na=False, na_values=[""]).drop('upgrade_not_applicable',axis=1)
+        df_out_expected = pd.read_csv("test_upgraded_features.csv", keep_default_na=False, na_values=[""]).drop(
+            "upgrade_not_applicable", axis=1
+        )
 
         # apply upgrades to baseline features by upgrade group
         # and put rows back in the same order as they were read in
