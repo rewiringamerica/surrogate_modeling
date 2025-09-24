@@ -28,7 +28,7 @@ jobs:
       with:
         token_format: 'access_token'
         project_id: 'cube-machine-learning'
-        service_account: 'datascience-dev@cube-machine-learning.iam.gserviceaccount.com'
+        service_account: 'github-tests@cube-machine-learning.iam.gserviceaccount.com'
         workload_identity_provider: 'projects/777182164725/locations/global/workloadIdentityPools/github/providers/ra-github-repo'
 
     # We download a lot of dependencies. So free up some space
