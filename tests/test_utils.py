@@ -137,7 +137,7 @@ class ResStockDataTestCase(unittest.TestCase):
 
 if os.environ.get("DATABRICKS_RUNTIME_VERSION", None):
     # If we are developing on databricks we have to manually
-    # instatiate a test suite and load all the tests from this module.
+    # instantiate a test suite and load all the tests from this module.
     test_suite = unittest.TestSuite()
     test_suite.addTests(unittest.TestLoader().loadTestsFromModule(sys.modules[__name__]))
     unittest.TextTestRunner().run(test_suite)
