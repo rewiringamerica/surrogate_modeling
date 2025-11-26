@@ -1,0 +1,19 @@
+// This is a config file for cspell. Read https://cspell.org/docs/Configuration#cspelljson
+// for details on what options are available.
+{
+    "version": "0.2",
+    // Ignore some file types
+    "ignorePaths": [
+        "**/*.sh",
+        "**/*.lock",
+        "**/*.txt",
+        "**/*.svg",
+        "**/*.png",
+        "**/*.jpeg"
+    ],
+    // Use custom dictionary
+    "dictionaryDefinitions": [
+        {"name": "ra_default_dict", "path": "./.cspell/ra_default_dict.txt" }
+    ],
+    "dictionaries": ["ra_default_dict"]
+}
