@@ -13,7 +13,7 @@
     ],
     // Use custom dictionary
     "dictionaryDefinitions": [
-        {"name": "ra_default_dict", "path": "./.cspell/ra_default_dict.txt" }
+        {"name": "sumo_dict", "path": "./.cspell/sumo_dict.txt" }
     ],
-    "dictionaries": ["ra_default_dict"]
+    "dictionaries": ["sumo_dict"]
 }
