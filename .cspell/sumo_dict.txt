@@ -21,6 +21,7 @@ axvline
 BARC
 barplot
 bijective
+bkup
 BLOOMFILTER
 boxplots
 bucketizer
@@ -38,6 +39,7 @@ cbind
 CBSA
 censusdis
 CGIH
+chokepoint
 choropleth
 ciphertext
 cloudpath
@@ -50,9 +52,11 @@ coeff
 collinearity
 colname
 colnames
+colnum
 colorbar
 colorscale
 compid
+comstock
 cookiecutterdatascience
 cooktops
 COUNTYFP
@@ -72,6 +76,7 @@ Daikin
 dasharray
 datacoverage
 dataframe
+datagen
 datapoints
 datascience
 datediff
@@ -94,6 +99,7 @@ DMBB
 dmlbootstrap
 dmlgcs
 dmlutils
+doctest
 dohyo
 dplyr
 dtype
@@ -125,6 +131,7 @@ figsize
 fips
 fontsize
 fossilgas
+fromiter
 fsspec
 fueloil
 gcfs
@@ -230,6 +237,8 @@ MSHP
 MSRP
 MSRPs
 multicollinearity
+multiindex
+multiindexes
 multinode
 multiquantile
 myparams
@@ -242,6 +251,7 @@ ncol
 neep
 NEEP
 NOAA
+nonducted
 nonrobust
 NREL
 NSTAR
@@ -269,6 +279,8 @@ pkey
 PKEY
 PKEYs
 PPIDCS
+pqpath
+pqtemp
 preds
 pricepoint
 probplot
@@ -293,6 +305,7 @@ qualtrics
 quantreg
 quattro
 radbcluster
+rankdir
 rastock
 rcorr
 reaggregate
@@ -312,6 +325,7 @@ samp
 sandboxed
 sandboxing
 scatterplot
+scatterplots
 scikit
 scourgify
 seaborn
@@ -364,6 +378,7 @@ threshhold
 thresholding
 ticklabels
 tiertime
+timestep
 timezonefinder
 TMAX
 toolbelt
@@ -371,6 +386,7 @@ towne
 tpke
 TSFI
 ttflist
+unvented
 upserting
 URDB
 usaddress

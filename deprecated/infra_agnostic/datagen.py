@@ -555,7 +555,7 @@ def get_hourly_outputs(building_id, upgrade_id, county_geoid):
 
     Parquet files are ~3Mb each, so full set for one upgrade is 1.5Tb (500Kx3Mb)
     GCP traffic in North America is ~8c per Gb, so, ~$150 per epoch without
-    caching. Caching a reduced set of columns (~1/2) and resamapled hourly (1/4)
+    caching. Caching a reduced set of columns (~1/2) and resampled hourly (1/4)
     will take a manageable 200Gb per upgrade.
     As of now, caching is reduced to four consumer groups, ~50gb per upgrade.
 
