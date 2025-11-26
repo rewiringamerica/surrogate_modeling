@@ -333,7 +333,7 @@ mae = model.evaluate(test_ds)
 # COMMAND ----------
 
 
-# Create table for comparsion with other methods
+# Create table for comparison with other methods
 @udf(returnType=FloatType())
 def get_percent_error(pred: float, true: float) -> float:
     if true == 0:

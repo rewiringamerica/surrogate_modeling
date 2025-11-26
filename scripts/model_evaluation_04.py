@@ -30,7 +30,7 @@ dbutils.widgets.text("test_size", "10000")  # default in test mode
 # COMMAND ----------
 
 DEBUG = dbutils.widgets.get("mode") == "test"
-# run ID of the model to test. If passed in by prior task in job, then overrride the input value
+# run ID of the model to test. If passed in by prior task in job, then override the input value
 input_run_id = dbutils.widgets.get("run_id")
 RUN_ID = dbutils.jobs.taskValues.get(
     taskKey="model_training",

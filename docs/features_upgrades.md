@@ -151,7 +151,7 @@ HVAC Cooling Type:
 
 HVAC Has Ducts:
 
-`has_ducts` (bool): Indicator for whether the unit has ducts. Note that technically this is a deterministic feature of Duct Location, but since Duct Location was not present in 2022.1, we keep this slightly redudant feature just in case. 
+`has_ducts` (bool): Indicator for whether the unit has ducts. Note that technically this is a deterministic feature of Duct Location, but since Duct Location was not present in 2022.1, we keep this slightly redundant feature just in case. 
 
 HVAC Heating Efficiency:
 
