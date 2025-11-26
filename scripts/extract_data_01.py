@@ -107,7 +107,7 @@ def align_baseline_metadata(
 
     # Appliance Features:
     # In 2024.2, the usage portion of appliance features are split into a new column and the column with
-    # the appliance name contains only the appliance fuel/type. Further, the usage percentage for appliances is completely determined by “Usage Level”, so there is no need to store each applaince usage levels as additional features.
+    # the appliance name contains only the appliance fuel/type. Further, the usage percentage for appliances is completely determined by “Usage Level”, so there is no need to store each appliance usage levels as additional features.
     appliance_combined_type_usage_columns = [
         "clothes_dryer",
         "clothes_washer",
@@ -152,7 +152,7 @@ def align_baseline_metadata(
         .otherwise(F.col("misc_pool_heater")),  # should just be None
     )
 
-    # In 2024 they added induction as abaseline range type so they changed Electric to Electric Resistance
+    # In 2024 they added induction as a baseline range type so they changed Electric to Electric Resistance
     building_metadata_2022 = building_metadata_2022.withColumn(
         "cooking_range",
         F.when(F.col("cooking_range") == "Electric", "Electric Resistance").otherwise(F.col("cooking_range")),
@@ -331,7 +331,7 @@ def extract_hourly_weather_data() -> DataFrame:
         .withColumnRenamed("in.weather_file_city", "weather_file_city")
     )
 
-    # pull in weather data for unique weather stataions
+    # pull in weather data for unique weather stations
     weather_data = (
         # read in all county weather files
         spark.read.csv(HOURLY_WEATHER_CSVS_PATH, inferSchema=True, header=True)

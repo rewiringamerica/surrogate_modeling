@@ -55,7 +55,7 @@ relevant_features = [
 ]
 weather_data = weather_data.select(relevant_features)
 
-# convert celcius to farenheit
+# convert celsius to fahrenheit
 
 weather_data = weather_data.withColumn("temp_air", (F.col("temp_air") * (9 / 5)) + 32)
 

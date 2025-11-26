@@ -1,4 +1,5 @@
 ACCA
+actuals
 addfont
 AESGCM
 afact
@@ -15,11 +16,13 @@ ASHRAE
 attom
 autocorrelated
 autolog
+autotune
 avgs
 axhline
 axvline
 BARC
 barplot
+Batchnorm
 bijective
 bkup
 BLOOMFILTER
@@ -57,9 +60,11 @@ colorbar
 colorscale
 compid
 comstock
+convolutional
 cookiecutterdatascience
 cooktops
 COUNTYFP
+covariates
 CPIAUCSL
 cramer
 CRAN
@@ -81,6 +86,7 @@ datapoints
 datascience
 datediff
 dayofmonth
+dayofweek
 dbapi
 dbcluster
 dbfs
@@ -106,6 +112,7 @@ dtype
 dtypes
 duckdb
 ductwork
+duplicative
 ecdfplot
 edgecolor
 eemeter
@@ -122,6 +129,7 @@ errorbar
 eulp
 euss
 EUSS
+evals
 exfiltration
 exponentiating
 Expy
@@ -129,6 +137,7 @@ fdir
 figpath
 figsize
 fips
+fmin
 fontsize
 fossilgas
 fromiter
@@ -148,6 +157,8 @@ GGRF
 ghcn
 GHCND
 GISJOIN
+gisjoins
+gpuutils
 groupby
 gsclient
 GSHP
@@ -163,12 +174,15 @@ highmem
 HILCO
 histplot
 hlines
+hparams
 HPDR
 HPWH
 HPWHs
 HSPF
 HVAC
+hyperparams
 IECC
+illum
 importances
 imread
 indep
@@ -182,12 +196,14 @@ Ipython
 isin
 isort
 itertuples
+janky
 jsonified
 jsonlite
 kbtu
 kcorr
 kdensity
 kdeplot
+keras
 kernelspec
 keyrings
 kgco
@@ -195,6 +211,7 @@ kilowattage
 ksqft
 kstest
 kwargs
+kwhs
 labelsize
 LBNL
 levelize
@@ -210,6 +227,7 @@ linspace
 lmplot
 lognorm
 lognormal
+loguniform
 lrmer
 mapbox
 markersize
@@ -223,6 +241,7 @@ mdape
 medae
 medape
 megastock
+megastocks
 megawatthours
 Midamerican
 midcase
@@ -245,6 +264,7 @@ myparams
 myproject
 nanmax
 nanmin
+nansum
 nbconvert
 nbformat
 ncol
@@ -278,6 +298,7 @@ PHEVs
 pkey
 PKEY
 PKEYs
+postprocesses
 PPIDCS
 pqpath
 pqtemp
@@ -304,6 +325,7 @@ qreg
 qualtrics
 quantreg
 quattro
+quniform
 radbcluster
 rankdir
 rastock
@@ -311,12 +333,14 @@ rcorr
 reaggregate
 recents
 registrationkey
+relim
 resstock
 retransformation
 rewiringamerica
 rlike
 RMSE
 rname
+rowwise
 rsmeans
 RYOBI
 saled
@@ -338,6 +362,7 @@ setuptools
 shapefiles
 sharex
 sharey
+SHGC
 sjoin
 skimage
 skipfooter
@@ -386,6 +411,7 @@ towne
 tpke
 TSFI
 ttflist
+ufactor
 unvented
 upserting
 URDB
@@ -400,13 +426,17 @@ vline
 vmax
 vmiles
 vmin
+wape
 waterfalled
 waterfalling
+whitegrid
 wholehome
 wmape
 wmedape
+wmpe
 wspace
 wythe
+xdata
 xgboost
 xlabel
 xlabels

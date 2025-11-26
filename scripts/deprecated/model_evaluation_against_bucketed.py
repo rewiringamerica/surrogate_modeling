@@ -28,7 +28,7 @@ dbutils.widgets.text("test_size", "10000")  # default in test mode
 DEBUG = dbutils.widgets.get("mode") == "test"
 # name of the model
 MODEL_NAME = dbutils.widgets.get("model_name")
-# run ID of the model to test. If passed in by prior task in job, then overrride the input value
+# run ID of the model to test. If passed in by prior task in job, then override the input value
 input_run_id = dbutils.widgets.get("run_id")
 RUN_ID = dbutils.jobs.taskValues.get(
     taskKey="model_training",
@@ -321,7 +321,7 @@ def APE(abs_error: float, actual: float, eps=1e-3):
 # 2. Calculate absolute error, with handling some special cases for bucketed predictions:
 #   * for baseline, we should pull the errors that were previously computed in another script
 #   * all other upgrade should be set to null we only predict consumption by end use in buckets, which are not comparable
-# 3. Calcuate savings absolute errror, setting these to Null for baseline since there is no savings
+# 3. Calculate savings absolute error, setting these to Null for baseline since there is no savings
 # 4. Calculate APE for consumption and savings
 pred_df_savings = (
     pred_by_building_upgrade_fuel_model_with_metadata.withColumn(  # 1
@@ -498,7 +498,7 @@ metrics_by_upgrade_type_model_pd = metrics_by_upgrade_type_model.toPandas()
 
 # COMMAND ----------
 
-# DBTITLE 1,Rename columns for readabiity
+# DBTITLE 1,Rename columns for readability
 # rename metric columns to be more readable
 metric_rename_dict = {
     "median_absolute_percentage_error_savings": "Median APE - Savings",

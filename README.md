@@ -6,7 +6,7 @@ This code was developed in and depends on Databricks.
 
 ## Documentation
 
-The steps run the training pipleine can be found [here](scripts/readme.md), and the details on versioning and model artifacts can be found [here](model_artifacts/readme.md).
+The steps run the training pipeline can be found [here](scripts/readme.md), and the details on versioning and model artifacts can be found [here](model_artifacts/readme.md).
 
 More technical documentation is available in the following locations:
 
@@ -65,7 +65,7 @@ This repo has [cspell](https://cspell.org/) configured in `cspell.json` for opti
 │   ├── globals.py                # Global variables
 │   ├── surrogate_model.py        # Main NN model implementation
 │   ├── datagen.py                # Generates training data to feed into NN
-│   ├── feature_utils.py          # Feature transformation utilities, used by main training pipleine and megastock
+│   ├── feature_utils.py          # Feature transformation utilities, used by main training pipeline and megastock
 │   ├── versioning.py             # Version control utilities
 ├── tests/                        # Unit tests
 └── requirements-*.txt            # Dependencies

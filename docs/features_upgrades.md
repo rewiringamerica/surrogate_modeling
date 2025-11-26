@@ -269,7 +269,7 @@ Water Heater Efficiency is a single string containing the fuel, type, and in som
 
 `water_heater_tank_volume` (int): Capacity of the water heater tank in gallons, which is set to 0 for instantaneous (i.e., tankless water heaters). If not specified (only specified for HPWHs), it is calculated based on the number of bedrooms, bathrooms and whether the water heater is electric (see [Building America docs p12](https://www.nrel.gov/docs/fy10osti/47246.pdf)). According to the ResStock docs, this heuristic aligns with EnergyPlus preprocessing.
 
-`water_heater_efficiency_ef` (double): Efficiency factor (EF) of the  of the water heater, which is the ratio of the useful energy output to the total amount of energy delivered to the water heater. If UEF is is provided (only ever used for HPWHs), it is converted to EF using the equation EF = 1.2101 * UEF - 0.6052 (see [RESSNET conversion tool](https://www.resnet.us/wp-content/uploads/RESNET-EF-Calculator-2017.xlsx)).
+`water_heater_efficiency_ef` (double): Efficiency factor (EF) of the  of the water heater, which is the ratio of the useful energy output to the total amount of energy delivered to the water heater. If UEF is is provided (only ever used for HPWHs), it is converted to EF using the equation EF = 1.2101 * UEF - 0.6052 (see [RESNET conversion tool](https://www.resnet.us/wp-content/uploads/RESNET-EF-Calculator-2017.xlsx)).
 
 `water_heater_recovery_efficiency_ef` (double): Recovery efficiency factor (EF) of the water heater, which is the efficiency of heat of transferring heat fro the energy source to the water. While the options.tsv sets this to 0 for all electric or tankless water heaters since this is essentially ignored by the simulation, we set it to 1 which is a more appropriate value.
 
@@ -280,7 +280,7 @@ Water Heater Location:
 
 Water Heater In Unit:
 
-`has_water_heater_in_unit` (bool): Indicator for whether the water heater is in the unit. Note that this is deterministic function of Water Heater Location, but since this was not a feature in 2022.1, we keep this redudant feature just in case. 
+`has_water_heater_in_unit` (bool): Indicator for whether the water heater is in the unit. Note that this is deterministic function of Water Heater Location, but since this was not a feature in 2022.1, we keep this redundant feature just in case. 
 
 Window Areas:
 
@@ -367,7 +367,7 @@ Range Spot Vent Hour: Temporal variable seems unnecessary for predicting annual 
 | `water_heater_efficiency` | Only HPWH category is  `"Electric Heat Pump, 50 gal, 3.45 UEF"`            |  Only HPWH category is `"Electric Heat Pump, 80 gal"`                   | No action taken: the feature transformation will handle both and these get mapped to numerical features so both are fine |
 | `county`, `county_and_puma` | Slightly different set of counties | Slightly different set of counties    | No action taken-- this is not transformed into a feature so misalignment here is fine |
 
-Note that there are other demographic features (not used in the surrogate model) that are included in 2024 but not 2022 that we retain and these will just be null. Further there are a few deterministic features where the schemas are misaligned and these are not described here either since deterministic simulation features do not get convered into surrogate model features. 
+Note that there are other demographic features (not used in the surrogate model) that are included in 2024 but not 2022 that we retain and these will just be null. Further there are a few deterministic features where the schemas are misaligned and these are not described here either since deterministic simulation features do not get converted into surrogate model features. 
 
 
 See [script](../scripts/extract_data_01.py) where this alignment is done.
@@ -397,7 +397,7 @@ The upgrades are implemented by modifying the baseline surrogate model features 
     >             - Insulation Ceiling|R-7
     >             - Insulation Ceiling|R-13
     
-    is equivalent to the following psuedocode:
+    is equivalent to the following pseudocode:
     
     ```python
     #condition = attic_insulation_IECC_CZ1A

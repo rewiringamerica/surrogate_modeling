@@ -34,7 +34,7 @@ The weather embedding is concatenated with the building metadata embedding to fo
 
 **Sample Weighting** : Baseline samples are set to a weight such that they have an overall proportional weight of .3 in the overall training set, regardless of the number of upgrades in the training set. All other samples are set to weight of 1.
 
-**Loss**: Masked mean absolute error, where elements (sample i, fuel j) are not included in the mean if $y_{\text{true}}^{i,j} = 0$. Note that this this is analagous to setting the values to 0 in post processing at inference time as described below. 
+**Loss**: Masked mean absolute error, where elements (sample i, fuel j) are not included in the mean if $y_{\text{true}}^{i,j} = 0$. Note that this this is analogous to setting the values to 0 in post processing at inference time as described below. 
 
 All other parameters use keras defaults. 
 
