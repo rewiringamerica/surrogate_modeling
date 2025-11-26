@@ -27,6 +27,6 @@ WEATHER_DATA_TABLE = f"{CATALOG}.{SUMO_DB}.weather_data_hourly"
 # Feature Table Paths
 BUILDING_FEATURE_TABLE = f"{CATALOG}.{SUMO_DB}.building_features"  # NOTE: contains rows for all upgrades
 MEGASTOCK_BUILDING_FEATURE_TABLE = (
-    f"{CATALOG}.{MEGASTOCK_DB}.building_features"  # NOTE: containes rows for baseline only
+    f"{CATALOG}.{MEGASTOCK_DB}.building_features"  # NOTE: contains rows for baseline only
 )
 WEATHER_FEATURE_TABLE = f"{CATALOG}.{SUMO_DB}.weather_features_hourly"

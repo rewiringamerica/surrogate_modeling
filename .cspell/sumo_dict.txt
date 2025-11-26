@@ -40,6 +40,7 @@ catplot
 cbar
 cbind
 CBSA
+cchp
 censusdis
 CGIH
 chokepoint
@@ -140,6 +141,7 @@ fips
 fmin
 fontsize
 fossilgas
+fpaths
 fromiter
 fsspec
 fueloil
@@ -153,6 +155,7 @@ geocoord
 geocorr
 geodataframe
 geospatial
+gfile
 GGRF
 ghcn
 GHCND
@@ -214,6 +217,7 @@ kwargs
 kwhs
 labelsize
 LBNL
+leakyrelu
 levelize
 levelized
 levelizes
@@ -256,6 +260,7 @@ MSHP
 MSRP
 MSRPs
 multicollinearity
+multifam
 multiindex
 multiindexes
 multinode
@@ -281,6 +286,7 @@ NYSERDA
 offpeak
 onpeak
 openpyxl
+ordinality
 outpath
 overindexing
 oversizing
@@ -411,6 +417,7 @@ towne
 tpke
 TSFI
 ttflist
+udfs
 ufactor
 unvented
 upserting
