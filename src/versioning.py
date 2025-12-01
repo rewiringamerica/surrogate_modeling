@@ -43,7 +43,7 @@ def get_most_recent_table_version(full_table_name, max_version="current_version"
 
     if max_version == "current_version":
         max_version = get_poetry_version_no()
-        # if doesnt match a semantic version number, just ignore since ordinality does
+        # if doesn't match a semantic version number, just ignore since ordinality does
         if not re.fullmatch(r"\d+\.\d+\.\d+", max_version):
             max_version = None
 

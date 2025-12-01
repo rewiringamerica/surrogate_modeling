@@ -1,0 +1,19 @@
+// This is a config file for cspell. Read https://cspell.org/docs/Configuration#cspelljson
+// for details on what options are available.
+{
+    "version": "0.2",
+    // Ignore some file types
+    "ignorePaths": [
+        "**/*.sh",
+        "**/*.lock",
+        "**/*.txt",
+        "**/*.svg",
+        "**/*.png",
+        "**/*.jpeg"
+    ],
+    // Use custom dictionary
+    "dictionaryDefinitions": [
+        {"name": "sumo_dict", "path": "./.cspell/sumo_dict.txt" }
+    ],
+    "dictionaries": ["sumo_dict"]
+}

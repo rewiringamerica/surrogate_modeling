@@ -46,14 +46,14 @@ class TestCreateStringIndexer(unittest.TestCase):
 
 
 class ApplyUpgrades(unittest.TestCase):
-    """Test feature upgrade tranformations."""
+    """Test feature upgrade transformations."""
 
     @unittest.skipIf(
         os.environ.get("DATABRICKS_RUNTIME_VERSION", None) is None,
         reason="Only runs on databricks cluster.",
     )
     def test_apply_upgrades(self):
-        """Test feautre upgrade tranformations match expected output."""
+        """Test feature upgrade transformations match expected output."""
         baseline_features = pd.read_csv(
             "test_baseline_features_input.csv", keep_default_na=False, na_values=[""]
         ).reset_index()
@@ -131,7 +131,7 @@ class TestFillNullWithColumn(unittest.TestCase):
 
 if os.environ.get("DATABRICKS_RUNTIME_VERSION", None):
     # If we are developing on databricks we have to manually
-    # instatiate a test suite and load all the tests from this module.
+    # instantiate a test suite and load all the tests from this module.
     test_suite = unittest.TestSuite()
     test_suite.addTests(unittest.TestLoader().loadTestsFromModule(sys.modules[__name__]))
     unittest.TextTestRunner().run(test_suite)

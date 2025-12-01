@@ -1,5 +1,5 @@
 """Functions for processing BSB (BuildStockBatch) outputs"""
-# TODO: Move this into dmutils
+# TODO: Move this into dmlutils
 
 import sys
 import os
@@ -216,7 +216,7 @@ def convert_column_units(bsb_df: DataFrame) -> DataFrame:
     Returns:
     - DataFrame: A new DataFrame with the converted units for specified columns.
     """
-    # TODO: this is quite ineffiecient and should be rewritten
+    # TODO: this is quite inefficient and should be rewritten
     # (suffix, conversion_factor except for temp, new_unit)
     conversions = [
         ("_m_btu", constants.BRITISH_THERMAL_UNIT_TO_KILOWATT_HOUR * 1e6, "kwh"),
@@ -239,7 +239,7 @@ def convert_column_units(bsb_df: DataFrame) -> DataFrame:
 # This function contains all the shared preprocessing for bsb sims
 def get_clean_rastock_df() -> DataFrame:
     """
-    Reads, combines, cleans, and converts units of bsb simultions into single RAStock dataframe.
+    Reads, combines, cleans, and converts units of bsb simulations into single RAStock dataframe.
 
     Returns:
         DataFrame: A Spark DataFrame with all RAStock data.

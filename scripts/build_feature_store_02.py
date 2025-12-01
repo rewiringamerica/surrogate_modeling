@@ -28,7 +28,7 @@
 # MAGIC Cluster/ User Requirements
 # MAGIC - Access Mode: Single User or Shared (Not No Isolation Shared)
 # MAGIC - Runtime: >= Databricks Runtime 13.2 for ML or above (or >= Databricks Runtime 13.2 +  `%pip install databricks-feature-engineering`)
-# MAGIC - `USE CATALOG`, `CREATE SCHEMA` privleges on the `ml` Unity Catalog (Ask Miki for access if permission is denied)
+# MAGIC - `USE CATALOG`, `CREATE SCHEMA` privileges on the `ml` Unity Catalog (Ask Miki for access if permission is denied)
 
 # COMMAND ----------
 
@@ -255,7 +255,7 @@ fe = FeatureEngineeringClient()
 
 # COMMAND ----------
 
-# Uncomment to dtop existing existing table version before writing below, the command below does not support overwriting
+# Uncomment to drop existing existing table version before writing below, the command below does not support overwriting
 #spark.sql(f"DROP TABLE IF EXISTS {g.BUILDING_FEATURE_TABLE}_{g.CURRENT_VERSION_NUM}")
 
 # COMMAND ----------

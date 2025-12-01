@@ -33,7 +33,7 @@ df_usage = pd.DataFrame()
 # differently than in a normal Jupyter notebook.
 
 # But the code is set up so you can interrupt this cell, then
-# use the next two cells to look at the currenty data that has
+# use the next two cells to look at the currently data that has
 # been collected and plot it.
 
 plt.ion()

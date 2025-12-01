@@ -34,7 +34,7 @@ class DataGenerator(tf.keras.utils.Sequence):
     - targets (List[str]): names of targets to predict in training.  Defaults to list(DataGenerator.data_params['consumption_group_dict'].keys()).
     - batch_size (int): Defaults to 64.
     - dtype (numpy.dtype): the data type to be used for numeric features. Defaults to np.float32.
-    - training_set (TrainingSet): Databricks TrainingSet object contaning targets, building feautres and weather features.
+    - training_set (TrainingSet): Databricks TrainingSet object containing targets, building features and weather features.
     - training_df (pd.DataFrame): Dataframe of building features and targets of shape [N, P_b + M]. Does not include weather features.
     - weather_features_df (pd.DataFrame): Dataframe of building features of shape [N, P_w] where each column contains a 8760-length vector.
     - weather_features_matrix (numpy.ndarray): A 3D matrix of shape (number of weather file cities, number of weather features, and number of hours in a year) representing weather data for various cities over the course of a year.
@@ -49,7 +49,7 @@ class DataGenerator(tf.keras.utils.Sequence):
     fe = FeatureEngineeringClient()
 
     # This could be adjusted manually if wanted to use different version numbers
-    # TODO: This is a little janky, and running spark commands hereis not ideadl
+    # TODO: This is a little janky, and running spark commands here is not ideal
     # but we'll move over to a more robust process later and this works for now
     building_feature_table_name = get_most_recent_table_version(g.BUILDING_FEATURE_TABLE)
     weather_feature_table_name = get_most_recent_table_version(g.WEATHER_FEATURE_TABLE)
@@ -167,7 +167,7 @@ class DataGenerator(tf.keras.utils.Sequence):
         exclude_columns: List[str] = ["building_id", "upgrade_id", "weather_file_city"],
     ) -> TrainingSet:
         """
-        Initializes the Databricks TrainingSet object contaning targets, building feautres and weather features.
+        Initializes the Databricks TrainingSet object containing targets, building features and weather features.
 
         Parameters
         ----------
@@ -233,7 +233,7 @@ class DataGenerator(tf.keras.utils.Sequence):
 
         Returns
         -------
-        - The dtype of the feature, which is tf.string if catagorical
+        - The dtype of the feature, which is tf.string if categorical
         """
         is_string_feature = self.training_df[feature_name].dtype == "O"
         return tf.string if is_string_feature else self.dtype
@@ -378,7 +378,7 @@ def load_data(
                 raise ValueError(f"Baseline ids {b[1]} must be in the upgrade_ids")
 
     # Read outputs table and sum over consumption columns within each consumption group
-    # join to the bm table to get required keys to join on and filter the building models based on charactaristics
+    # join to the bm table to get required keys to join on and filter the building models based on characteristics
     sum_str = ", ".join([f"{'+'.join(v)} AS {k}" for k, v in consumption_group_dict.items()])
     data = spark.sql(
         f"""

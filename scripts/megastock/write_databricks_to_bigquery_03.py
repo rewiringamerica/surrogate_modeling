@@ -6,9 +6,9 @@
 # MAGIC * Add an integer version of the column `ashrae_iecc_climate_zone_2004__m` to the metadata table so we can partition on it. 
 # MAGIC * Subset features to only baseline (upgrade = 0) since we will recompute feature transformations locally
 # MAGIC * Combine the features and metadata table into one table and write out to BQ
-# MAGIC * A optimized table is then created by partitioning on an interger version of climate zone, and clustered on (heating_fuel, geometry_building_type_acs, geometry_floor_area, vintage). This is done as a seperate step because the delta -> bq api does not allow for clustering. 
+# MAGIC * A optimized table is then created by partitioning on an integer version of climate zone, and clustered on (heating_fuel, geometry_building_type_acs, geometry_floor_area, vintage). This is done as a separate step because the delta -> bq api does not allow for clustering. 
 # MAGIC
-# MAGIC Also note that compuation of integer version of climate zone with partitioning and clustering can be done in one step in BQ using [this query](https://console.cloud.google.com/bigquery?inv=1&invt=AbjEtA&project=cube-machine-learning&ws=!1m17!1m4!1m3!1scube-machine-learning!2sbquxjob_2edfc0a9_19388cf6673!3sUS!1m4!16m3!1m1!1scube-machine-learning!3e12!1m6!12m5!1m3!1scube-machine-learning!2sus-central1!3sd37b8ec3-4973-4dc4-92cb-591280f6d453!2e1). 
+# MAGIC Also note that computation of integer version of climate zone with partitioning and clustering can be done in one step in BQ using [this query](https://console.cloud.google.com/bigquery?inv=1&invt=AbjEtA&project=cube-machine-learning&ws=!1m17!1m4!1m3!1scube-machine-learning!2sbquxjob_2edfc0a9_19388cf6673!3sUS!1m4!16m3!1m1!1scube-machine-learning!3e12!1m6!12m5!1m3!1scube-machine-learning!2sus-central1!3sd37b8ec3-4973-4dc4-92cb-591280f6d453!2e1). 
 # MAGIC
 # MAGIC
 # MAGIC ## Inputs: delta tables on databricks

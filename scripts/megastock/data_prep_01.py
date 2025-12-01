@@ -108,7 +108,7 @@ def process_raw_to_match_energy_plus_format(input_path: str) -> DataFrame:
     )
 
     # extract county gisjoin from county_and_puma and inner join on county_geoid
-    # NOTE: buildings in counties not in RessStock 2022.1 (e.g., AK, HI) will be dropped
+    # NOTE: buildings in counties not in ResStock 2022.1 (e.g., AK, HI) will be dropped
     df = (
         df.withColumn("county", F.split(F.col("county_and_puma"), ",")[0])
         .withColumn("county_geoid", county_gisjoin_to_geoid(F.col("county")))

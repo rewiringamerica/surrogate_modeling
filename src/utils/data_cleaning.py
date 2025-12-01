@@ -1,4 +1,4 @@
-# TODO: Move this into dmutils
+# TODO: Move this into dmlutils
 
 import re
 from typing import List, Dict
@@ -25,7 +25,7 @@ def edit_columns(
       remove_substrings_from_columns (list, optional): List of strings to remove from column names. Defaults to [].
       remove_columns_with_substrings (list, , optional): Remove columns that contain any of the strings in this list.
                                                          Defaults to [].
-      replace_substrings_dict (dict, optional): Replace any occurances of strings within column names based on dict
+      replace_substrings_dict (dict, optional): Replace any occurrences of strings within column names based on dict
                                                 in format {to_replace: replace_value}.
       replace_period_character (str, optional): Character to replace '.' with. Defaults to '__'.
 

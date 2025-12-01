@@ -1,4 +1,4 @@
-# TODO: move to dmutils
+# TODO: move to dmlutils
 
 from pyspark.sql import DataFrame
 import pyspark.sql.functions as F

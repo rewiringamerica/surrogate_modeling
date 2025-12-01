@@ -40,7 +40,7 @@
 # MAGIC ---
 # MAGIC #### Cluster/ User Requirements
 # MAGIC - Can be run on CPU or GPU, with 2x speedup on GPU
-# MAGIC - `USE CATALOG`, `CREATE SCHEMA` privleges on the `ml` Unity Catalog (Ask Miki if for access)
+# MAGIC - `USE CATALOG`, `CREATE SCHEMA` privileges on the `ml` Unity Catalog (Ask Miki if for access)
 # MAGIC
 
 # COMMAND ----------
@@ -182,7 +182,7 @@ class SurrogateModelingWrapper(mlflow.pyfunc.PythonModel):
     def postprocess_result(self, results: Dict[str, np.ndarray], feature_df: pd.DataFrame) -> np.ndarray:
         """
         Postprocesses the model results for N samples over M targets by clipping at 0
-        and setting targets to 0 if the home does not have an applaince using that fuel.
+        and setting targets to 0 if the home does not have an appliance using that fuel.
 
         Parameters:
         - results (dict of {str: np.ndarray}): The outputs of the model in format {target_name (str) : np.ndarray [N,]}

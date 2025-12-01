@@ -120,7 +120,7 @@ def create_weather_model(train_gen, layer_params):
         name="first_1dconv",
         **layer_params,
     )(wm)
-    # Performance with only one layer of CNN is abismal.
+    # Performance with only one layer of CNN is abysmal.
     # Use at least one more layer
     wm = layers.Conv1D(
         filters=16,

@@ -1,7 +1,7 @@
 # Databricks notebook source
 # MAGIC %md # Feature Importance Analysis
 # MAGIC
-# MAGIC This notebook performs feature importance analysis for preducting heat pump cost savings across different GGRF communities. This is done by computing SHAP values on a fitted Catboost model.
+# MAGIC This notebook performs feature importance analysis for predicting heat pump cost savings across different GGRF communities. This is done by computing SHAP values on a fitted Catboost model.
 
 # COMMAND ----------
 
@@ -187,7 +187,7 @@ other_appliance_features = [
     # "clothes_dryer_fuel",
 ]
 # features we are not likely to be able to collect data on
-# altho we may be able to collect data on the features these depend on
+# although we may be able to collect data on the features these depend on
 # so we want to drop these so those can show
 unknown_features = [
     'window_ufactor',

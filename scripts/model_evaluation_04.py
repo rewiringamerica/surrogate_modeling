@@ -7,7 +7,7 @@
 # MAGIC ### I/Os
 # MAGIC
 # MAGIC ##### Inputs:
-# MAGIC The passsed in mlflow `run_id` determines which saved surrogate model is evaluated. The `test_size` determines the number of samples to perform inference on (subset from the pre-defined held out test set). *If running on a large test set (>10,000), a GPU is reccomended*.
+# MAGIC The passed in mlflow `run_id` determines which saved surrogate model is evaluated. The `test_size` determines the number of samples to perform inference on (subset from the pre-defined held out test set). *If running on a large test set (>10,000), a GPU is recommended*.
 # MAGIC
 # MAGIC ##### Outputs:
 # MAGIC Outputs are written based on the current version number of this repo in `pyproject.toml`.
@@ -30,7 +30,7 @@ dbutils.widgets.text("test_size", "10000")  # default in test mode
 # COMMAND ----------
 
 DEBUG = dbutils.widgets.get("mode") == "test"
-# run ID of the model to test. If passed in by prior task in job, then overrride the input value
+# run ID of the model to test. If passed in by prior task in job, then override the input value
 input_run_id = dbutils.widgets.get("run_id")
 RUN_ID = dbutils.jobs.taskValues.get(
     taskKey="model_training",
@@ -258,7 +258,7 @@ def APE(abs_error: float, actual: float, eps=1e-3):
 
 # 1. Set baseline appliances
 # 2. Calculate absolute error
-# 3. Calcuate savings absolute errror, setting these to Null for baseline since there is no savings
+# 3. Calculate savings absolute error, setting these to Null for baseline since there is no savings
 # 4. Calculate APE for consumption and savings
 pred_df_savings = (
     pred_by_building_upgrade_fuel_model_with_metadata.withColumn(  # 1
@@ -290,7 +290,7 @@ pred_df_savings = (
 
 # COMMAND ----------
 
-# write out metrics for each sample in the test set to gcs so that ananlyses can be performed subsequently
+# write out metrics for each sample in the test set to gcs so that analyses can be performed subsequently
 if not DEBUG:
     pred_df_savings.toPandas().to_csv(
         str(GCS_CURRENT_VERSION_ARTIFACT_PATH / "prediction_metrics_test_set.csv"),
@@ -420,7 +420,7 @@ metrics_by_upgrade_type_pd = metrics_by_upgrade_type.toPandas()
 
 # COMMAND ----------
 
-# DBTITLE 1,Rename columns for readabiity
+# DBTITLE 1,Rename columns for readability
 # rename metric columns to be more readable
 metric_rename_dict = {
     "median_absolute_percentage_error_savings": "Median APE - Savings",

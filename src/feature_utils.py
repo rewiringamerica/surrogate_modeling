@@ -132,7 +132,7 @@ def clean_building_metadata(raw_resstock_metadata_df: DataFrame) -> DataFrame:
             )
         )
         # other fuels are not modeled in resstock, and we are not including homes without heating due to poor performance
-        # and this filter is sufficient to remove units that have other fuels for any applaince
+        # and this filter is sufficient to remove units that have other fuels for any appliance
         .where(~F.col("heating_fuel").isin(["Other Fuel", "None"])).where(F.col("water_heater_fuel") != "Other Fuel")
         # temporarily remove homes with baseline heat pumps for heating-- TODO: add these back after we have performance curve parameters for these
         .where(~F.col("hvac_heating_type_and_fuel").isin(["Electricity ASHP", "Electricity MSHP"]))
@@ -395,7 +395,7 @@ def get_water_heater_specs(name: str) -> StructType:
     if uef_efficiency_match:
         uef = float(uef_efficiency_match.group(1))
         # Convert UEF to EF for HPWH. Source: #https://www.resnet.us/wp-content/uploads/RESNET-EF-Calculator-2017.xlsx
-        # Note that other water heater types require a sligntly different equation.
+        # Note that other water heater types require a slightly different equation.
         specs["water_heater_efficiency_ef"] = round(1.2101 * uef - 0.6052, 3)
 
     # Extract the tank volume if specified
@@ -491,7 +491,7 @@ def transform_building_features(building_metadata_table_name) -> DataFrame:
         )
         .withColumn("window_wall_ratio", extract_mean_wwr(F.col("window_areas")))
         .join(WINDOW_DESCRIPTION_TO_SPEC, on="windows")
-        # -- heating tranformations -- #
+        # -- heating transformations -- #
         .withColumn(
             "heating_appliance_type",
             F.expr("replace(hvac_heating_type_and_fuel, heating_fuel, '')"),
@@ -524,7 +524,7 @@ def transform_building_features(building_metadata_table_name) -> DataFrame:
             "has_ducted_heating",
             F.col("hvac_heating_type").isin("Ducted Heat Pump", "Ducted Heating"),
         )
-        # -- cooling tranformations -- #
+        # -- cooling transformations -- #
         .withColumn("ac_type", F.split(F.col("hvac_cooling_efficiency"), ",")[0])
         .withColumn(
             "cooled_space_percentage",
@@ -553,7 +553,7 @@ def transform_building_features(building_metadata_table_name) -> DataFrame:
             "has_ducted_cooling",
             F.col("hvac_cooling_type").isin(["Central AC", "Ducted Heat Pump"]),
         )
-        # -- water heating tranformations -- #
+        # -- water heating transformations -- #
         .transform(add_water_heater_features)
         .withColumn(
             "water_heater_tank_volume_gal_ashrae",
@@ -571,12 +571,12 @@ def transform_building_features(building_metadata_table_name) -> DataFrame:
             ),
         )
         .withColumn("has_water_heater_in_unit", yes_no_mapping[F.col("water_heater_in_unit")])
-        # -- duct/infiltration tranformations -- #
+        # -- duct/infiltration transformations -- #
         .withColumn("has_ducts", yes_no_mapping[F.col("hvac_has_ducts")])
         .withColumn("duct_insulation_r_value", extract_r_valueUDF(F.col("duct_leakage_and_insulation"), F.lit(True)))
         .withColumn("duct_leakage_percentage", extract_percentage(F.col("duct_leakage_and_insulation")))
         .withColumn("infiltration_ach50", F.split(F.col("infiltration"), " ")[0].cast("int"))
-        # -- insulation tranformations -- #
+        # -- insulation transformations -- #
         .withColumn("wall_material", F.split(F.col("insulation_wall"), ",")[0])
         .withColumn("insulation_wall_r_value", extract_r_valueUDF(F.col("insulation_wall")))
         .withColumn(
@@ -610,7 +610,7 @@ def transform_building_features(building_metadata_table_name) -> DataFrame:
                 "geometry_building_number_units_mf",
             ],
         )
-        # sf detatched and mobile homes will be Null for both and should get mapped to 1 unit
+        # sf detached and mobile homes will be Null for both and should get mapped to 1 unit
         .withColumn(
             "n_building_units",
             F.coalesce(
@@ -668,7 +668,7 @@ def transform_building_features(building_metadata_table_name) -> DataFrame:
             F.when(F.col("occupants") == "10+", 11).otherwise(F.col("occupants").cast("int")),
         )
         .withColumn("vintage", extract_vintage(F.col("vintage")))
-        # align names for electricity and natural gas across applainces
+        # align names for electricity and natural gas across appliances
         .replace(
             {
                 "Gas": "Natural Gas",
@@ -728,7 +728,7 @@ def transform_building_features(building_metadata_table_name) -> DataFrame:
             "duct_insulation_r_value",
             "duct_leakage_percentage",
             "infiltration_ach50",
-            # insulalation
+            # insulation
             "insulation_wall",  # only used for applying upgrades, gets dropped later
             "wall_material",
             "insulation_wall_r_value",
@@ -1016,7 +1016,7 @@ def apply_upgrades(baseline_building_features: DataFrame, upgrade_id: int) -> Da
                 ),
             )
             # Duct sealing: update duct leakage rate to at most 10% and insulation to at least R-8,
-            # with the exeption of "0% or 30% Leakage, Uninsulated" which does not get upgrade applied
+            # with the exception of "0% or 30% Leakage, Uninsulated" which does not get upgrade applied
             .withColumn(
                 "duct_leakage_percentage",
                 F.when(
@@ -1075,7 +1075,7 @@ def apply_upgrades(baseline_building_features: DataFrame, upgrade_id: int) -> Da
         )
         # apply general heat pump transforms common to all heat pumps
         upgrade_building_features = upgrade_building_features.transform(upgrade_to_hp_general)
-    # TODO: The ducted option is still a minisplit, do we neeed a way to represent this in the features?
+    # TODO: The ducted option is still a minisplit, do we need a way to represent this in the features?
     if upgrade_id in [4, 9]:  # heat pump: high efficiency, electric backup
         # apply transforms for ducted vs ductless depending whether the home has ducts
         upgrade_building_features = upgrade_building_features.transform(
@@ -1260,7 +1260,7 @@ def drop_non_upgraded_samples(building_features: DataFrame, check_applicability_
 
     Args:
         building_metadata_upgrades (DataFrame): The DataFrame containing building metadata upgrades.
-        check_applicability_logic_against_version (str, optional): If passed, check whether the applicabilitity logic
+        check_applicability_logic_against_version (str, optional): If passed, check whether the applicability logic
                 matches between the metadata (i.e, non-unique set of metadata) the applicability flag output by the
                 simulation for the given version number. Should only be passed if running on Resstock EUSS data. Defaults to None.
 
@@ -1286,7 +1286,7 @@ def drop_non_upgraded_samples(building_features: DataFrame, check_applicability_
 
     if check_applicability_logic_against_version is not None:
         # test that the applicability logic matches between the features and targets
-        # we ignore a few RASstock upgrades since they are all flagged as True in the output table
+        # we ignore a few RAStock upgrades since they are all flagged as True in the output table
         # even though many do not have the insulation upgrade applied and are therefore identical to previous upgrades
         applicability_compare = building_features_applicability_flag.alias("features").join(
             spark.table(f"{ANNUAL_OUTPUTS_TABLE}_{check_applicability_logic_against_version}")
