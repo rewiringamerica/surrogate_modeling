@@ -42,6 +42,5 @@ jobs:
       #          run black
       #----------------------------------------------
       - name: Run black
-        run: poetry run black ./src ./tests --diff
-            poetry run black ./src ./tests --check
+        run: poetry run black ./src ./tests --diff --check
     
