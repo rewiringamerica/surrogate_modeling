@@ -46,6 +46,7 @@ radbcluster = "==15.4.3"
 usingversion = "^0.1.2"
 
 [tool.poetry.group.dev.dependencies]
+black = "^23.0.0"
 ruff = "^0.5.5"
 isort = "^5.13.2"
 flake8 = "^6.1.0"
