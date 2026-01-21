@@ -34,9 +34,9 @@ dmlutils = "^1.0.3"
 dmlbootstrap = "^0.3.0"
 
 # This is to depend on essentially all the pinned
-# versions of things found in the Databricks 14.3
+# versions of things found in the Databricks 15.4
 # runtime. This means this project should only be
-# run on 14.3 runtimes, possibly including the ML
+# run on 15.4 runtimes, possibly including the ML
 # version. The minor .Z version tacked on the end
 # is our internal revision number of the cluster 
 # libraries.

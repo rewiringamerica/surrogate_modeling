@@ -66,7 +66,7 @@ jobs:
           --index-url https://us-central1-python.pkg.dev/cube-machine-learning/rewiring-america-python-repo/simple \
           --extra-index-url https://pypi.org/simple/ \
           --keyring-provider import \
-          -r ./requirements-test-14.3.txt; \
+          -r ./requirements-test-15.4.txt; \
     - name: Test with pytest
       run: |
         pytest

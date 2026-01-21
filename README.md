@@ -52,7 +52,7 @@ This repo has [cspell](https://cspell.org/) configured in `cspell.json` for opti
 │   ├── architecture.md
 │   └── features_upgrades.md
 ├── images/                       # Architecture diagrams and visuals
-├── install-db-requirements.sh    # Cluster init file, used to install `requirements-db-14.3.txt` on databricks
+├── install-db-requirements.sh    # Cluster init file, used to install `requirements-db-15.4.txt` on databricks
 ├── model_artifacts/              # Stored model artifacts, including data params and evaluation results
 ├── notebooks/                    # Jupyter notebooks for analysis
 ├── poetry.lock                   # Poetry files
