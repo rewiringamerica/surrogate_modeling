@@ -21,7 +21,7 @@ There are two deprecated versions of the model stored in `deprecated/` that are 
 
 This repository is designed to be run on Databricks and follows the conventions of the [dml-sample-transmission-line](https://github.com/rewiringamerica/dml-sample-transmission-line) repository. Please review its README for details on setup and usage patterns.
 
-We currently run this project on clusters with DB 14.3 LTS runtime (Python 3.10).
+We currently run this project on clusters with DB 15.4 LTS runtime (Python 3.11).
 
 ### Cluster Setup
 
