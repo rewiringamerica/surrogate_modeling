@@ -33,15 +33,21 @@ jobs:
 
     # We download a lot of dependencies. So free up some space
     # by removing tools we don't need.
-    - name: Free up disk space
-      run: |
-        ls -F /opt/hostedtoolcache 
-        df /opt/hostedtoolcache
-        rm -rf /opt/hostedtoolcache/Java*
-        rm -rf /opt/hostedtoolcache/Ruby
-        rm -rf /opt/hostedtoolcache/go
-        rm -rf /opt/hostedtoolcache/node
-        df /opt/hostedtoolcache
+    - name: Free Disk Space (Ubuntu)
+      uses: jlumbroso/free-disk-space@main
+      with:
+        # this might remove tools that are actually needed,
+        # if set to "true" but frees about 6 GB
+        tool-cache: false
+
+        # all of these default to true, but feel free to set to
+        # "false" if necessary for your workflow
+        android: true
+        dotnet: true
+        haskell: true
+        large-packages: true
+        docker-images: true
+        swap-storage: true
   
     - name: Set up Python 3.11
       uses: actions/setup-python@v5
@@ -55,18 +61,14 @@ jobs:
     - name: Check keyring
       run: |
         keyring --list-backends
+    
+    # Now the keyring has been installed so we can proceed with poetry as normal.
 
-    - name: Install pytest
-      run: |
-        pip install pytest
+    - name: Install poetry
+      uses: abatilo/actions-poetry@v2
 
-    - name: Install dependencies.
-      run: |
-        pip install \
-          --index-url https://us-central1-python.pkg.dev/cube-machine-learning/rewiring-america-python-repo/simple \
-          --extra-index-url https://pypi.org/simple/ \
-          --keyring-provider import \
-          -r ./requirements-test-15.4.txt; \
-    - name: Test with pytest
-      run: |
-        pytest
+    - name: Use poetry to install dependencies.
+      run: poetry install
+
+    - name: Run pytest
+      run: poetry run pytest tests
