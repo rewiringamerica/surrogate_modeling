@@ -6,7 +6,7 @@ This code was developed in and depends on Databricks.
 
 ## Documentation
 
-The steps run the training pipeline can be found [here](scripts/readme.md), and the details on versioning and model artifacts can be found [here](model_artifacts/readme.md).
+The steps to run the training pipeline can be found [here](scripts/readme.md), and the details on versioning and model artifacts can be found [here](model_artifacts/readme.md).
 
 More technical documentation is available in the following locations:
 
