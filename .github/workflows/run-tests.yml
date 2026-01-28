@@ -59,8 +59,10 @@ jobs:
         cache: "poetry"
 
     - name: Install keyring auth
+        # We use pip to install the plugin into the same environment as Poetry
+        # but with --upgrade-strategy only-if-needed to avoid touching system libs
       run: |
-        poetry self add "keyrings.google-artifactregistry-auth"
+        $(which python3) -m pip install --user keyrings.google-artifactregistry-auth
 
     # Now the keyring has been installed so we can install the environment with poetry.
     - name: Use poetry to install dependencies.
