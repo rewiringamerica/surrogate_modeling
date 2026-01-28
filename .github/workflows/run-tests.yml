@@ -66,12 +66,17 @@ jobs:
 
     - name: Install poetry
       uses: abatilo/actions-poetry@v2
-    
-    - name: Cache poetry downloads
+
+    # Ensure venv lives in-project (.venv)
+    - name: Configure poetry
+      run: poetry config virtualenvs.in-project true
+
+    # Cache the virtual environment
+    - name: Cache virtualenv
       uses: actions/cache@v4
       with:
-        path: ~/.cache/pypoetry
-        key: poetry-${{ runner.os }}-${{ hashFiles('poetry.lock') }}
+        path: .venv
+        key: venv-${{ runner.os }}-py3.10-${{ hashFiles('poetry.lock') }}
 
     - name: Use poetry to install dependencies.
       run: poetry install
