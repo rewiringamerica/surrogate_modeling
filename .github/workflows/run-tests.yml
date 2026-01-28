@@ -48,7 +48,10 @@ jobs:
         large-packages: true
         docker-images: true
         swap-storage: true
-  
+
+    - name: Install poetry
+      uses: abatilo/actions-poetry@v2
+
     - name: Set up Python 3.10
       uses: actions/setup-python@v5
       with:
@@ -63,11 +66,7 @@ jobs:
       run: |
         keyring --list-backends
     
-    # Now the keyring has been installed so we can proceed with poetry as normal.
-
-    - name: Install poetry
-      uses: abatilo/actions-poetry@v2
-
+    # Now the keyring has been installed so we can install the environment with poetry.
     - name: Use poetry to install dependencies.
       run: poetry install
 
