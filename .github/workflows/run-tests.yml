@@ -60,12 +60,8 @@ jobs:
 
     - name: Install keyring auth
       run: |
-        pip install keyring keyrings-google-artifactregistry-auth
+        poetry self add "keyrings.google-artifactregistry-auth"
 
-    - name: Check keyring
-      run: |
-        keyring --list-backends
-    
     # Now the keyring has been installed so we can install the environment with poetry.
     - name: Use poetry to install dependencies.
       run: poetry install
