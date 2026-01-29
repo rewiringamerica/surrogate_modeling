@@ -74,6 +74,7 @@ profile = "black"
 
 [tool.ruff.lint]
 select = ["D"]
+extend-ignore = ["D100"]
 
 [tool.ruff.lint.pydocstyle]
 convention = "numpy"
