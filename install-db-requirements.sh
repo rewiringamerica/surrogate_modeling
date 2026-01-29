@@ -24,6 +24,7 @@ cat >"$TEMP_REQUIREMENTS" <<'EOF'
 --extra-index-url https://us-central1-python.pkg.dev/cube-machine-learning/rewiring-america-python-repo/simple
 
 appnope==0.1.4 ; (sys_platform == "darwin" or platform_system == "Darwin") and python_version == "3.10"
+cfgv==3.5.0 ; python_version == "3.10"
 colorama==0.4.6 ; (platform_system == "Windows" or sys_platform == "win32") and python_version == "3.10"
 cython==0.29.32 ; python_version == "3.10"
 db-dtypes==1.4.2 ; python_version == "3.10"
@@ -44,6 +45,7 @@ google-cloud-secret-manager==2.23.3 ; python_version == "3.10"
 greenlet==3.2.1 ; python_version == "3.10" and (platform_machine == "aarch64" or platform_machine == "ppc64le" or platform_machine == "x86_64" or platform_machine == "amd64" or platform_machine == "AMD64" or platform_machine == "win32" or platform_machine == "WIN32")
 grpc-google-iam-v1==0.14.2 ; python_version == "3.10"
 h3==4.2.2 ; python_version == "3.10"
+identify==2.6.16 ; python_version == "3.10"
 imagehash==4.3.1 ; python_version == "3.10"
 jinja2==3.1.2 ; python_version == "3.10"
 jupyter-core==5.2.0 ; python_version == "3.10"
@@ -57,6 +59,7 @@ markupsafe==2.1.1 ; python_version == "3.10"
 notebook-shim==0.2.2 ; python_version == "3.10"
 openpyxl==3.1.5 ; python_version == "3.10"
 pillow==9.4.0 ; python_version == "3.10"
+pre-commit==4.5.1 ; python_version == "3.10"
 probableparsing==0.0.1 ; python_version == "3.10"
 proto-plus==1.26.1 ; python_version == "3.10"
 py4j==0.10.9.7 ; python_version == "3.10"

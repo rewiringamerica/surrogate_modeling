@@ -44,6 +44,7 @@ radbcluster = "==14.3.1"
 
 # These are from PyPi
 usingversion = "^0.1.2"
+pre-commit = "^4.5.1"
 
 [tool.poetry.group.dev.dependencies]
 black = "^22.6.0"
