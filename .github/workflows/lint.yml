@@ -1,4 +1,4 @@
-# Run various link checks, like flake8 and black, to make sure
+# Run various link checks, like ruff and black, to make sure
 # our code remains in good shape, avoids common bugs, and follows
 # common coding  conventions.
 name: lint
@@ -33,6 +33,11 @@ jobs:
       #----------------------------------------------
       - name: Use poetry to install linters
         run: poetry install --only dev --no-plugins
+      #----------------------------------------------
+      #          run ruff
+      #----------------------------------------------
+      - name: Run ruff
+        run: poetry run ruff check ./src ./tests
       #----------------------------------------------
       #          run isort
       #----------------------------------------------
