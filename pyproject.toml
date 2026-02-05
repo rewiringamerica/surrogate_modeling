@@ -31,7 +31,7 @@ google-cloud-bigquery-storage = "^2.26.0"
 
 # These are RA projects in an internal repo.
 dmlutils = "^0.13.6"
-dmlbootstrap = "^0.3.0"
+dmlbootstrap = "^0.3.1"
 
 # This is to depend on essentially all the pinned
 # versions of things found in the Databricks 14.3
