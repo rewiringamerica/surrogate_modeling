@@ -38,7 +38,7 @@ flask==2.2.5 ; python_version == "3.10"
 gcsfs==2023.6.0 ; python_version == "3.10"
 geocoder==1.38.1 ; python_version == "3.10"
 gitpython==3.1.27 ; python_version == "3.10"
-google-cloud-bigquery-storage==2.36.0 ; python_version == "3.10"
+google-cloud-bigquery-storage==2.36.1 ; python_version == "3.10"
 google-cloud-bigquery==3.30.0 ; python_version == "3.10"
 google-cloud-secret-manager==2.26.0 ; python_version == "3.10"
 greenlet==3.3.1 ; python_version == "3.10" and (platform_machine == "aarch64" or platform_machine == "ppc64le" or platform_machine == "x86_64" or platform_machine == "amd64" or platform_machine == "AMD64" or platform_machine == "win32" or platform_machine == "WIN32")
