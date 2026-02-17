@@ -31,7 +31,7 @@ google-cloud-bigquery-storage = "^2.26.0"
 
 # These are RA projects in an internal repo.
 dmlutils = "^0.13.6"
-dmlbootstrap = "^0.3.0"
+dmlbootstrap = "^0.3.1"
 
 # This is to depend on essentially all the pinned
 # versions of things found in the Databricks 14.3
@@ -50,6 +50,7 @@ black = "^22.6.0"
 ruff = "^0.5.5"
 isort = "^5.13.2"
 keyrings-google-artifactregistry-auth = "^1.1.2"
+pre-commit = "^4.5.1"
 
 [tool.poetry.group.test.dependencies]
 pytest = "^7.4.4"

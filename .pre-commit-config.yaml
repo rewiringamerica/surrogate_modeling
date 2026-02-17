@@ -1,0 +1,38 @@
+# Install these with `pre-commit install`
+# Run yourself with `pre-commit run`.
+# See https://pre-commit.com for more information
+files: '^(src|tests)/'
+repos:
+# Keep linter versions here in sync with the versions in poetry.lock.
+- repo: https://github.com/floatingpurr/sync_with_poetry
+  rev: '1.2.1'
+  hooks:
+    - id: sync_with_poetry
+
+- repo: https://github.com/astral-sh/ruff-pre-commit
+  # Ruff version.
+  rev: v0.5.7
+  hooks:
+    # Run the linter.
+    - id: ruff
+      args: [ '--fix' ]
+    # Run the formatter.
+    - id: ruff-format
+
+- repo: https://github.com/pycqa/flake8
+  rev: '6.1.0'
+  hooks:
+    - id: flake8
+
+- repo: https://github.com/pycqa/isort
+  rev: 5.13.2
+  hooks:
+    - id: isort
+      name: isort (python)
+
+# Using this mirror lets us use mypyc-compiled black, which is about 2x faster
+- repo: https://github.com/psf/black-pre-commit-mirror
+  rev: 22.6.0
+  hooks:
+    - id: black
+      language_version: python3.10
