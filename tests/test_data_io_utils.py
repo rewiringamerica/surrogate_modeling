@@ -1,18 +1,21 @@
 """Tests data I/O functions."""
-import unittest
+
 import json
 import os
 import sys
+import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
 if os.environ.get("DATABRICKS_RUNTIME_VERSION", None):
     sys.path.append("../src")
 
-from utils.data_io import write_json, read_json
+from utils.data_io import read_json, write_json
 
 
 class TestJsonFunctions(unittest.TestCase):
+    """Test JSON functions."""
+
     def setUp(self):
         """Set up temporary directories and files for testing."""
         self.temp_dir = TemporaryDirectory()
@@ -35,7 +38,11 @@ class TestJsonFunctions(unittest.TestCase):
         # Verify that the file content is correct
         with self.fpath.open("r") as f:
             loaded_data = json.load(f)
-        self.assertEqual(loaded_data, self.sample_data, "Written data should match the expected data.")
+        self.assertEqual(
+            loaded_data,
+            self.sample_data,
+            "Written data should match the expected data.",
+        )
 
     def test_write_json_no_overwrite(self):
         """Test write_json when file exists and overwrite=False."""

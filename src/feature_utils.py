@@ -4,36 +4,36 @@ import re
 from functools import reduce
 from itertools import chain
 from typing import Dict, Optional
-from pyspark.ml.feature import StringIndexer
+
 import pyspark.sql.functions as F
+from databricks.sdk.runtime import spark, udf
+from dmlutils import constants
+from dmlutils.building_upgrades.upgrades import Upgrade, get_upgrade_id, upgrades_df
+from dmlutils.surrogate_model.apply_upgrades import (
+    APPLIANCE_FUEL_COLS,
+    BASIC_ENCLOSURE_INSULATION,
+    CAPACITY_RETENTION_FEATURES,
+    COP_FEATURES,
+    GAS_APPLIANCE_INDICATOR_COLS,
+    HEAT_PUMP_PERFORMANCE_CURVE_PARAMS,
+    extract_cooling_efficiency,
+    extract_heating_efficiency,
+    extract_r_value,
+)
+from pyspark.ml.feature import StringIndexer
 from pyspark.sql import DataFrame
 from pyspark.sql.column import Column
 from pyspark.sql.types import (
-    IntegerType,
     DoubleType,
+    IntegerType,
     StringType,
-    StructType,
     StructField,
+    StructType,
 )
 from pyspark.sql.window import Window
-from databricks.sdk.runtime import spark, udf
 
-from src.utils import data_cleaning
 from src.globals import ANNUAL_OUTPUTS_TABLE
-
-from dmlutils import constants
-from dmlutils.building_upgrades.upgrades import Upgrade, upgrades_df, get_upgrade_id
-from dmlutils.surrogate_model.apply_upgrades import (
-    extract_r_value,
-    extract_cooling_efficiency,
-    extract_heating_efficiency,
-    BASIC_ENCLOSURE_INSULATION,
-    APPLIANCE_FUEL_COLS,
-    GAS_APPLIANCE_INDICATOR_COLS,
-    CAPACITY_RETENTION_FEATURES,
-    COP_FEATURES,
-    HEAT_PUMP_PERFORMANCE_CURVE_PARAMS,
-)
+from src.utils import data_cleaning
 
 #  -- constants -- #
 SUPPORTED_UPGRADES = [
@@ -87,7 +87,7 @@ WINDOW_DESCRIPTION_TO_SPEC = spark.createDataFrame(
 
 def clean_building_metadata(raw_resstock_metadata_df: DataFrame) -> DataFrame:
     """
-    Rename and remove columns of a ResStock building metadata dataframe
+    Rename and remove columns of a ResStock building metadata dataframe.
 
     Can either pass a parquet file or an existing DataFrame.
 
@@ -148,7 +148,7 @@ def clean_building_metadata(raw_resstock_metadata_df: DataFrame) -> DataFrame:
 #  -- feature transformation udfs -- #
 @udf(returnType=DoubleType())
 def extract_percentage(value: str) -> float:
-    """Extract percentage from string and divide by 100
+    """Extract percentage from string and divide by 100.
 
     >>> extract_percentage('100% Conditioned')
     1.0
@@ -170,7 +170,8 @@ def extract_percentage(value: str) -> float:
 
 @udf(returnType=IntegerType())
 def extract_vintage(vintage: str) -> int:
-    """return the midpoint of the vintage decade bin, with '<1940' as 1930
+    """Return the midpoint of the vintage decade bin, with '<1940' as 1930.
+
     >>> extract_vintage('<1940')
     1930
     >>> extract_vintage('1960s')
@@ -184,6 +185,7 @@ def extract_vintage(vintage: str) -> int:
 
 @udf(returnType=IntegerType())
 def extract_r_valueUDF(construction_type: str, set_none_to_inf: bool = False) -> int:
+    """UDF for extract_r_value."""
     return extract_r_value(construction_type, set_none_to_inf)
 
 
@@ -194,7 +196,7 @@ extract_heating_efficiencyUDF = udf(lambda x: extract_heating_efficiency(x), Dou
 
 @udf(returnType=DoubleType())
 def extract_temp(temperature_string) -> float:
-    """Convert string Fahrenheit degrees to float F
+    """Convert string Fahrenheit degrees to float F.
 
     >>> extract_temp('70F')
     70.0
@@ -210,6 +212,7 @@ def extract_temp(temperature_string) -> float:
 def extract_mean_wwr(value: str) -> int:
     """
     Return the average window to wall ratio (WWR) for front, back, left, and right walls.
+
     >>> extract_mean_wwr('F9 B9 L9 R9')
     9.0
     >>> extract_mean_wwr('F12 B12 L12 R12')
@@ -229,6 +232,8 @@ def extract_mean_wwr(value: str) -> int:
 @udf(returnType=DoubleType())
 def extract_energy_factor(ef_string: str) -> int:
     """
+    Extract the energy factor from an energy factor string.
+
     >>> extract_energy_factor("EF 10.2, 100% Usage")
     10.2
     >>> extract_energy_factor("EF 6.7")
@@ -245,8 +250,8 @@ def extract_energy_factor(ef_string: str) -> int:
 @udf(IntegerType())
 def get_water_heater_capacity_ashrae(n_bedrooms: int, n_bathrooms: float, is_electric: bool) -> int:
     """
-    Calculates the recommended water heater capacity in gallons based on
-    the number of bedrooms, bathrooms, and whether the heater is electric.
+    Calculate the recommended water heater capacity in gallons based on the number of bedrooms, bathrooms, and whether the heater is electric.
+
     Source: https://www.nrel.gov/docs/fy10osti/47246.pdf
     Table 8. Benchmark Domestic Hot Water Storage and Burner Capacity (ASHRAE 1999)
 
@@ -322,7 +327,8 @@ wh_schema = StructType(
 @udf(wh_schema)
 def get_water_heater_specs(name: str) -> StructType:
     """
-    Parses the name of a water heater to extract and compute its specifications based on the ResStock options.tsv
+    Parse the name of a water heater to extract and compute its specifications based on the ResStock options.tsv.
+
     >>> lookup_water_heater_specs("Natural Gas Tankless")
         {'water_heater_type': 'Instantaneous',
         'water_heater_tank_volume_gal': 0,
@@ -350,7 +356,7 @@ def get_water_heater_specs(name: str) -> StructType:
 
     # Split the name into constituent parts
     def split_wh_name(name):
-        "Splits name into 3 elements on a comma delimiter, returning empty string for elements that are not present"
+        """Split name into 3 elements on a comma delimiter, returning empty string for elements that are not present."""
         parts = name.split(", ")
         # Extend the list with None to ensure it has at least 3 elements
         parts += [""] * (3 - len(parts))
@@ -407,6 +413,7 @@ def get_water_heater_specs(name: str) -> StructType:
 
 
 def add_water_heater_features(df):
+    """Add water heater-related features to a dataframe."""
     return (
         df.withColumn("wh_struct", get_water_heater_specs(F.col("water_heater_efficiency")))
         .withColumn("water_heater_type", F.col("wh_struct.water_heater_type"))
@@ -426,7 +433,8 @@ def add_water_heater_features(df):
 #  -- various mapping expressions -- #
 def make_map_type_from_dict(mapping: Dict) -> Column:
     """
-    Create a MapType mapping from a dict to pass to Pyspark
+    Create a MapType mapping from a dict to pass to Pyspark.
+
     https://stackoverflow.com/a/42983199
     """
     return F.create_map([F.lit(x) for x in chain(*mapping.items())])
@@ -465,9 +473,11 @@ def transform_building_features(building_metadata_table_name) -> DataFrame:
     Read and transform building metadata into features.
 
     Args:
+    -----
         building_metadata_table_name : name of building metadata delta table
 
-    Returns:
+    Returns
+    -------
         Dataframe: dataframe of building metadata features
     """
     building_metadata_features = (
@@ -573,8 +583,14 @@ def transform_building_features(building_metadata_table_name) -> DataFrame:
         .withColumn("has_water_heater_in_unit", yes_no_mapping[F.col("water_heater_in_unit")])
         # -- duct/infiltration transformations -- #
         .withColumn("has_ducts", yes_no_mapping[F.col("hvac_has_ducts")])
-        .withColumn("duct_insulation_r_value", extract_r_valueUDF(F.col("duct_leakage_and_insulation"), F.lit(True)))
-        .withColumn("duct_leakage_percentage", extract_percentage(F.col("duct_leakage_and_insulation")))
+        .withColumn(
+            "duct_insulation_r_value",
+            extract_r_valueUDF(F.col("duct_leakage_and_insulation"), F.lit(True)),
+        )
+        .withColumn(
+            "duct_leakage_percentage",
+            extract_percentage(F.col("duct_leakage_and_insulation")),
+        )
         .withColumn("infiltration_ach50", F.split(F.col("infiltration"), " ")[0].cast("int"))
         # -- insulation transformations -- #
         .withColumn("wall_material", F.split(F.col("insulation_wall"), ",")[0])
@@ -589,7 +605,10 @@ def transform_building_features(building_metadata_table_name) -> DataFrame:
             extract_r_valueUDF(F.col("insulation_rim_joist")),
         )
         .withColumn("insulation_floor_r_value", extract_r_valueUDF(F.col("insulation_floor")))
-        .withColumn("insulation_ceiling_r_value", extract_r_valueUDF(F.col("insulation_ceiling")))
+        .withColumn(
+            "insulation_ceiling_r_value",
+            extract_r_valueUDF(F.col("insulation_ceiling")),
+        )
         .withColumn("insulation_roof_r_value", extract_r_valueUDF(F.col("insulation_roof")))
         #  -- building type transformations -- #
         .withColumn(
@@ -789,14 +808,16 @@ HEAT_PUMP_PERFORMANCE_CURVE_PARAMS_SPARK = spark.createDataFrame(HEAT_PUMP_PERFO
 
 def fill_null_with_column(df, source_column, columns_to_fill):
     """
-    Fills null values in specified columns with the value from a source column
+    Fill null values in specified columns with the value from a source column.
 
-    Args:
+    Args
+    ----
         df: Input DataFrame
         source_column: Column name to use as the fill value
         columns_to_fill: List of column names to fill when null
 
-    Returns:
+    Returns
+    -------
         DataFrame with null values filled
     """
     # Create a dictionary of column expressions
@@ -816,10 +837,12 @@ def remove_setbacks(building_features: DataFrame) -> DataFrame:
     """
     Remove setbacks by setting the cooling and heating setpoint offset magnitudes to zero.
 
-    Args:
+    Args
+    ----
         building_features (DataFrame): The baseline building features.
 
-    Returns:
+    Returns
+    -------
         DataFrame: The building features DataFrame with setbacks removed.
     """
     return building_features.withColumn("cooling_setpoint_offset_magnitude_degrees_f", F.lit(0.0)).withColumn(
@@ -833,25 +856,30 @@ def update_hp_ducted_ductless(
     non_ducted_efficiency: str,
 ) -> DataFrame:
     """
-    Upgrade the baseline building features for heating and cooling efficiencies and ducted heating/cooling status
-    with a ducted heat pump if the home has ducts and a ductless heat pump if the home does not have ducts.
+    Upgrade the baseline building features for heating and cooling efficiencies and ducted heating/cooling status.
+
+    Upgrade with a ducted heat pump if the home has ducts and a ductless heat pump if the home does not have ducts.
+
     TODO: make the specified upgrade thresholds  (<=SEER 15; <=HSPF 8.5) explicit here. In 2024.2 there are now
     baseline hps that exceed these thresholds (MSHP, SEER 29.3, 14 HSPF).
 
-    Args:
+    Args
+    ----
         building_features (DataFrame): The baseline building features.
         ducted_efficiency (str): The efficiency of the ducted heat pump.
         non_ducted_efficiency (str): The efficiency of the ductless heat pump.
 
-    Returns:
+    Returns
+    -------
         DataFrame: The upgraded building features DataFrame with the heat pump logic applied.
     """
     return (
         building_features.withColumn(
             "heating_efficiency_nominal_percentage",
-            F.when(F.col("has_ducts"), extract_heating_efficiencyUDF(F.lit(ducted_efficiency))).otherwise(
-                extract_heating_efficiencyUDF(F.lit(non_ducted_efficiency))
-            ),
+            F.when(
+                F.col("has_ducts"),
+                extract_heating_efficiencyUDF(F.lit(ducted_efficiency)),
+            ).otherwise(extract_heating_efficiencyUDF(F.lit(non_ducted_efficiency))),
         )
         .withColumn(
             "cooling_efficiency_eer",
@@ -869,25 +897,28 @@ def update_hp_ducted_ductless(
 
 
 def get_hp_efficiencies_single_multi_zone_ductless(
-    building_features: DataFrame, single_zone_efficiency: str, multi_zone_efficiency: str
+    building_features: DataFrame,
+    single_zone_efficiency: str,
+    multi_zone_efficiency: str,
 ) -> DataFrame:
     """
     Upgrade the baseline building features for heating and cooling efficiencies with a ductless heat pump.
+
     Applies single-zone or multi-zone efficiency based on the size of the home and joins performance curve parameters.
 
-    Args:
+    Args
+    ----
         building_features (DataFrame): The baseline building features.
         single_zone_efficiency (str): The efficiency of the single-zone ductless heat pump.
         multi_zone_efficiency (str): The efficiency of the multi-zone ductless heat pump.
 
-    Returns:
+    Returns
+    -------
         DataFrame: The upgraded building features DataFrame with the ductless heat pump logic applied.
     """
 
     def single_zone_is_applicable():
-        """
-        Define the condition for home size logic reuse.
-        """
+        """Define the condition for home size logic reuse."""
         return (
             (F.col("n_bedrooms") == 1) | (F.col("sqft") <= 749) | ((F.col("n_bedrooms") == 2) & (F.col("sqft") <= 999))
         )
@@ -920,20 +951,24 @@ def get_hp_efficiencies_single_multi_zone_ductless(
     building_features = building_features.withColumn(
         "heating_efficiency_nominal_percentage",
         F.when(
-            F.col("upgrade_is_applicable"), extract_heating_efficiencyUDF(F.col("hvac_heating_efficiency"))
+            F.col("upgrade_is_applicable"),
+            extract_heating_efficiencyUDF(F.col("hvac_heating_efficiency")),
         ).otherwise(F.col("heating_efficiency_nominal_percentage")),
     ).withColumn(
         "cooling_efficiency_eer",
         F.when(
-            F.col("upgrade_is_applicable"), extract_cooling_efficiencyUDF(F.col("hvac_heating_efficiency"))
+            F.col("upgrade_is_applicable"),
+            extract_cooling_efficiencyUDF(F.col("hvac_heating_efficiency")),
         ).otherwise(F.col("cooling_efficiency_eer")),
     )
 
     # heating and cooling is now ductless
     building_features = building_features.withColumn(
-        "has_ducted_heating", F.when(F.col("upgrade_is_applicable"), False).otherwise(F.col("has_ducted_heating"))
+        "has_ducted_heating",
+        F.when(F.col("upgrade_is_applicable"), False).otherwise(F.col("has_ducted_heating")),
     ).withColumn(
-        "has_ducted_cooling", F.when(F.col("upgrade_is_applicable"), False).otherwise(F.col("has_ducted_cooling"))
+        "has_ducted_cooling",
+        F.when(F.col("upgrade_is_applicable"), False).otherwise(F.col("has_ducted_cooling")),
     )
 
     return building_features.drop("upgrade_is_applicable")
@@ -946,11 +981,13 @@ def upgrade_to_hp_general(
     """
     Upgrade the baseline building features to an air source heat pump (ASHP) with logic common to all heat pump upgrades.
 
-    Args:
+    Args
+    ----
         building_features (DataFrame): The building features to upgrade.
         heat_pump_sizing_methodology (str, optional) : the name of the heat pump sizing methodology. Defaults to "ACCA".
 
-    Returns:
+    Returns
+    -------
         DataFrame: The upgraded building features DataFrame with the heat pump.
     """
     return (
@@ -965,16 +1002,19 @@ def upgrade_to_hp_general(
 def apply_upgrades(baseline_building_features: DataFrame, upgrade_id: int) -> DataFrame:
     """
     Modify building features to reflect the upgrade.
+
     https://oedi-data-lake.s3.amazonaws.com/nrel-pds-building-stock/end-use-load-profiles-for-us-building-stock
          /2022/EUSS_ResRound1_Technical_Documentation.pdf
     In case of contradictions, consult: https://github.com/NREL/resstock/blob/run/euss/EUSS-project-file_2018_10k.yml.
     For RAStock upgrades, consult the config.json and options.tsv in the simulation folder.
 
-    Args:
+    Args
+    ----
           baseline_building_features: (DataFrame) building features coming from metadata.
           upgrade_id: (int)
 
-    Returns:
+    Returns
+    -------
           DataFrame: building_features, augmented to reflect the upgrade.
     """
     # TODO: update this function to use enum names instead of upgrade ids
@@ -1024,7 +1064,10 @@ def apply_upgrades(baseline_building_features: DataFrame, upgrade_id: int) -> Da
                         (F.col("has_ducts"))
                         & ~(
                             F.col("duct_leakage_and_insulation").isin(
-                                ["0% Leakage to Outside, Uninsulated", "30% Leakage to Outside, Uninsulated"]
+                                [
+                                    "0% Leakage to Outside, Uninsulated",
+                                    "30% Leakage to Outside, Uninsulated",
+                                ]
                             )
                         )
                     ),
@@ -1038,7 +1081,10 @@ def apply_upgrades(baseline_building_features: DataFrame, upgrade_id: int) -> Da
                         (F.col("has_ducts"))
                         & ~(
                             F.col("duct_leakage_and_insulation").isin(
-                                ["0% Leakage to Outside, Uninsulated", "30% Leakage to Outside, Uninsulated"]
+                                [
+                                    "0% Leakage to Outside, Uninsulated",
+                                    "30% Leakage to Outside, Uninsulated",
+                                ]
                             )
                         )
                     ),
@@ -1079,7 +1125,9 @@ def apply_upgrades(baseline_building_features: DataFrame, upgrade_id: int) -> Da
     if upgrade_id in [4, 9]:  # heat pump: high efficiency, electric backup
         # apply transforms for ducted vs ductless depending whether the home has ducts
         upgrade_building_features = upgrade_building_features.transform(
-            update_hp_ducted_ductless, "MSHP, SEER 24, 13 HSPF", "MSHP, SEER 29.3, 14 HSPF"
+            update_hp_ducted_ductless,
+            "MSHP, SEER 24, 13 HSPF",
+            "MSHP, SEER 29.3, 14 HSPF",
         )
         # apply general heat pump transforms common to all heat pumps
         upgrade_building_features = upgrade_building_features.transform(upgrade_to_hp_general)
@@ -1127,7 +1175,10 @@ def apply_upgrades(baseline_building_features: DataFrame, upgrade_id: int) -> Da
             .withColumn("has_ducted_heating", F.lit(True))
             .withColumn("has_ducted_cooling", F.lit(True))
             # Add column to join to performance curve metrics on
-            .withColumn("hvac_heating_efficiency", F.lit("Daikin 7 series ASHP, SEER 20, 10.35 HSPF"))
+            .withColumn(
+                "hvac_heating_efficiency",
+                F.lit("Daikin 7 series ASHP, SEER 20, 10.35 HSPF"),
+            )
             .transform(upgrade_to_hp_general, "HERS")
             .transform(remove_setbacks)
         )
@@ -1145,7 +1196,9 @@ def apply_upgrades(baseline_building_features: DataFrame, upgrade_id: int) -> Da
     if upgrade_id in [11.05, 11.07, 13.01, 13.02]:
         # apply transforms for ducted vs ductless depending whether the home has ducts
         upgrade_building_features = upgrade_building_features.transform(
-            update_hp_ducted_ductless, "ASHP, SEER 18, 10 HSPF", "ASHP, SEER 18, 10.5 HSPF"
+            update_hp_ducted_ductless,
+            "ASHP, SEER 18, 10 HSPF",
+            "ASHP, SEER 18, 10.5 HSPF",
         )
         # apply general heat pump transforms common to all heat pumps
         upgrade_building_features = upgrade_building_features.transform(upgrade_to_hp_general, "HERS")
@@ -1161,8 +1214,14 @@ def apply_upgrades(baseline_building_features: DataFrame, upgrade_id: int) -> Da
                     F.col("water_heater_efficiency") == "Electric Tankless",
                     F.col("water_heater_efficiency"),
                 )
-                .when(F.col("n_bedrooms") <= 3, F.lit("Electric Heat Pump, 50 gal, 3.45 UEF"))
-                .when(F.col("n_bedrooms") == 4, F.lit("Electric Heat Pump, 66 gal, 3.35 UEF"))
+                .when(
+                    F.col("n_bedrooms") <= 3,
+                    F.lit("Electric Heat Pump, 50 gal, 3.45 UEF"),
+                )
+                .when(
+                    F.col("n_bedrooms") == 4,
+                    F.lit("Electric Heat Pump, 66 gal, 3.35 UEF"),
+                )
                 .otherwise(F.lit("Electric Heat Pump, 80 gal, 3.45 UEF")),
             )
             .transform(add_water_heater_features)
@@ -1179,7 +1238,9 @@ def apply_upgrades(baseline_building_features: DataFrame, upgrade_id: int) -> Da
 
     # Add in heat pump performance curve params using pre-defined specs, or impute for building samples that do not have a hp
     upgrade_building_features = upgrade_building_features.join(
-        HEAT_PUMP_PERFORMANCE_CURVE_PARAMS_SPARK, on="hvac_heating_efficiency", how="left"
+        HEAT_PUMP_PERFORMANCE_CURVE_PARAMS_SPARK,
+        on="hvac_heating_efficiency",
+        how="left",
     )
     # For samples without a heat pump, impute all COP columns with heating_efficiency_nominal_percentage
     # and all capacity retention columns with 1
@@ -1217,16 +1278,19 @@ def apply_upgrades(baseline_building_features: DataFrame, upgrade_id: int) -> Da
 
 def build_upgrade_metadata_table(baseline_building_features: DataFrame) -> DataFrame:
     """
-    Applied upgrade logic to baseline features table to create a DataFrame with features for each supported upgrade.
+    Apply upgrade logic to baseline features table to create a DataFrame with features for each supported upgrade.
 
     This function iterates over each upgrade specified in `SUPPORTED_UPGRADES`,
     applies these upgrades to the baseline building metadata, and then unions the resulting DataFrames
     to create a comprehensive DataFrame that includes the baseline and all upgrades.
 
-    Args:
+    Args
+    ----
         building_features_baseline (DataFrame): A Spark DataFrame containing baseline building metadata
           for a set of building samples, with the primary key (building_id, building_set)
-    Returns:
+
+    Returns
+    -------
         DataFrame: A Spark DataFrame containing building metadata for each upgrade including baseline.
     """
     # Get names, upgrade ids and name of baseline building set for each upgrade
@@ -1240,7 +1304,11 @@ def build_upgrade_metadata_table(baseline_building_features: DataFrame) -> DataF
     # Iterate through each and apply the upgrade logic and add the name of the upgrade
     upgraded_dfs = []
     for row in upgrade_rows:
-        upgrade_name, upgrade_id, building_set = row["name"], float(row["upgrade_id"]), row["building_set"]
+        upgrade_name, upgrade_id, building_set = (
+            row["name"],
+            float(row["upgrade_id"]),
+            row["building_set"],
+        )
         df = apply_upgrades(
             baseline_building_features=baseline_building_features.where(F.col("building_set") == building_set),
             upgrade_id=upgrade_id,
@@ -1258,16 +1326,19 @@ def drop_non_upgraded_samples(building_features: DataFrame, check_applicability_
     identical that of a lower upgrade. For example, if the metadata is identical for say 11.05
     and 13.01 for a given sample, the 13.01 record will be dropped.
 
-    Args:
+    Args
+    ----
         building_metadata_upgrades (DataFrame): The DataFrame containing building metadata upgrades.
         check_applicability_logic_against_version (str, optional): If passed, check whether the applicability logic
                 matches between the metadata (i.e, non-unique set of metadata) the applicability flag output by the
                 simulation for the given version number. Should only be passed if running on Resstock EUSS data. Defaults to None.
 
-    Returns:
+    Returns
+    -------
         DataFrame: The DataFrame with non-upgraded samples dropped.
 
-    Raises:
+    Raises
+    ------
         ValueError: If check_applicability_logic=True and the applicability logic
         does not match between the features and targets. Upgrade 13.01 is ignored.
 
@@ -1319,16 +1390,21 @@ def create_string_indexer(df: DataFrame, column_name: str) -> StringIndexer:
     """
     Create and fit a StringIndexer for the distinct values in a given column.
 
-    Args:
+    Args
+    ----
         df (spark.DataFrame): The DataFrame containing the column.
         column_name (str): The name of the column for which to create the index mapping.
 
-    Returns:
+    Returns
+    -------
         The fitted StringIndexer.
     """
     # Create a StringIndexer for the given column
     indexer = StringIndexer(
-        inputCol=column_name, outputCol=f"{column_name}_index", stringOrderType="alphabetAsc", handleInvalid="skip"
+        inputCol=column_name,
+        outputCol=f"{column_name}_index",
+        stringOrderType="alphabetAsc",
+        handleInvalid="skip",
     )
 
     # Fit the indexer to the DataFrame
@@ -1338,11 +1414,13 @@ def create_string_indexer(df: DataFrame, column_name: str) -> StringIndexer:
 
 
 def fit_weather_city_index(df_to_fit: DataFrame):
+    """Create an index in the dataframe for values of the weather_file_city column."""
     # Create the StringIndexer
     return create_string_indexer(df_to_fit.drop("weather_file_city_index"), "weather_file_city")
 
 
 def transform_weather_city_index(weather_file_city_indexer: StringIndexer, df_to_transform: DataFrame):
+    """Transform the weather_file_city_index column to int."""
     return weather_file_city_indexer.transform(df_to_transform).withColumn(
         "weather_file_city_index", F.col("weather_file_city_index").cast("int")
     )

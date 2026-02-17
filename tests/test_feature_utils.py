@@ -1,20 +1,26 @@
 """Tests feature transformation utility functions."""
 
-from functools import reduce
 import os
 import sys
 import unittest
+from functools import reduce
+
 import pandas as pd
 from pandas.testing import assert_frame_equal
-
 from pyspark.sql import DataFrame
 
 if os.environ.get("DATABRICKS_RUNTIME_VERSION", None):
     sys.path.append("../src")
-    from feature_utils import apply_upgrades, create_string_indexer, fill_null_with_column
+    from feature_utils import (
+        apply_upgrades,
+        create_string_indexer,
+        fill_null_with_column,
+    )
 
 
 class TestCreateStringIndexer(unittest.TestCase):
+    """Test string indexer."""
+
     @unittest.skipIf(
         os.environ.get("DATABRICKS_RUNTIME_VERSION", None) is None,
         reason="Only runs on databricks cluster.",
@@ -91,13 +97,21 @@ class ApplyUpgrades(unittest.TestCase):
 
 
 class TestFillNullWithColumn(unittest.TestCase):
+    """Test fill_null_with_column."""
+
     @unittest.skipIf(
         os.environ.get("DATABRICKS_RUNTIME_VERSION", None) is None,
         reason="Only runs on databricks cluster.",
     )
     def test_fill_null_with_column_basic(self):
+        """Basic test."""
         # Create test data
-        data = [(1, "X", "A", None), (2, "Y", None, "B"), (3, "Z", None, None), (4, None, "D", "C")]
+        data = [
+            (1, "X", "A", None),
+            (2, "Y", None, "B"),
+            (3, "Z", None, None),
+            (4, None, "D", "C"),
+        ]
         columns = ["id", "source_col", "col1", "col2"]
         df = spark.createDataFrame(data, columns)
 
@@ -105,7 +119,12 @@ class TestFillNullWithColumn(unittest.TestCase):
         result = fill_null_with_column(df, "source_col", ["col1", "col2"])
 
         # Expected data
-        expected_data = [(1, "X", "A", "X"), (2, "Y", "Y", "B"), (3, "Z", "Z", "Z"), (4, None, "D", "C")]
+        expected_data = [
+            (1, "X", "A", "X"),
+            (2, "Y", "Y", "B"),
+            (3, "Z", "Z", "Z"),
+            (4, None, "D", "C"),
+        ]
         expected_df = spark.createDataFrame(expected_data, columns)
 
         # Compare results
@@ -116,6 +135,7 @@ class TestFillNullWithColumn(unittest.TestCase):
         reason="Only runs on databricks cluster.",
     )
     def test_fill_null_with_column_empty_list(self):
+        """Test given no columns_to_fill."""
         # Data with empty columns_to_fill list
         data = [(1, "A", None), (2, None, "B")]
         columns = ["source_col", "id", "col1"]

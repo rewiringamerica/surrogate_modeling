@@ -8,7 +8,6 @@ import tensorflow as tf
 from databricks.feature_engineering import FeatureEngineeringClient, FeatureLookup
 from databricks.ml_features.training_set import TrainingSet
 from databricks.sdk.runtime import spark
-
 from pyspark.sql import DataFrame
 
 import src.globals as g
@@ -21,8 +20,9 @@ baseline_building_sets = [("ResStock 2022.1", 0), ("ResStock 2024.2", 0.01)]
 
 class DataGenerator(tf.keras.utils.Sequence):
     """
-    A data generator for generating training data to feed to a keras model. Since the weather features are large and duplicative across many buildings,
-    The weather features are only joined to the rest of the training data (building features and targets) at generation time for the given batch.
+    A data generator for generating training data to feed to a keras model.
+
+    Since the weather features are large and duplicative across many buildings, the weather features are only joined to the rest of the training data (building features and targets) at generation time for the given batch.
 
     Let N and M be the number of samples and targets in the training set respectively.
     Let P_b and P_w be the number of building and weather features respectively, where P = P_b + P_w is the total number of features.
@@ -68,7 +68,7 @@ class DataGenerator(tf.keras.utils.Sequence):
         baseline_weight_target_proportion=0.5,
     ):
         """
-        Initializes the DataGenerator object.
+        Initialize the DataGenerator object.
 
         Parameters
         ----------
@@ -110,7 +110,7 @@ class DataGenerator(tf.keras.utils.Sequence):
 
     def get_baseline_sample_weight(self, target_proportion=0.5):
         """
-        Calculate the weight needed for a baseline sample to be the target proportion of the training set
+        Calculate the weight needed for a baseline sample to be the target proportion of the training set.
 
         Parameters
         ----------
@@ -121,7 +121,7 @@ class DataGenerator(tf.keras.utils.Sequence):
         - float: baseline sample weight
 
         Raises
-        -------
+        ------
         ValueError: If upgrade ids in config does not include at least one baseline id.
 
         """
@@ -131,7 +131,7 @@ class DataGenerator(tf.keras.utils.Sequence):
 
     def get_building_feature_lookups(self) -> FeatureLookup:
         """
-        Returns the FeatureLookup objects for building features.
+        Return the FeatureLookup objects for building features.
 
         Returns
         -------
@@ -147,7 +147,7 @@ class DataGenerator(tf.keras.utils.Sequence):
 
     def get_weather_feature_lookups(self) -> FeatureLookup:
         """
-        Returns the FeatureLookup objects for weather features.
+        Return the FeatureLookup objects for weather features.
 
         Returns
         -------
@@ -167,7 +167,7 @@ class DataGenerator(tf.keras.utils.Sequence):
         exclude_columns: List[str] = ["building_id", "upgrade_id", "weather_file_city"],
     ) -> TrainingSet:
         """
-        Initializes the Databricks TrainingSet object containing targets, building features and weather features.
+        Initialize the Databricks TrainingSet object containing targets, building features and weather features.
 
         Parameters
         ----------
@@ -190,7 +190,8 @@ class DataGenerator(tf.keras.utils.Sequence):
 
     def init_building_features_and_targets(self, train_data: DataFrame) -> pd.DataFrame:
         """
-        Loads dataframe containing building features and targets into memory.
+        Load the dataframe containing building features and targets into memory.
+
         Note that weather features are not joined until generation time when __get_item__() is called.
 
         Parameters
@@ -212,7 +213,7 @@ class DataGenerator(tf.keras.utils.Sequence):
 
     def init_weather_features(self) -> pd.DataFrame:
         """
-        Loads dataframe weather features into memory
+        Load dataframe weather features into memory.
 
         Returns
         -------
@@ -224,8 +225,7 @@ class DataGenerator(tf.keras.utils.Sequence):
 
     def feature_dtype(self, feature_name: str) -> Any:
         """
-        Returns the dtype of the feature, which is tf.string
-        if object, otherwise self.dtype
+        Return the dtype of the feature, which is tf.string if object, otherwise self.dtype.
 
         Parameters
         ----------
@@ -240,8 +240,7 @@ class DataGenerator(tf.keras.utils.Sequence):
 
     def feature_vocab(self, feature_name: str) -> np.ndarray:
         """
-        Returns the vocabulary of the feature: unique list of possible values a categorical feature can take on
-        (only used for categorical).
+        Return the vocabulary of the feature: unique list of possible values a categorical feature can take on (only used for categorical).
 
         Parameters
         ----------
@@ -255,7 +254,7 @@ class DataGenerator(tf.keras.utils.Sequence):
 
     def init_building_feature_vocab_dict(self) -> Dict[str, Dict[str, Any]]:
         """
-        Initializes the building feature vocabulary dictionary.
+        Initialize the building feature vocabulary dictionary.
 
         Returns
         -------
@@ -272,7 +271,7 @@ class DataGenerator(tf.keras.utils.Sequence):
 
     def convert_dataframe_to_dict(self, feature_df: pd.DataFrame) -> Dict[str, np.ndarray]:
         """
-        Converts the training features from a pandas dataframe to a dictionary.
+        Convert the training features from a pandas dataframe to a dictionary.
 
         Parameters
         ----------
@@ -288,7 +287,7 @@ class DataGenerator(tf.keras.utils.Sequence):
 
     def __len__(self) -> int:
         """
-        Returns the number of batches.
+        Return the number of batches.
 
         Returns
         -------
@@ -298,7 +297,7 @@ class DataGenerator(tf.keras.utils.Sequence):
 
     def __getitem__(self, index: int) -> Tuple[Dict[str, np.ndarray], Dict[str, np.ndarray]]:
         """
-        Generates one batch of data.
+        Generate one batch of data.
 
         Parameters
         ----------
@@ -324,9 +323,7 @@ class DataGenerator(tf.keras.utils.Sequence):
         return X, y, w
 
     def on_epoch_end(self):
-        """
-        Shuffles training set after each epoch.
-        """
+        """Shuffle training set after each epoch."""
         self.training_df = self.training_df.sample(frac=1.0)
 
 
@@ -340,8 +337,9 @@ def load_data(
     seed=42,
 ) -> Tuple[DataFrame, DataFrame, DataFrame]:
     """
-    Load the data for model training prediction containing the targets and the keys needed to join to feature tables,
-    and split into train/val/test sets. The parameters n_train and n_test can be used to reduce the size of the data,
+    Load the data for model training prediction containing the targets and the keys needed to join to feature tables, and split into train/val/test sets.
+
+    The parameters n_train and n_test can be used to reduce the size of the data,
     by subsetting from the existing train/val/test data, meaning that the same splits are preserved.
 
     Parameters
@@ -365,7 +363,6 @@ def load_data(
 
     Note that both splitting and subsetting are done approximately, so returned dataframes may not be exactly the requested size/ratio.
     """
-
     if n_train and n_test:
         raise ValueError("Cannot specify both n_train and n_test")
     if consumption_group_dict is None:

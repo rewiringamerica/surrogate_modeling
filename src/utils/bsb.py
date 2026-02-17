@@ -1,16 +1,17 @@
-"""Functions for processing BSB (BuildStockBatch) outputs"""
+"""Functions for processing BSB (BuildStockBatch) outputs."""
+
 # TODO: Move this into dmlutils
 
-import sys
-import os
-from cloudpathlib import CloudPath
 import collections
-from functools import reduce, partial
-from pyspark.sql import DataFrame
-import pyspark.sql.functions as F
-from pyspark.sql.types import BooleanType, DoubleType, LongType, StructField, StructType
+import os
+import sys
+from functools import partial, reduce
 
+import pyspark.sql.functions as F
+from cloudpathlib import CloudPath
 from dmlutils import constants
+from pyspark.sql import DataFrame
+from pyspark.sql.types import BooleanType, DoubleType, LongType, StructField, StructType
 
 sys.path.append("../src")
 
@@ -22,15 +23,19 @@ if os.environ.get("DATABRICKS_RUNTIME_VERSION"):
 
 def get_schema_diffs(schemas: list[StructType]) -> StructType:
     """
+    Reconcile a list of schemas.
+
     Given a list of schemas:
       - Finds fields that exist in multiple schemas with different types.
       - When possible, decides what type that field should be, and adds it to the schema that is returned.
       - Raises an exception if a type conflict can't be resolved.
 
-    Args:
+    Args
+    ----
         schemas: List of schemas to resolve.
 
-    Returns:
+    Returns
+    -------
         Schema with only the fields that differ among the provided schemas,
         with the types we should use.
     """
@@ -78,24 +83,25 @@ def load_clean_and_add_upgrade_id(
     """
     Load a DataFrame from a Parquet file, clean its column names, and add an upgrade_id column.
 
-    Args:
+    Args
+    ----
     - file_path (str): Path to the Parquet file
     - upgrade_id (double): The value for the 'upgrade_id' column
     - schema (StructType, optional): Optional schema to enforce on the DataFrame
     - schema_diffs (StructType, optional): Schema containing fields that should be cast to other
         types if they don't already match.
 
-    Returns:
-    - DataFrame with cleaned column names and upgrade_id column if provided
+    Returns
+    -------
+        - DataFrame with cleaned column names and upgrade_id column if provided
     """
-
     if schema is not None:
         df = spark.read.schema(schema).parquet(str(file_path))
     else:
         df = spark.read.parquet(str(file_path))
 
     def get_dtype(df, colname):
-        """Get the type of a column within a dataframe"""
+        """Get the type of a column within a dataframe."""
         return [dtype for name, dtype in df.dtypes if name == colname][0]
 
     for field in schema_diffs.fields:
@@ -116,7 +122,7 @@ def load_clean_and_add_upgrade_id(
 
 def read_combine_sims():
     """
-    Read in RAStock sims and combine into a single Spark DF
+    Read in RAStock sims and combine into a single Spark DF.
 
     This function is getting revamped in a different repo so not bothering to document for now
     """
@@ -159,12 +165,14 @@ def read_combine_sims():
 
 def clean_bsb_output_cols(bsb_df: DataFrame) -> DataFrame:
     """
-    Cleans and subsets the columns of a DataFrame output from bsb
+    Clean and subsets the columns of a DataFrame output from bsb.
 
-    Args:
+    Args
+    ----
     - bsb_df (DataFrame): The DataFrame to be cleaned.
 
-    Returns:
+    Returns
+    -------
     - DataFrame: The cleaned DataFrame
 
     """
@@ -202,7 +210,7 @@ def clean_bsb_output_cols(bsb_df: DataFrame) -> DataFrame:
 
 def convert_column_units(bsb_df: DataFrame) -> DataFrame:
     """
-    Converts the units of specified columns in a dataframe based on predefined conversion factors and suffixes.
+    Convert the units of specified columns in a dataframe based on predefined conversion factors and suffixes.
 
     The function iterates through each column in the dataframe and checks if the column name ends with a specific
     suffix that indicates the unit of measurement. If a match is found, the column is renamed and its values are
@@ -210,10 +218,12 @@ def convert_column_units(bsb_df: DataFrame) -> DataFrame:
     are defined for British Thermal Units (BTU) to kilowatt-hours (kWh), pounds (lb) to kilograms (kg), BTU per hour
     to kilowatts (kW), and Fahrenheit (F) to Celsius (C).
 
-    Args:
+    Args
+    ----
     - bsb_df (DataFrame): The Spark DataFrame containing the columns to be converted.
 
-    Returns:
+    Returns
+    -------
     - DataFrame: A new DataFrame with the converted units for specified columns.
     """
     # TODO: this is quite inefficient and should be rewritten
@@ -239,9 +249,10 @@ def convert_column_units(bsb_df: DataFrame) -> DataFrame:
 # This function contains all the shared preprocessing for bsb sims
 def get_clean_rastock_df() -> DataFrame:
     """
-    Reads, combines, cleans, and converts units of bsb simulations into single RAStock dataframe.
+    Read, combine, clean, and convert units of bsb simulations into a single RAStock dataframe.
 
-    Returns:
+    Returns
+    -------
         DataFrame: A Spark DataFrame with all RAStock data.
     """
     rastock_df = read_combine_sims()

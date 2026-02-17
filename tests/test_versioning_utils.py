@@ -1,9 +1,11 @@
 """Tests versioning functions."""
+
 import os
 import sys
 import unittest
-from unittest.mock import patch, mock_open
 from pathlib import Path
+from unittest.mock import mock_open, patch
+
 import toml
 
 if os.environ.get("DATABRICKS_RUNTIME_VERSION", None):
@@ -13,6 +15,8 @@ from versioning import get_poetry_version_no
 
 
 class TestGetPoetryVersionNo(unittest.TestCase):
+    """Test get_poetry_version_no util."""
+
     @patch(
         "builtins.open",
         new_callable=mock_open,
