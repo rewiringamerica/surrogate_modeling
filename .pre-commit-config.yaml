@@ -1,7 +1,7 @@
 # Install these with `pre-commit install`
 # Run yourself with `pre-commit run`.
 # See https://pre-commit.com for more information
-exclude: '^(deprecated|notebooks|model_artifacts)/'
+files: '^(src|tests)/'
 repos:
 # Keep linter versions here in sync with the versions in poetry.lock.
 - repo: https://github.com/floatingpurr/sync_with_poetry
