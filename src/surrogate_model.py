@@ -1,20 +1,20 @@
-import numpy as np
 import os
 import tempfile
-from typing import Any, Dict, List, Tuple, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import mlflow
+import numpy as np
 import pyspark.sql.functions as F
 import tensorflow as tf
 from databricks.feature_engineering import FeatureEngineeringClient
 from pyspark.sql import DataFrame
 from pyspark.sql.types import ArrayType, DoubleType
 from tensorflow import keras
-from tensorflow.keras import layers, models
 from tensorflow.io import gfile
+from tensorflow.keras import layers, models
 
-from src.globals import GCS_ARTIFACT_PATH, CURRENT_VERSION_NUM
 from src.datagen import DataGenerator
+from src.globals import CURRENT_VERSION_NUM, GCS_ARTIFACT_PATH
 
 
 class SurrogateModel:
@@ -50,9 +50,7 @@ class SurrogateModel:
         dtype: np.dtype = np.float32,
         artifact_path="model",
     ):
-        """
-        See class attributes for details on params.
-        """
+        """Initialize the SurrogateModel class."""
         if name is None:
             name = CURRENT_VERSION_NUM
         self.name = name
@@ -61,6 +59,7 @@ class SurrogateModel:
         self.artifact_path = artifact_path
 
     def __str__(self):
+        """Produce a string representation of the model's location in UC."""
         return f"{self.catalog}.{self.schema}.{self.name}"
 
     def create_model(self, train_gen: DataGenerator, layer_params: Dict[str, Any] = None):
@@ -223,7 +222,7 @@ class SurrogateModel:
 
     def get_latest_model_version(self) -> int:
         """
-        Returns the latest version of the registered model.
+        Return the latest version of the registered model.
 
         Returns
         -------
@@ -242,7 +241,7 @@ class SurrogateModel:
 
     def get_latest_registered_model_uri(self, verbose: bool = True) -> str:
         """
-        Returns the URI for the latest version of the registered model.
+        Return the URI for the latest version of the registered model.
 
         Raises
         ------
@@ -263,7 +262,9 @@ class SurrogateModel:
 
     def get_model_uri(self, run_id: str = None, version: int = None, verbose: bool = True):
         """
-        Returns the URI for model based on:
+        Return the URI for model, optionally based on run_id and version.
+
+        Returns the URI using:
             * the run id if specified (usually used for an unregistered model)
             * the model version if specified
             * the latest registered model otherwise
@@ -289,9 +290,10 @@ class SurrogateModel:
 
     def save_keras_model(self, run_id):
         """
-        Saves the keras model for the given run ID to Google Cloud Storage based on the name of the model.
+        Save the keras model for the given run ID to Google Cloud Storage based on the name of the model.
 
-        Parameters:
+        Parameters
+        ----------
         - run_id (str): The unique identifier for the MLflow run associated with the model to be saved.
 
         """
@@ -320,7 +322,9 @@ class SurrogateModel:
         targets: List[str] = None,
     ) -> DataFrame:
         """
-        Runs inference on the test data using the specified model, using:
+        Run inference on the test data using the specified model.
+
+        Run inference using:
             * the run id if specified (usually used for an unregistered model)
             * the model version if specified
             * the latest registered model otherwise
@@ -347,8 +351,9 @@ class SurrogateModel:
 
 def mape(y_true, y_pred):
     """
-    Computes the Mean Absolute Percentage Error between the true and predicted values,
-    ignoring elements where the true value is 0.
+    Compute the Mean Absolute Percentage Error between the true and predicted values.
+
+    Ignores elements where the true value is 0.
 
     Parameters
     ----------

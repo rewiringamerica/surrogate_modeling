@@ -1,8 +1,9 @@
 import os
+import re
 from pathlib import Path
+
 import pyspark.sql.functions as F
 import toml
-import re
 
 if os.environ.get("DATABRICKS_RUNTIME_VERSION"):
     from databricks.sdk.runtime import *
@@ -23,17 +24,18 @@ def get_poetry_version_no():
 
 def get_most_recent_table_version(full_table_name, max_version="current_version", return_version_number_only=False):
     """
-    Get the most recent version of a table defined as the table with the highest zero-padded, underscore-delimited
-    semantic version suffix.
+    Get the most recent version of a table defined as the table with the highest zero-padded, underscore-delimited semantic version suffix.
 
     If max_version is passed, then find the most recent version that is no higher than this.
 
-    Parameters:
+    Parameters
+    ----------
         full_table_name (str): Table name in the format `{catalog}.{database}.{table}`
         max_version (str, optional): Max version to cap the table versions at (e.g., '02_05_10'). Defaults to the current version number.
         return_version_number_only (bool, optional): Whether to return just the version number string. Defaults to False.
 
-    Returns:
+    Returns
+    -------
         str or None: Either the full table name or just the version number (if `return_version_number_only=True`).
     """
     try:

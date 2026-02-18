@@ -1,17 +1,19 @@
 # TODO: move to dmlutils
 
-from pyspark.sql import DataFrame
 import pyspark.sql.functions as F
+from pyspark.sql import DataFrame
 
 
 def check_for_null_values(df: DataFrame) -> None:
     """
-    Checks for null values in each column of the DataFrame and raises an error if any null values are found.
+    Check for null values in each column of the DataFrame and raises an error if any null values are found.
 
-    Args:
+    Args
+    ----
     df (DataFrame): The DataFrame to check for null values.
 
-    Raises:
+    Raises
+    ------
     ValueError: If any column contains null values, an error is raised listing those columns and their null counts.
     """
     # count how many null vals are in each column
@@ -32,11 +34,11 @@ def compare_dataframes_string_values(df1: DataFrame, df2: DataFrame) -> dict:
         df1 (DataFrame): The first dataframe to compare.
         df1 (DataFrame): The second dataframe to compare.
 
-    Returns:
+    Returns
+    -------
         dict: A dictionary of differences between the two DataFrames. The keys are the string columns that
         have differences, and the values are dictionaries containing the differences for each column.
     """
-
     # Initialize a dictionary to store the results
     comparison_dict = {}
 

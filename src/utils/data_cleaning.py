@@ -1,7 +1,8 @@
 # TODO: Move this into dmlutils
 
 import re
-from typing import List, Dict
+from typing import Dict, List
+
 from pyspark.sql import DataFrame
 
 
@@ -13,7 +14,9 @@ def edit_columns(
     replace_period_character: str = "__",
 ) -> DataFrame:
     """
-    Clean columns by doing the following in order
+    Clean columns by doing a sequence of string transformations.
+
+    Transformations, in order:
     1. Replace '.' with an empty string in column names so that string manipulation works
     2. Drop columns that contain strings in `remove_columns_with_strings`.
     3. Remove remove strings in `remove_strings_from_columns` from column names
