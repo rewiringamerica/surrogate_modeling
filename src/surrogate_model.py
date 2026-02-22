@@ -1,5 +1,6 @@
 import os
 import tempfile
+from logging import getLogger
 from typing import Any, Dict, List, Optional, Tuple
 
 import mlflow
@@ -15,6 +16,8 @@ from tensorflow.keras import layers, models
 
 from src.datagen import DataGenerator
 from src.globals import CURRENT_VERSION_NUM, GCS_ARTIFACT_PATH
+
+logger = getLogger(__name__)
 
 
 class SurrogateModel:
@@ -239,7 +242,7 @@ class SurrogateModel:
             return None
         return latest_version
 
-    def get_latest_registered_model_uri(self, verbose: bool = True) -> str:
+    def get_latest_registered_model_uri(self) -> str:
         """
         Return the URI for the latest version of the registered model.
 
@@ -255,12 +258,12 @@ class SurrogateModel:
         latest_version = self.get_latest_model_version()
         if not latest_version:
             raise ValueError(f"No version of the model {str(self)} has been registered yet")
-        if verbose:
-            print(f"Returning URI for latest model version: {latest_version}")
+
+        logger.info(f"Returning URI for latest model version: {latest_version}")
 
         return f"models:/{str(self)}/{latest_version}"
 
-    def get_model_uri(self, run_id: str = None, version: int = None, verbose: bool = True):
+    def get_model_uri(self, run_id: str = None, version: int = None):
         """
         Return the URI for model, optionally based on run_id and version.
 
@@ -284,7 +287,7 @@ class SurrogateModel:
 
         """
         if run_id is None:
-            return self.get_latest_registered_model_uri(verbose=verbose)
+            return self.get_latest_registered_model_uri()
         else:
             return f"runs:/{run_id}/{self.artifact_path}"
 
@@ -342,7 +345,7 @@ class SurrogateModel:
 
         """
         batch_pred = self.fe.score_batch(
-            model_uri=self.get_model_uri(run_id=run_id, version=version, verbose=True),
+            model_uri=self.get_model_uri(run_id=run_id, version=version),
             df=test_data,
             result_type=ArrayType(DoubleType()),
         )
