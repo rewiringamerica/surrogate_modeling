@@ -30,7 +30,7 @@ google-cloud-bigquery = "^3.26"
 google-cloud-bigquery-storage = "^2.26.0"
 
 # These are RA projects in an internal repo.
-dmlutils = "^0.13.6"
+dmlutils = "^1.2.0"
 dmlbootstrap = "^0.3.1"
 
 # This is to depend on essentially all the pinned
