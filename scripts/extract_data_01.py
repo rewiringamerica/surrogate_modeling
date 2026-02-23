@@ -43,10 +43,11 @@ from pyspark.sql import DataFrame
 import pyspark.sql.functions as F
 
 import src.globals as g
-from src.utils import data_cleaning, qa_utils
+from src.utils import data_cleaning
 from src import feature_utils
 
 from dmlutils.building_upgrades.upgrades import BuildingSet
+from dmlutils.qa_utils import compare_dataframe_string_values
 
 print(g.CURRENT_VERSION_NUM)
 
@@ -189,7 +190,7 @@ def align_baseline_metadata(
             set(building_metadata_2024.columns).difference(building_metadata_2022.columns),
         )
         print("Differences between categorical values in 2022 (df1) and 2024 (df2):")
-        pprint(qa_utils.compare_dataframes_string_values(building_metadata_2022, building_metadata_2024))
+        pprint(compare_dataframe_string_values(building_metadata_2022, building_metadata_2024))
 
     # union tables tables
     building_metadata = building_metadata_2024.unionByName(building_metadata_2022, allowMissingColumns=True)

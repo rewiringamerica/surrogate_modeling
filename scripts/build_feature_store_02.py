@@ -48,6 +48,8 @@ from databricks.feature_engineering import FeatureEngineeringClient
 from pyspark.sql import DataFrame
 from pyspark.sql.types import StringType
 
+from dmlutils.qa_utils import check_for_null_values
+
 import src.globals as g
 from src.utils import qa_utils, data_io
 from src import feature_utils, versioning
@@ -120,7 +122,7 @@ print(n_building_upgrade_samples)
 non_null_df = building_metadata_applicable_upgrades.dropna()
 assert (
     non_null_df.count() == n_building_upgrade_samples
-), "Null values present, run qa_utils.check_for_null_values(building_metadata_upgrades)"
+), "Null values present, run check_for_null_values(building_metadata_upgrades)"
 
 # COMMAND ----------
 
