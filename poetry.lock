@@ -651,21 +651,6 @@ urllib3 = ">=1.25.4,<1.27"
 crt = ["awscrt (==0.14.0)"]
 
 [[package]]
-name = "bs4"
-version = "0.0.2"
-description = "Dummy package for Beautiful Soup (beautifulsoup4)"
-optional = false
-python-versions = "*"
-groups = ["main"]
-files = [
-    {file = "bs4-0.0.2-py2.py3-none-any.whl", hash = "sha256:abf8742c0805ef7f662dce4b51cca104cffe52b835238afc169142ab9b3fbccc"},
-    {file = "bs4-0.0.2.tar.gz", hash = "sha256:a48685c58f50fe127722417bae83fe6badf500d54b55f7e39ffe43b798653925"},
-]
-
-[package.dependencies]
-beautifulsoup4 = "*"
-
-[[package]]
 name = "cachetools"
 version = "5.3.2"
 description = "Extensible memoizing collections and decorators"
@@ -1661,14 +1646,14 @@ files = [
 
 [[package]]
 name = "dmlbootstrap"
-version = "0.3.1"
+version = "0.3.2"
 description = "Bootstrapping project for dml-utils."
 optional = false
 python-versions = ">=3.10,<4.0"
 groups = ["main"]
 files = [
-    {file = "dmlbootstrap-0.3.1-py3-none-any.whl", hash = "sha256:dcc7a9b5c0cd64baeaefa639e26373204665e5f5fedc61c22537b69766656707"},
-    {file = "dmlbootstrap-0.3.1.tar.gz", hash = "sha256:9ae68455d2c63d6d414f632d25349ae9279c8f54da4982388bd974dc6cdce43c"},
+    {file = "dmlbootstrap-0.3.2-py3-none-any.whl", hash = "sha256:4d3c113c7b713e031a5ce3e1b7cebb296666b53d6029973d01c339e9f3678090"},
+    {file = "dmlbootstrap-0.3.2.tar.gz", hash = "sha256:93bcd04f01d977ccb163a1ab32e7661466dda7f7efcbfbe215a8619829fc9329"},
 ]
 
 [package.dependencies]
@@ -1683,18 +1668,17 @@ reference = "rewiring-america-python-repo"
 
 [[package]]
 name = "dmlutils"
-version = "1.2.0"
+version = "1.3.0"
 description = "RA internal data and machine learning utilities."
 optional = false
 python-versions = ">=3.10,<4.0"
 groups = ["main"]
 files = [
-    {file = "dmlutils-1.2.0-py3-none-any.whl", hash = "sha256:ebe62640b7d39ff39cb63ee5b78ca9a4662d76fe5447d99dbd8ee6ec39357451"},
-    {file = "dmlutils-1.2.0.tar.gz", hash = "sha256:2bcfb76ab7fb41aae41c3b6601ba99a1ac13749f170c49c7d23253c348e019bc"},
+    {file = "dmlutils-1.3.0-py3-none-any.whl", hash = "sha256:630c3ea5db65ce92f6e6105f6a150b3302754c27688c373b6b860c8620a5d923"},
+    {file = "dmlutils-1.3.0.tar.gz", hash = "sha256:20c440eab921a81fa20ae1c1120e97560a72c87119c90fcf810353a389cdd200"},
 ]
 
 [package.dependencies]
-bs4 = ">=0.0.2,<0.0.3"
 cloudpathlib = ">=0.16.0,<0.17.0"
 cryptography = ">=39.0.1"
 db-dtypes = ">=1.4.0,<2.0.0"
@@ -2948,14 +2932,14 @@ typing = ["types-PyYAML", "types-requests", "types-simplejson", "types-toml", "t
 
 [[package]]
 name = "identify"
-version = "2.6.16"
+version = "2.6.17"
 description = "File identification library for Python"
 optional = false
 python-versions = ">=3.10"
 groups = ["dev"]
 files = [
-    {file = "identify-2.6.16-py2.py3-none-any.whl", hash = "sha256:391ee4d77741d994189522896270b787aed8670389bfd60f326d677d64a6dfb0"},
-    {file = "identify-2.6.16.tar.gz", hash = "sha256:846857203b5511bbe94d5a352a48ef2359532bc8f6727b5544077a0dcfb24980"},
+    {file = "identify-2.6.17-py2.py3-none-any.whl", hash = "sha256:be5f8412d5ed4b20f2bd41a65f920990bdccaa6a4a18a08f1eefdcd0bdd885f0"},
+    {file = "identify-2.6.17.tar.gz", hash = "sha256:f816b0b596b204c9fdf076ded172322f2723cf958d02f9c3587504834c8ff04d"},
 ]
 
 [package.extras]
@@ -3186,21 +3170,6 @@ files = [
 
 [package.dependencies]
 six = "*"
-
-[[package]]
-name = "isort"
-version = "5.13.2"
-description = "A Python utility / library to sort Python imports."
-optional = false
-python-versions = ">=3.8.0"
-groups = ["dev"]
-files = [
-    {file = "isort-5.13.2-py3-none-any.whl", hash = "sha256:8ca5e72a8d85860d5a3fa69b8745237f2939afe12dbf656afbcb47fe72d947a6"},
-    {file = "isort-5.13.2.tar.gz", hash = "sha256:48fdfcb9face5d58a4f6dde2e72a1fb8dcaf8ab26f95ab49fab84c2ddefb0109"},
-]
-
-[package.extras]
-colors = ["colorama (>=0.4.6)"]
 
 [[package]]
 name = "itsdangerous"
@@ -9801,4 +9770,4 @@ testing = ["flake8 (<5)", "func-timeout", "jaraco.functools", "jaraco.itertools"
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.10, <3.11"
-content-hash = "8111a7d0f498d2c3f3bb4bd8282dbf5bb091a362ed2b509ad3cde02db2c87975"
+content-hash = "6002912ac2c3f6b86a39584597d6b9abe9cb3180c3b26468bec1297696595f37"
