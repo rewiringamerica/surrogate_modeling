@@ -1,5 +1,6 @@
-from cloudpathlib import CloudPath
 from pathlib import Path
+
+from cloudpathlib import CloudPath
 
 from src.versioning import get_poetry_version_no
 

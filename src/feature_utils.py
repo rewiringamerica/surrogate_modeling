@@ -7,6 +7,18 @@ from typing import Dict, Optional
 
 import pyspark.sql.functions as F
 from databricks.sdk.runtime import spark, udf
+from pyspark.ml.feature import StringIndexer
+from pyspark.sql import DataFrame
+from pyspark.sql.column import Column
+from pyspark.sql.types import (
+    DoubleType,
+    IntegerType,
+    StringType,
+    StructField,
+    StructType,
+)
+from pyspark.sql.window import Window
+
 from dmlutils import constants
 from dmlutils.building_upgrades.upgrades import Upgrade, get_upgrade_id, upgrades_df
 from dmlutils.surrogate_model.apply_upgrades import (
@@ -20,17 +32,6 @@ from dmlutils.surrogate_model.apply_upgrades import (
     extract_heating_efficiency,
     extract_r_value,
 )
-from pyspark.ml.feature import StringIndexer
-from pyspark.sql import DataFrame
-from pyspark.sql.column import Column
-from pyspark.sql.types import (
-    DoubleType,
-    IntegerType,
-    StringType,
-    StructField,
-    StructType,
-)
-from pyspark.sql.window import Window
 
 from src.globals import ANNUAL_OUTPUTS_TABLE
 from src.utils import data_cleaning

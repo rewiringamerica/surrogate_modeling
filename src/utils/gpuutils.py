@@ -1,16 +1,12 @@
 """Utilities for measuring GPU performance."""
 
+import time
+from logging import getLogger
 from typing import Optional
 
-from logging import getLogger
-
-from pynvml import *
-import psutil
-
 import pandas as pd
-
-import time
-
+import psutil
+from pynvml import *
 
 logger = getLogger(__file__)
 
