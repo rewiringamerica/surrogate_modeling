@@ -1,11 +1,12 @@
 """Tests utility functions."""
 
 import os
+import subprocess
+import sys
+import unittest
+
 import pandas as pd
 from pandas.testing import assert_frame_equal
-import sys
-import subprocess
-import unittest
 
 from dmlutils import constants
 
